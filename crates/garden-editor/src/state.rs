@@ -70,6 +70,8 @@ pub struct EditorState {
     pub(crate) tool: ToolKind,
     pub(crate) gesture: Gesture,
     pub(crate) preview: Preview,
+    /// Successful document changes so far (for autosave).
+    changes: u64,
 }
 
 impl EditorState {
@@ -86,6 +88,7 @@ impl EditorState {
             tool: ToolKind::Select,
             gesture: Gesture::Idle,
             preview: Preview::default(),
+            changes: 0,
         };
         s.fit_to_content();
         s
@@ -139,6 +142,26 @@ impl EditorState {
     }
 
     /// Undo. While drawing a polygon or line this removes the last placed point instead.
+    /// Increases by one on every successful document change. Never decreases.
+    pub fn change_count(&self) -> u64 {
+        self.changes
+    }
+
+    /// True while a pointer gesture or a half-drawn polygon/line is in progress.
+    pub fn is_busy(&self) -> bool {
+        self.gesture != Gesture::Idle
+    }
+
+    /// Replace the document (opening another design). Clears history, selection
+    /// and any gesture, keeps the viewport size and fits to the new content.
+    /// Leaves `change_count` unchanged.
+    pub fn open_document(&mut self, doc: Document) {
+        self.editor = Editor::new(doc);
+        self.selection.clear();
+        self.cancel_gesture();
+        self.fit_to_content();
+    }
+
     pub fn undo(&mut self, now_ms: i64) -> bool {
         if let Gesture::Poly { points, .. } = &mut self.gesture
             && points.pop().is_some()
@@ -148,12 +171,18 @@ impl EditorState {
             return true;
         }
         let done = self.editor.undo(now_ms);
+        if done {
+            self.changes += 1;
+        }
         self.after_history_change();
         done
     }
 
     pub fn redo(&mut self, now_ms: i64) -> bool {
         let done = self.editor.redo(now_ms);
+        if done {
+            self.changes += 1;
+        }
         self.after_history_change();
         done
     }
@@ -231,7 +260,7 @@ impl EditorState {
 
     /// Replace one object (inspector edits, lock toggles).
     pub fn replace_object(&mut self, object: Object, now_ms: i64) -> Result<(), CommandError> {
-        self.editor.execute(Command::Replace { object }, now_ms)
+        self.try_execute(Command::Replace { object }, now_ms)
     }
 
     pub fn set_units(&mut self, units: UnitSystem, now_ms: i64) {
@@ -269,7 +298,14 @@ impl EditorState {
     }
 
     pub(crate) fn execute(&mut self, cmd: Command, now_ms: i64) -> bool {
-        self.editor.execute(cmd, now_ms).is_ok()
+        self.try_execute(cmd, now_ms).is_ok()
+    }
+
+    /// The single path every document change goes through (keeps `changes` honest).
+    fn try_execute(&mut self, cmd: Command, now_ms: i64) -> Result<(), CommandError> {
+        self.editor.execute(cmd, now_ms)?;
+        self.changes += 1;
+        Ok(())
     }
 
     /// Where new objects go: the first visible, unlocked layer.
@@ -591,5 +627,56 @@ mod tests {
         s.handle(Input::Move(Point::new(1530., 1010.), NO), 1);
         s.handle(Input::Up(Point::new(1530., 1010.), NO), 1);
         assert_eq!(position(&s, 0), Point::new(1500., 1000.));
+    }
+
+    #[test]
+    fn change_count_tracks_every_document_change() {
+        let mut s = state_with(vec![plant_at(1000., 1000., 600.)]);
+        let c0 = s.change_count();
+        s.selection = vec![s.doc().objects[0].id];
+        s.duplicate_selection(1);
+        assert_eq!(s.change_count(), c0 + 1);
+        let mut o = s.doc().objects[0].clone();
+        o.name = "x".into();
+        s.replace_object(o, 2).unwrap();
+        assert_eq!(s.change_count(), c0 + 2);
+        s.undo(3);
+        assert_eq!(s.change_count(), c0 + 3);
+        s.redo(4);
+        assert_eq!(s.change_count(), c0 + 4);
+        s.set_units(garden_core::units::UnitSystem::Imperial, 5);
+        assert_eq!(s.change_count(), c0 + 5);
+        s.set_units(garden_core::units::UnitSystem::Imperial, 6);
+        assert_eq!(s.change_count(), c0 + 5); // no-op is not a change
+        click(&mut s, Point::new(9000., 9000.), NO);
+        assert_eq!(s.change_count(), c0 + 5); // selection only
+    }
+
+    #[test]
+    fn busy_while_dragging_or_drawing() {
+        let mut s = state_with(vec![plant_at(1000., 1000., 600.)]);
+        assert!(!s.is_busy());
+        s.handle(Input::Down(Point::new(1000., 1000.), NO), 1);
+        assert!(s.is_busy());
+        s.handle(Input::Up(Point::new(1000., 1000.), NO), 1);
+        assert!(!s.is_busy());
+        s.set_tool(ToolKind::Polyline(crate::tools::LineTarget::Path {
+            width: 900.,
+        }));
+        click(&mut s, Point::new(0., 0.), NO);
+        assert!(s.is_busy());
+    }
+
+    #[test]
+    fn open_document_resets_history_and_selection() {
+        let mut s = state_with(vec![plant_at(1000., 1000., 600.)]);
+        s.selection = vec![s.doc().objects[0].id];
+        s.duplicate_selection(1);
+        let other = Document::new("Other", 5);
+        s.open_document(other.clone());
+        assert_eq!(s.doc().id, other.id);
+        assert!(s.selection.is_empty());
+        assert!(!s.can_undo());
+        assert!(!s.is_busy());
     }
 }

@@ -66,7 +66,7 @@ pub fn PlantPicker() -> impl IntoView {
 
     view! {
         <Show when=move || active.get()>
-            <aside class="picker" aria-label=EN.plants_heading>
+            <aside class="card picker" aria-label=EN.plants_heading>
                 <h2>{EN.plants_heading}</h2>
                 {list}
             </aside>

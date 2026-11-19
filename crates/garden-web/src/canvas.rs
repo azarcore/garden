@@ -103,10 +103,7 @@ fn PlanLegend() -> impl IntoView {
             <span class="zoom">{format!("{zoom}%")}</span>
         }
     };
-    view! {
-        <div class="legend">{bar}</div>
-        <div class="readout">{readout}</div>
-    }
+    view! { <div class="card legend">{bar}<div class="readout">{readout}</div></div> }
 }
 
 #[component]
@@ -248,28 +245,53 @@ pub fn Canvas() -> impl IntoView {
     };
     let drawing = Memo::new(move |_| state.with(|s| !matches!(s.tool(), ToolKind::Select)));
 
+    // Dot grid at the snapping step (coarser when zoomed out).
     let grid = move || {
         state.with(|s| {
             let v = &s.viewport;
             let a = v.screen_to_world(Point::ZERO);
             let b = v.screen_to_world(Point::new(v.width, v.height));
-            // smallest step that keeps lines at least 12 px apart
             let step = [100.0, 500.0, 1000.0, 5000.0, 10_000.0, 50_000.0, 100_000.0]
                 .into_iter()
-                .find(|st| st * v.scale >= 12.0)
+                .find(|st| st * v.scale >= 16.0)
                 .unwrap_or(100_000.0);
-            let mut d = String::new();
-            let mut x = (a.x / step).floor() * step;
-            while x <= b.x {
-                d.push_str(&format!("M{x} {} V{} ", a.y, b.y));
-                x += step;
+            let dot = v.px_to_mm(1.2);
+            view! {
+                <pattern id="dot-grid" width=step height=step patternUnits="userSpaceOnUse">
+                    <circle cx="0" cy="0" r=dot class="grid-dot" />
+                    <circle cx=step cy="0" r=dot class="grid-dot" />
+                    <circle cx="0" cy=step r=dot class="grid-dot" />
+                    <circle cx=step cy=step r=dot class="grid-dot" />
+                </pattern>
+                <rect x=a.x y=a.y width=b.x - a.x height=b.y - a.y fill="url(#dot-grid)" />
             }
-            let mut y = (a.y / step).floor() * step;
-            while y <= b.y {
-                d.push_str(&format!("M{} {y} H{} ", a.x, b.x));
-                y += step;
+        })
+    };
+    // Name tag floating above a single selected object.
+    let tag = move || {
+        state.with(|s| {
+            let [id] = s.selection.as_slice() else { return None };
+            let o = s.doc().object(*id)?;
+            if !s.preview().shapes.is_empty() {
+                return None; // hide while dragging
             }
-            view! { <path d=d class="grid-line" fill="none" vector-effect="non-scaling-stroke" /> }
+            let mm = s.viewport.px_to_mm(1.0);
+            let b = garden_editor::objects::object_bounds(&o.kind);
+            let detail = match &o.kind {
+                garden_core::model::ObjectKind::Plant { spread, .. } => format!(" · {}", format_length(*spread, s.doc().units)),
+                _ => String::new(),
+            };
+            let text = format!("{}{detail}", o.name);
+            let w = (text.chars().count() as f64 * 7.2 + 22.0) * mm;
+            let h = 24.0 * mm;
+            let x = b.center().x;
+            let y = b.y0 - 12.0 * mm - h;
+            Some(view! {
+                <g class="tag">
+                    <rect x=x - w / 2.0 y=y width=w height=h rx=h / 2.0 />
+                    <text x=x y=y + h / 2.0 font-size=12.5 * mm text-anchor="middle" dominant-baseline="central">{text}</text>
+                </g>
+            })
         })
     };
     let content = move || {
@@ -305,6 +327,7 @@ pub fn Canvas() -> impl IntoView {
                 {grid}
                 <g class="plan-content">{content}</g>
                 {preview}
+                {tag}
             </g>
         </svg>
         <PlanLegend />

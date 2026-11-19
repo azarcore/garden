@@ -118,79 +118,158 @@ fn canopy_marks(center: Point, r: f64, symbol: PlantSymbol, category: PlantCateg
     d
 }
 
-/// Shared texture patterns, in world millimetres.
+/// Gradients, materials and shadows shared by the plan (world millimetres).
 pub fn defs() -> impl IntoView {
     view! {
         <defs>
-            <pattern id="tex-lawn" width="600" height="600" patternUnits="userSpaceOnUse">
-                <path d="M70 120l18-48M104 126l8-42M380 410l18-48M414 416l8-42M230 560l16-44M520 180l17-46M554 186l7-40M300 260l15-40"
-                    class="tex-stroke lawn-blade" />
+            // plants: lit from the top-left
+            <radialGradient id="pl-tree" cx="38%" cy="34%" r="70%">
+                <stop offset="0" stop-color="#a3d077" /><stop offset=".62" stop-color="#5f9b47" /><stop offset="1" stop-color="#3b7231" />
+            </radialGradient>
+            <radialGradient id="pl-conifer" cx="38%" cy="34%" r="70%">
+                <stop offset="0" stop-color="#6aa47c" /><stop offset="1" stop-color="#275a43" />
+            </radialGradient>
+            <radialGradient id="pl-shrub" cx="38%" cy="34%" r="70%">
+                <stop offset="0" stop-color="#b0da84" /><stop offset="1" stop-color="#5e9842" />
+            </radialGradient>
+            <radialGradient id="pl-bed-plant" cx="40%" cy="36%" r="70%">
+                <stop offset="0" stop-color="#9cc978" /><stop offset="1" stop-color="#5b8e45" />
+            </radialGradient>
+            <radialGradient id="pl-perennial" cx="40%" cy="36%" r="70%">
+                <stop offset="0" stop-color="#cbb6f0" /><stop offset="1" stop-color="#8669bf" />
+            </radialGradient>
+            <radialGradient id="pl-annual" cx="40%" cy="36%" r="70%">
+                <stop offset="0" stop-color="#f9b8a8" /><stop offset="1" stop-color="#df6f5a" />
+            </radialGradient>
+            <radialGradient id="pl-climber" cx="40%" cy="36%" r="70%">
+                <stop offset="0" stop-color="#f3bad6" /><stop offset="1" stop-color="#c9679a" />
+            </radialGradient>
+            <radialGradient id="pl-grass" cx="40%" cy="35%" r="70%">
+                <stop offset="0" stop-color="#ece09c" /><stop offset="1" stop-color="#b6a352" />
+            </radialGradient>
+            <radialGradient id="pl-herb" cx="40%" cy="35%" r="70%">
+                <stop offset="0" stop-color="#c9d8c0" /><stop offset="1" stop-color="#7f9878" />
+            </radialGradient>
+            // surfaces
+            <linearGradient id="m-lawn" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#a2d070" /><stop offset="1" stop-color="#7db353" />
+            </linearGradient>
+            <pattern id="m-mow" width="1600" height="1600" patternUnits="userSpaceOnUse" patternTransform="rotate(-20)">
+                <rect width="800" height="1600" fill="rgba(255,255,255,0.11)" />
             </pattern>
-            <pattern id="tex-bed" width="480" height="480" patternUnits="userSpaceOnUse">
-                <path d="M50 70l70 22M280 50l54-28M160 240l84 14M380 280l32 46M70 390l64-26M300 420l76 8M420 130l-30 50"
-                    class="tex-stroke bed-mulch" />
+            <pattern id="m-mulch" width="500" height="500" patternUnits="userSpaceOnUse">
+                <rect width="500" height="500" fill="#6e4b35" />
+                <path d="M60 100l90 25M300 70l75-38M170 280l100 12M380 330l38 62M70 420l76-25M280 450l88 10M440 160l-34 60"
+                    stroke="#4f3526" stroke-width="30" stroke-linecap="round" />
+                <path d="M120 190l50 12M350 210l38-25M30 320l50 0M230 380l40 22" stroke="#8a654b" stroke-width="24"
+                    stroke-linecap="round" />
             </pattern>
-            <pattern id="tex-paving" width="900" height="900" patternUnits="userSpaceOnUse">
-                <path d="M0 0H900M0 450H900M0 0V450M450 450V900" class="tex-stroke paving-joint" />
+            <pattern id="m-stone" width="1200" height="800" patternUnits="userSpaceOnUse">
+                <rect width="1200" height="800" fill="#e2dbce" />
+                <rect x="20" y="20" width="560" height="360" rx="14" fill="#e9e3d7" />
+                <rect x="620" y="20" width="560" height="360" rx="14" fill="#ddd5c6" />
+                <rect x="320" y="420" width="560" height="360" rx="14" fill="#e6dfd2" />
+                <rect x="-280" y="420" width="560" height="360" rx="14" fill="#d9d1c1" />
+                <rect x="920" y="420" width="560" height="360" rx="14" fill="#d9d1c1" />
             </pattern>
-            <pattern id="tex-gravel" width="420" height="420" patternUnits="userSpaceOnUse">
-                <circle cx="50" cy="70" r="22" class="gravel-stone" />
-                <circle cx="240" cy="40" r="16" class="gravel-stone" />
-                <circle cx="350" cy="210" r="24" class="gravel-stone" />
-                <circle cx="160" cy="260" r="18" class="gravel-stone" />
-                <circle cx="70" cy="370" r="14" class="gravel-stone" />
-                <circle cx="300" cy="350" r="20" class="gravel-stone" />
+            <pattern id="m-gravel" width="420" height="420" patternUnits="userSpaceOnUse">
+                <rect width="420" height="420" fill="#e8e0cd" />
+                <circle cx="50" cy="70" r="26" fill="#cfc4ac" /><circle cx="240" cy="40" r="20" fill="#d8ceb8" />
+                <circle cx="350" cy="210" r="28" fill="#c9bea4" /><circle cx="160" cy="260" r="22" fill="#d4c9b2" />
+                <circle cx="70" cy="370" r="18" fill="#cbbfa6" /><circle cx="300" cy="350" r="24" fill="#d6ccb6" />
             </pattern>
-            <pattern id="tex-water" width="1400" height="700" patternUnits="userSpaceOnUse">
-                <path d="M100 200q140-80 280 0t280 0M760 540q140-80 280 0t280 0" class="tex-stroke water-ripple" />
+            <radialGradient id="m-water" cx="45%" cy="40%" r="65%">
+                <stop offset="0" stop-color="#86cbe0" /><stop offset=".7" stop-color="#4396b8" /><stop offset="1" stop-color="#2c7495" />
+            </radialGradient>
+            <pattern id="m-roof" width="400" height="200" patternUnits="userSpaceOnUse">
+                <rect width="400" height="200" fill="#a9784f" />
+                <path d="M0 100H400" stroke="#8a5f3e" stroke-width="22" />
+                <path d="M100 0V100M300 100V200" stroke="#94683f" stroke-width="10" />
             </pattern>
-            <pattern id="tex-roof" width="360" height="360" patternUnits="userSpaceOnUse"
-                patternTransform="rotate(45)">
-                <path d="M0 0V360" class="tex-stroke roof-hatch" />
+            <pattern id="m-other" width="400" height="400" patternUnits="userSpaceOnUse">
+                <rect width="400" height="400" fill="#d6d6c8" />
             </pattern>
+            <filter id="lift" x="-10%" y="-10%" width="120%" height="130%">
+                <feDropShadow dx="0" dy="40" stdDeviation="40" flood-color="#1b2a12" flood-opacity="0.18" />
+            </filter>
         </defs>
     }
 }
 
-fn texture_for(class: &str) -> Option<&'static str> {
+fn material(class: &str) -> Option<&'static str> {
     Some(match class {
-        "lawn" => "url(#tex-lawn)",
-        "bed" => "url(#tex-bed)",
-        "paving" => "url(#tex-paving)",
-        "gravel" => "url(#tex-gravel)",
-        "water" => "url(#tex-water)",
-        "structure" => "url(#tex-roof)",
+        "lawn" => "url(#m-lawn)",
+        "bed" => "url(#m-mulch)",
+        "paving" => "url(#m-stone)",
+        "gravel" => "url(#m-gravel)",
+        "water" => "url(#m-water)",
+        "structure" => "url(#m-roof)",
+        "area" => "url(#m-other)",
         _ => return None,
     })
 }
 
+fn plant_paint(category: PlantCategory, symbol: PlantSymbol) -> &'static str {
+    match (category, symbol) {
+        (_, PlantSymbol::Conifer) => "url(#pl-conifer)",
+        (PlantCategory::Tree, _) => "url(#pl-tree)",
+        (PlantCategory::Shrub, _) => "url(#pl-shrub)",
+        (PlantCategory::Grass, _) => "url(#pl-grass)",
+        (PlantCategory::Herb, _) => "url(#pl-herb)",
+        (PlantCategory::Perennial, _) => "url(#pl-perennial)",
+        (PlantCategory::Annual, _) => "url(#pl-annual)",
+        (PlantCategory::Climber, _) => "url(#pl-climber)",
+        _ => "url(#pl-bed-plant)",
+    }
+}
+
+/// Flower colour for plants that show blooms, if any.
+fn bloom(category: PlantCategory) -> Option<(&'static str, &'static str)> {
+    match category {
+        PlantCategory::Perennial => Some(("#ede4fb", "#b79de6")),
+        PlantCategory::Annual => Some(("#fde3dc", "#f29a86")),
+        PlantCategory::Climber => Some(("#fbe1ee", "#e597bf")),
+        _ => None,
+    }
+}
+
 /// One drawn object. `mm_per_px` converts screen sizes to world sizes.
 pub fn item_view(it: RenderItem, mm_per_px: f64) -> AnyView {
-    let fill = css(it.fill);
-    let stroke = css(it.stroke);
     let class = format!("obj {}", it.class);
     let main = match it.shape.clone() {
-        RenderShape::Path { d, .. } => match it.stroke_width {
-            // paths, fences, walls, hedges: world-width strokes drawn twice for an edge
+        RenderShape::Path { d, closed } => match it.stroke_width {
+            // paths, fences, walls, hedges: a darker edge under a lighter body
             Some(w) => {
-                let inner = (w - 3.0 * mm_per_px).max(w * 0.4);
+                let inner = (w - 4.0 * mm_per_px).max(w * 0.5);
                 view! {
                     <g class=class>
-                        <path d=d.clone() fill="none" class="edge" stroke-width=w
-                            stroke-linecap="round" stroke-linejoin="round" />
-                        <path d=d fill="none" stroke=stroke stroke-width=inner class="body"
-                            stroke-linecap="round" stroke-linejoin="round" />
+                        <path d=d.clone() fill="none" class="edge" stroke-width=w stroke-linecap="round"
+                            stroke-linejoin="round" />
+                        <path d=d.clone() fill="none" class="body" stroke-width=inner stroke-linecap="round"
+                            stroke-linejoin="round" />
+                        <path d=d fill="none" class="detail" stroke-width=inner * 0.6 stroke-linecap="round"
+                            stroke-linejoin="round" />
                     </g>
                 }
                 .into_any()
             }
             None => {
-                let texture = texture_for(it.class);
+                let paint = material(it.class)
+                    .map(str::to_string)
+                    .unwrap_or_else(|| css(it.fill));
+                let mow =
+                    (it.class == "lawn").then(|| view! { <path d=d.clone() fill="url(#m-mow)" /> });
+                let lift = matches!(
+                    it.class,
+                    "lawn" | "bed" | "paving" | "gravel" | "structure" | "area"
+                );
                 view! {
                     <g class=class>
-                        <path d=d.clone() fill=fill stroke=stroke stroke-width=HAIRLINE_PX
-                            vector-effect="non-scaling-stroke" stroke-linejoin="round" />
-                        {texture.map(|t| view! { <path d=d fill=t stroke="none" /> })}
+                        <path d=d.clone() class="surface" fill=paint filter=lift.then_some("url(#lift)")
+                            fill-rule=if closed { "nonzero" } else { "evenodd" } />
+                        {mow}
+                        <path d=d fill="none" class="rim" stroke-width=HAIRLINE_PX vector-effect="non-scaling-stroke"
+                            stroke-linejoin="round" />
                     </g>
                 }
                 .into_any()
@@ -203,15 +282,38 @@ pub fn item_view(it: RenderItem, mm_per_px: f64) -> AnyView {
             category,
         } => {
             let outline = canopy_path(center, r, symbol);
+            // soft shadow cast down-right; bigger canopies cast longer shadows
+            let shadow = canopy_path(
+                Point::new(center.x + r * 0.16, center.y + r * 0.22),
+                r,
+                symbol,
+            );
+            let blur = format!("filter: blur({:.0}px)", (r * 0.12).max(2.0 * mm_per_px));
+            let shine = canopy_path(
+                Point::new(center.x - r * 0.18, center.y - r * 0.2),
+                r * 0.5,
+                symbol,
+            );
             let marks = canopy_marks(center, r, symbol, category);
-            let dot = (r * 0.06).max(1.5 * mm_per_px);
+            let blooms = bloom(category).map(|(dark, light)| {
+                (0..9)
+                    .map(|i| {
+                        let a = i as f64 * 2.4 + center.x * 0.01;
+                        let rr = r * (0.2 + 0.55 * ((i * 37 % 10) as f64) / 10.0);
+                        let p = polar(center, rr, a);
+                        let fill = if i % 3 == 0 { light } else { dark };
+                        view! { <circle cx=p.x cy=p.y r=r * 0.13 fill=fill /> }
+                    })
+                    .collect_view()
+            });
             view! {
                 <g class=format!("{class} {}", symbol_class(symbol))>
-                    <path d=outline fill=fill stroke=stroke.clone() stroke-width=HAIRLINE_PX
+                    <path d=shadow class="plant-shadow" style=blur />
+                    <path d=outline fill=plant_paint(category, symbol) class="canopy" stroke-width="1"
                         vector-effect="non-scaling-stroke" stroke-linejoin="round" />
-                    <path d=marks fill="none" stroke=stroke.clone() stroke-width="0.75"
-                        vector-effect="non-scaling-stroke" opacity="0.6" />
-                    <circle cx=center.x cy=center.y r=dot fill=stroke />
+                    <path d=shine class="shine" />
+                    <path d=marks class="marks" stroke-width="1" vector-effect="non-scaling-stroke" />
+                    {blooms}
                 </g>
             }
             .into_any()

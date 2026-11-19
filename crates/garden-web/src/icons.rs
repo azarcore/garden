@@ -24,6 +24,8 @@ pub enum Icon {
     Delete,
     Fit,
     Leaf,
+    Grid,
+    Magnet,
 }
 
 fn body(icon: Icon) -> AnyView {
@@ -65,15 +67,23 @@ fn body(icon: Icon) -> AnyView {
         }
         .into_any(),
         Icon::Structure => view! { <path d="M4 11l8-6 8 6v9H4zM10 20v-5h4v5" /> }.into_any(),
-        Icon::Plant | Icon::Leaf => view! {
+        Icon::Plant => view! {
             <path d="M12 3.5q2.5 1 3 3.5 3-.5 4 2-1 2.5-3 3 1.5 2.5-.5 4.5-2.5.5-3.5-1-1 2.5-3.5 1.5-1.5-2.5 0-4.5-3-.5-3.5-3 1.5-2.5 4-2 .5-2.5 3-4z" />
             <path d="M12 12v8.5" />
         }
         .into_any(),
+        Icon::Leaf => view! { <path d="M12 21V11M12 11c0-4 3-7 7-7 0 4-3 7-7 7zM12 13c0-3-2.5-5.5-6-5.5 0 3 2.5 5.5 6 5.5z" /> }.into_any(),
         Icon::Undo => view! { <path d="M9 14L4 9l5-5M4 9h11a5 5 0 010 10h-4" /> }.into_any(),
         Icon::Redo => view! { <path d="M15 14l5-5-5-5M20 9H9a5 5 0 000 10h4" /> }.into_any(),
         Icon::Duplicate => view! { <path d="M8 8h11v11H8zM5 16V5h11" /> }.into_any(),
         Icon::Delete => view! { <path d="M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13M10.5 11v6M13.5 11v6" /> }.into_any(),
+        Icon::Grid => view! {
+            <circle cx="6" cy="6" r="1.2" /><circle cx="12" cy="6" r="1.2" /><circle cx="18" cy="6" r="1.2" />
+            <circle cx="6" cy="12" r="1.2" /><circle cx="12" cy="12" r="1.2" /><circle cx="18" cy="12" r="1.2" />
+            <circle cx="6" cy="18" r="1.2" /><circle cx="12" cy="18" r="1.2" /><circle cx="18" cy="18" r="1.2" />
+        }
+        .into_any(),
+        Icon::Magnet => view! { <path d="M6 4v8a6 6 0 0012 0V4h-4v8a2 2 0 01-4 0V4zM6 8h4M14 8h4" /> }.into_any(),
         Icon::Fit => view! { <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5M9 9h6v6H9z" /> }.into_any(),
     }
 }

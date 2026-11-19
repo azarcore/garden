@@ -11,7 +11,7 @@ use wasm_bindgen::JsCast;
 use crate::canvas::Canvas;
 use crate::inspector::Inspector;
 use crate::plant_picker::PlantPicker;
-use crate::toolbar::{ToolRail, TopBar, tool_entries};
+use crate::toolbar::{ControlsCard, TitleCard, ToolDock, tool_entries};
 
 /// Milliseconds since the Unix epoch.
 pub fn now() -> i64 {
@@ -140,13 +140,14 @@ pub fn App() -> impl IntoView {
 
     view! {
         <div class="app">
-            <TopBar />
-            <ToolRail />
             <main class="canvas-cell">
                 <Canvas />
-                <PlantPicker />
             </main>
+            <TitleCard />
+            <ControlsCard />
+            <PlantPicker />
             <Inspector />
+            <ToolDock />
         </div>
     }
 }

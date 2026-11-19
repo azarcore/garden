@@ -1,7 +1,7 @@
 //! Tool rail (left) and top bar (document actions, units, snapping).
 
-use garden_core::model::{AreaType, LinearKind, PlantDef, StructureKind};
-use garden_core::units::UnitSystem;
+use garden_core::model::{AreaType, LinearKind, ObjectKind, PlantDef, StructureKind};
+use garden_core::units::{UnitSystem, format_length};
 use garden_editor::state::EditorState;
 use garden_editor::strings::EN;
 use garden_editor::tools::{DrawTarget, LineTarget, ToolKind};
@@ -134,7 +134,7 @@ pub fn same_tool(a: &ToolKind, b: &ToolKind) -> bool {
 }
 
 #[component]
-pub fn ToolRail() -> impl IntoView {
+pub fn ToolDock() -> impl IntoView {
     let state = expect_context::<RwSignal<EditorState>>();
     let LastPlant(last_plant) = expect_context::<LastPlant>();
     let current = Memo::new(move |_| state.with(|s| s.tool().clone()));
@@ -143,86 +143,99 @@ pub fn ToolRail() -> impl IntoView {
         tool_entries(last_plant.get())
             .into_iter()
             .map(|entry| {
-                let divider = (entry.group != last_group).then(|| view! { <hr class="rail-divider" /> });
+                let divider = (entry.group != last_group).then(|| view! { <span class="dock-sep"></span> });
                 last_group = entry.group;
                 let tool = entry.tool.clone();
+                let is_plant = matches!(tool, ToolKind::Plant(_));
                 let pressed = {
                     let tool = tool.clone();
                     move || same_tool(&current.get(), &tool).to_string()
                 };
                 view! {
                     {divider}
-                    <button class="rail-tool" aria-pressed=pressed title=format!("{} ({})", entry.label, entry.key)
+                    <button class="dock-tool" class:plant-tool=is_plant aria-pressed=pressed aria-label=entry.label
+                        data-tip=format!("{}  {}", entry.label, entry.key)
                         on:click=move |_| state.update(|s| s.set_tool(tool.clone()))>
                         {icon(entry.icon)}
-                        <span class="rail-label">{entry.label}</span>
                     </button>
                 }
             })
             .collect_view()
     };
-    view! { <nav class="rail" aria-label=EN.tools_label>{buttons}</nav> }
+    view! { <nav class="card dock" aria-label=EN.tools_label>{buttons}</nav> }
 }
 
+/// Top-left: what this design is.
 #[component]
-pub fn TopBar() -> impl IntoView {
+pub fn TitleCard() -> impl IntoView {
+    let state = expect_context::<RwSignal<EditorState>>();
+    let name = Memo::new(move |_| state.with(|s| s.doc().name.clone()));
+    let plot = Memo::new(move |_| {
+        state.with(|s| {
+            let units = s.doc().units;
+            s.doc().objects.iter().find_map(|o| match &o.kind {
+                ObjectKind::PlotBoundary { shape } => {
+                    let b = shape.bounding_box();
+                    Some(format!(
+                        "{} × {}",
+                        format_length(b.width(), units),
+                        format_length(b.height(), units)
+                    ))
+                }
+                _ => None,
+            })
+        })
+    });
+    view! {
+        <header class="card title-card">
+            <span class="logo">{icon(Icon::Leaf)}</span>
+            <div class="title-text">
+                <strong>{move || name.get()}</strong>
+                <span>{move || plot.get().unwrap_or_else(|| EN.no_plot_yet.to_string())}</span>
+            </div>
+        </header>
+    }
+}
+
+/// Top-right: history, editing actions, units and snapping.
+#[component]
+pub fn ControlsCard() -> impl IntoView {
     let state = expect_context::<RwSignal<EditorState>>();
     let can_undo = Memo::new(move |_| state.with(|s| s.can_undo()));
     let can_redo = Memo::new(move |_| state.with(|s| s.can_redo()));
     let has_selection = Memo::new(move |_| state.with(|s| !s.selection.is_empty()));
-    let name = Memo::new(move |_| state.with(|s| s.doc().name.clone()));
     let units = Memo::new(move |_| state.with(|s| s.doc().units));
     let snap_grid = Memo::new(move |_| state.with(|s| s.snap_grid));
     let snap_objects = Memo::new(move |_| state.with(|s| s.snap_objects));
     let set_units = move |u: UnitSystem| state.update(|s| s.set_units(u, now()));
 
     view! {
-        <header class="topbar">
-            <div class="brand">
-                <span class="brand-mark">{icon(Icon::Leaf)}</span>
-                <span class="brand-name">{EN.app_title}</span>
-                <span class="doc-name">{move || name.get()}</span>
+        <div class="card controls" role="toolbar" aria-label=EN.actions_label>
+            <button class="icon-btn" data-tip=EN.undo aria-label=EN.undo disabled=move || !can_undo.get()
+                on:click=move |_| state.update(|s| { s.undo(now()); })>{icon(Icon::Undo)}</button>
+            <button class="icon-btn" data-tip=EN.redo aria-label=EN.redo disabled=move || !can_redo.get()
+                on:click=move |_| state.update(|s| { s.redo(now()); })>{icon(Icon::Redo)}</button>
+            <span class="card-sep"></span>
+            <button class="icon-btn" data-tip=EN.duplicate aria-label=EN.duplicate disabled=move || !has_selection.get()
+                on:click=move |_| state.update(|s| s.duplicate_selection(now()))>{icon(Icon::Duplicate)}</button>
+            <button class="icon-btn" data-tip=EN.delete aria-label=EN.delete disabled=move || !has_selection.get()
+                on:click=move |_| state.update(|s| s.delete_selection(now()))>{icon(Icon::Delete)}</button>
+            <button class="icon-btn" data-tip=EN.fit aria-label=EN.fit
+                on:click=move |_| state.update(|s| s.fit_to_content())>{icon(Icon::Fit)}</button>
+            <span class="card-sep"></span>
+            <button class="icon-btn toggle" data-tip=EN.snap_grid aria-label=EN.snap_grid
+                aria-pressed=move || snap_grid.get().to_string()
+                on:click=move |_| state.update(|s| s.snap_grid = !s.snap_grid)>{icon(Icon::Grid)}</button>
+            <button class="icon-btn toggle" data-tip=EN.snap_objects aria-label=EN.snap_objects
+                aria-pressed=move || snap_objects.get().to_string()
+                on:click=move |_| state.update(|s| s.snap_objects = !s.snap_objects)>{icon(Icon::Magnet)}</button>
+            <span class="card-sep"></span>
+            <div class="segmented" role="group">
+                <button aria-pressed=move || (units.get() == UnitSystem::Metric).to_string()
+                    on:click=move |_| set_units(UnitSystem::Metric)>{EN.units_metric}</button>
+                <button aria-pressed=move || (units.get() == UnitSystem::Imperial).to_string()
+                    on:click=move |_| set_units(UnitSystem::Imperial)>{EN.units_imperial}</button>
             </div>
-            <div class="actions">
-                <button class="icon-btn" title=format!("{} (⌘Z)", EN.undo) aria-label=EN.undo
-                    disabled=move || !can_undo.get() on:click=move |_| state.update(|s| { s.undo(now()); })>
-                    {icon(Icon::Undo)}
-                </button>
-                <button class="icon-btn" title=format!("{} (⇧⌘Z)", EN.redo) aria-label=EN.redo
-                    disabled=move || !can_redo.get() on:click=move |_| state.update(|s| { s.redo(now()); })>
-                    {icon(Icon::Redo)}
-                </button>
-                <span class="bar-gap"></span>
-                <button class="icon-btn" title=format!("{} (⌘D)", EN.duplicate) aria-label=EN.duplicate
-                    disabled=move || !has_selection.get() on:click=move |_| state.update(|s| s.duplicate_selection(now()))>
-                    {icon(Icon::Duplicate)}
-                </button>
-                <button class="icon-btn" title=format!("{} (⌫)", EN.delete) aria-label=EN.delete
-                    disabled=move || !has_selection.get() on:click=move |_| state.update(|s| s.delete_selection(now()))>
-                    {icon(Icon::Delete)}
-                </button>
-                <button class="icon-btn" title=EN.fit aria-label=EN.fit on:click=move |_| state.update(|s| s.fit_to_content())>
-                    {icon(Icon::Fit)}
-                </button>
-            </div>
-            <div class="settings">
-                <div class="segmented" role="group">
-                    <button aria-pressed=move || (units.get() == UnitSystem::Metric).to_string()
-                        on:click=move |_| set_units(UnitSystem::Metric)>{EN.units_metric}</button>
-                    <button aria-pressed=move || (units.get() == UnitSystem::Imperial).to_string()
-                        on:click=move |_| set_units(UnitSystem::Imperial)>{EN.units_imperial}</button>
-                </div>
-                <label class="toggle">
-                    <input type="checkbox" prop:checked=move || snap_grid.get()
-                        on:change=move |e| state.update(|s| s.snap_grid = event_target_checked(&e)) />
-                    <span>{EN.snap_grid}</span>
-                </label>
-                <label class="toggle">
-                    <input type="checkbox" prop:checked=move || snap_objects.get()
-                        on:change=move |e| state.update(|s| s.snap_objects = event_target_checked(&e)) />
-                    <span>{EN.snap_objects}</span>
-                </label>
-            </div>
-        </header>
+        </div>
     }
 }

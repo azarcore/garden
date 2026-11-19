@@ -2,12 +2,14 @@
 
 use garden_core::model::{AreaType, Object, ObjectKind};
 use garden_core::units::UnitSystem;
-use garden_editor::inspector::{Field, apply_field, field_value, inspector_fields};
+use garden_editor::inspector::{Field, apply_field, field_value, inspector_fields, measures};
+use garden_editor::render::style_class;
 use garden_editor::state::EditorState;
-use garden_editor::strings::{EN, kind_label};
+use garden_editor::strings::{EN, category_label, kind_label};
 use leptos::prelude::*;
 
 use crate::app::now;
+use crate::plan_art::plant_swatch;
 
 fn field_label(f: Field) -> &'static str {
     match f {
@@ -89,13 +91,55 @@ fn FieldInput(object: Object, field: Field, units: UnitSystem) -> impl IntoView 
     }
 }
 
+/// Big illustration at the top of the card: the plant symbol, or a sample of the material.
+fn hero(object: &Object) -> AnyView {
+    match &object.kind {
+        ObjectKind::Plant {
+            symbol, category, ..
+        } => view! { <div class="hero hero-plant">{plant_swatch(*symbol, *category)}</div> }
+            .into_any(),
+        kind => {
+            let class = format!("hero hero-sample sample-{}", style_class(kind));
+            view! { <div class=class></div> }.into_any()
+        }
+    }
+}
+
 #[component]
-fn ObjectPanel(object: Object, units: UnitSystem) -> impl IntoView {
+fn ObjectPanel(
+    object: Object,
+    units: UnitSystem,
+    measures: Vec<(&'static str, String)>,
+) -> impl IntoView {
     let state = expect_context::<RwSignal<EditorState>>();
-    let title = kind_label(&EN, &object.kind);
-    let fields = inspector_fields(&object.kind)
+    let subtitle = match &object.kind {
+        ObjectKind::Plant { category, .. } => format!(
+            "{} · {}",
+            kind_label(&EN, &object.kind),
+            category_label(&EN, *category)
+        ),
+        kind => kind_label(&EN, kind).to_string(),
+    };
+    let fields = inspector_fields(&object.kind);
+    let name_field = fields
+        .iter()
+        .find(|f| **f == Field::Name)
+        .map(|f| view! { <FieldInput object=object.clone() field=*f units=units /> });
+    let tiles = fields
         .into_iter()
+        .filter(|f| *f != Field::Name)
         .map(|f| view! { <FieldInput object=object.clone() field=f units=units /> })
+        .collect_view();
+    let stats = measures
+        .into_iter()
+        .map(|(label, value)| {
+            view! {
+                <div class="stat">
+                    <span class="stat-label">{label}</span>
+                    <span class="stat-value">{value}</span>
+                </div>
+            }
+        })
         .collect_view();
     let area_select = match object.kind {
         ObjectKind::Area { area_type, .. } => {
@@ -103,12 +147,15 @@ fn ObjectPanel(object: Object, units: UnitSystem) -> impl IntoView {
             let options = AREA_TYPES
                 .iter()
                 .map(|t| {
-                    let label = kind_label(&EN, &ObjectKind::Area { area_type: *t, shape: garden_core::geometry::Shape::polyline(&[], true) });
+                    let label = kind_label(
+                        &EN,
+                        &ObjectKind::Area { area_type: *t, shape: garden_core::geometry::Shape::polyline(&[], true) },
+                    );
                     view! { <option value=area_type_key(*t) selected=*t == area_type>{label}</option> }
                 })
                 .collect_view();
             Some(view! {
-                <div class="field">
+                <div class="field wide">
                     <label for="field-type">{EN.field_type}</label>
                     <select id="field-type" on:change=move |e| {
                         let key = event_target_value(&e);
@@ -128,10 +175,11 @@ fn ObjectPanel(object: Object, units: UnitSystem) -> impl IntoView {
     let locked = object.locked;
     let obj = object.clone();
     view! {
-        <h2>{title}</h2>
-        {fields}
-        {area_select}
-        <label class="field check">
+        {hero(&object)}
+        <div class="name-row">{name_field}</div>
+        <p class="subtitle">{subtitle}</p>
+        <div class="tiles">{tiles}{stats}{area_select}</div>
+        <label class="lock">
             <input type="checkbox" checked=locked on:change=move |e| {
                 let mut after = obj.clone();
                 after.locked = event_target_checked(&e);
@@ -149,18 +197,22 @@ pub fn Inspector() -> impl IntoView {
     let count = Memo::new(move |_| state.with(|s| s.selection.len()));
     let single = Memo::new(move |_| {
         state.with(|s| match s.selection.as_slice() {
-            [id] => s.doc().object(*id).cloned(),
+            [id] => s.doc().object(*id).cloned().map(|o| {
+                let m = measures(s.doc(), &o, s.doc().units);
+                (o, m)
+            }),
             _ => None,
         })
     });
     let units = Memo::new(move |_| state.with(|s| s.doc().units));
-    view! {
-        <aside class="inspector">
-            {move || match (count.get(), single.get()) {
-                (0, _) => view! { <p class="muted">{EN.nothing_selected}</p> }.into_any(),
-                (1, Some(object)) => view! { <ObjectPanel object=object units=units.get() /> }.into_any(),
-                (n, _) => view! { <p>{format!("{n} {}", EN.n_selected)}</p> }.into_any(),
-            }}
-        </aside>
+    move || {
+        match (count.get(), single.get()) {
+        (0, _) => None,
+        (1, Some((object, m))) => Some(
+            view! { <aside class="card inspector"><ObjectPanel object=object units=units.get() measures=m /></aside> }
+                .into_any(),
+        ),
+        (n, _) => Some(view! { <aside class="card inspector small">{format!("{n} {}", EN.n_selected)}</aside> }.into_any()),
+    }
     }
 }

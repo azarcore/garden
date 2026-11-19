@@ -50,6 +50,21 @@ pub fn object_bounds(kind: &ObjectKind) -> Rect {
     }
 }
 
+/// Corner points of an object (what snapping and anchoring use).
+pub fn object_vertices(kind: &ObjectKind) -> Vec<Point> {
+    match kind {
+        ObjectKind::PlotBoundary { shape }
+        | ObjectKind::Area { shape, .. }
+        | ObjectKind::Path { shape, .. }
+        | ObjectKind::Linear { shape, .. }
+        | ObjectKind::Structure {
+            footprint: shape, ..
+        } => shape.vertices(),
+        ObjectKind::Plant { position, .. } | ObjectKind::Label { position, .. } => vec![*position],
+        ObjectKind::Dimension { from, to, .. } => vec![*from, *to],
+    }
+}
+
 /// Name given to newly created objects.
 pub fn default_name(kind: &ObjectKind) -> &'static str {
     kind_label(&EN, kind)

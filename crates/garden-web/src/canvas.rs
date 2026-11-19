@@ -14,6 +14,21 @@ use wasm_bindgen::closure::Closure;
 use crate::app::{Cursor, SpaceHeld, now};
 use crate::plan_art::{defs, item_view, preview_view};
 
+/// Blur a focused inspector field so its edit is committed before a press on
+/// the plan changes the selection (which replaces the inspector panel).
+fn commit_focused_field() {
+    let Some(el) = web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.active_element())
+        .and_then(|el| el.dyn_into::<web_sys::HtmlElement>().ok())
+    else {
+        return;
+    };
+    if matches!(el.tag_name().as_str(), "INPUT" | "SELECT" | "TEXTAREA") {
+        let _ = el.blur();
+    }
+}
+
 fn modifiers(e: &ev::MouseEvent) -> Modifiers {
     Modifiers {
         shift: e.shift_key(),
@@ -160,6 +175,7 @@ pub fn Canvas() -> impl IntoView {
         state.update(|s| s.viewport.zoom_at(at, factor));
     };
     let on_down = move |e: ev::PointerEvent| {
+        commit_focused_field();
         let at = screen_point(e.client_x(), e.client_y());
         if e.button() == 1 || (e.button() == 0 && space.get_untracked()) {
             e.prevent_default();
@@ -210,6 +226,18 @@ pub fn Canvas() -> impl IntoView {
             s.handle(Input::Up(w, m), now());
         });
     };
+    // The browser took the pointer away (gesture, alert, window switch):
+    // stop panning and abandon whatever was being drawn.
+    let on_cancel = move |_e: ev::PointerEvent| {
+        pan_from.set(None);
+        state.update(|s| {
+            s.handle(
+                Input::Key(garden_editor::tools::Key::Escape, Modifiers::default()),
+                now(),
+            )
+        });
+    };
+    let on_lost_capture = move |_e: ev::PointerEvent| pan_from.set(None);
     let on_dblclick = move |e: ev::MouseEvent| {
         let at = screen_point(e.client_x(), e.client_y());
         let m = modifiers(&e);
@@ -270,7 +298,8 @@ pub fn Canvas() -> impl IntoView {
 
     view! {
         <svg node_ref=svg_ref class=class on:wheel=on_wheel on:pointerdown=on_down
-            on:pointermove=on_move on:pointerup=on_up on:dblclick=on_dblclick on:contextmenu=|e: ev::MouseEvent| e.prevent_default()>
+            on:pointermove=on_move on:pointerup=on_up on:pointercancel=on_cancel on:lostpointercapture=on_lost_capture
+            on:dblclick=on_dblclick on:contextmenu=|e: ev::MouseEvent| e.prevent_default()>
             {defs()}
             <g transform=transform>
                 {grid}

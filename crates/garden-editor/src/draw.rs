@@ -101,23 +101,30 @@ fn drag_shape(s: &mut EditorState, input: Input, now_ms: i64, target: &DrawTarge
             let start = snapped(s, p, m);
             s.gesture = Gesture::DragShape {
                 start,
+                raw_start: p,
                 current: start,
                 shift: m.shift,
             };
         }
         Input::Move(p, m) | Input::Up(p, m) => {
             let current = snapped(s, p, m);
-            let Gesture::DragShape { start, .. } = s.gesture else {
+            let Gesture::DragShape {
+                start, raw_start, ..
+            } = s.gesture
+            else {
                 return;
             };
             s.gesture = Gesture::DragShape {
                 start,
+                raw_start,
                 current,
                 shift: m.shift,
             };
             let b = drag_box(start, current, m.shift);
             let min = s.viewport.px_to_mm(1.0);
-            let big_enough = b.width() >= min && b.height() >= min;
+            // A press that barely moved is a click, even if snapping moved the ends apart.
+            let dragged = raw_start.distance(p) > s.drag_threshold_mm();
+            let big_enough = dragged && b.width() >= min && b.height() >= min;
             if let Input::Up(..) = input {
                 if big_enough {
                     let shape = box_shape(b, ellipse, m.shift);
@@ -503,5 +510,31 @@ mod tests {
             matches!(&s.doc().objects[0].kind, ObjectKind::Plant { position, spread, catalog_id, .. }
             if *position == Point::new(1200., 1300.) && *spread == 600. && catalog_id.as_deref() == Some("lavender"))
         );
+    }
+
+    #[test]
+    fn undo_while_drawing_removes_last_vertex_only() {
+        let mut s = state_with(vec![plant_at(9000., 9000., 600.)]);
+        s.set_tool(ToolKind::Polygon(DrawTarget::Area(AreaType::Bed)));
+        for p in [(0., 0.), (3000., 0.), (3000., 3000.), (6000., 6000.)] {
+            click(&mut s, Point::new(p.0, p.1), NO);
+        }
+        assert!(s.undo(1));
+        assert_eq!(s.doc().objects.len(), 1); // the plant is still there
+        s.handle(Input::Key(Key::Enter, NO), 1);
+        let ObjectKind::Area { shape, .. } = &s.doc().objects[1].kind else {
+            panic!()
+        };
+        assert_eq!(shape.vertices().len(), 3);
+    }
+
+    #[test]
+    fn jittery_click_with_rect_tool_creates_nothing() {
+        let mut s = state_with(vec![]);
+        s.set_tool(ToolKind::Rect(DrawTarget::Area(AreaType::Bed)));
+        // ~1.4 px of travel that crosses a grid midpoint
+        s.handle(Input::Down(Point::new(1040., 1040.), NO), 1);
+        s.handle(Input::Up(Point::new(1060., 1060.), NO), 1);
+        assert!(s.doc().objects.is_empty());
     }
 }

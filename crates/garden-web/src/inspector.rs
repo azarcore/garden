@@ -57,8 +57,10 @@ fn FieldInput(object: Object, field: Field, units: UnitSystem) -> impl IntoView 
     let error = RwSignal::new(None::<&'static str>);
     let object = StoredValue::new(object);
     let try_commit = move || {
-        let input = text.get_untracked();
-        let before = object.get_value();
+        // The panel may already be gone (selection changed); then there is nothing to do.
+        let (Some(input), Some(before)) = (text.try_get_untracked(), object.try_get_value()) else {
+            return;
+        };
         match apply_field(&before, field, &input, units) {
             Ok(after) => {
                 error.set(None);

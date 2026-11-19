@@ -130,9 +130,12 @@ pub fn App() -> impl IntoView {
             space.set(false);
         }
     });
+    // Space released while the window was in the background never sends keyup.
+    let blur = window_event_listener(ev::blur, move |_| space.set(false));
     on_cleanup(move || {
         down.remove();
         up.remove();
+        blur.remove();
     });
 
     view! {

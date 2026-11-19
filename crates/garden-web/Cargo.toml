@@ -7,7 +7,7 @@ edition.workspace = true
 garden-core = { path = "../garden-core" }
 garden-editor = { path = "../garden-editor" }
 leptos = { version = "0.8.23", features = ["csr"] }
-web-sys = { version = "0.3", features = ["DomRect", "Element", "HtmlElement", "MouseEvent", "PointerEvent", "WheelEvent", "KeyboardEvent", "EventTarget", "Window", "HtmlInputElement", "ResizeObserver"] }
+web-sys = { version = "0.3", features = ["DomRect", "Element", "HtmlElement", "MouseEvent", "PointerEvent", "WheelEvent", "KeyboardEvent", "EventTarget", "Window", "HtmlInputElement", "ResizeObserver", "Document"] }
 js-sys = "0.3"
 wasm-bindgen = "0.2"
 console_error_panic_hook = "0.1.7"

@@ -57,10 +57,21 @@ fn hits(object: &Object, p: Point, tol: f64) -> bool {
 /// Locked objects and objects on hidden or locked layers are never hit;
 /// the plot boundary is hit only near its outline.
 pub fn hit_test(doc: &Document, p: Point, tolerance: f64) -> Option<ObjectId> {
+    hit(doc, p, tolerance, false)
+}
+
+/// Like [`hit_test`], but locked objects can be hit too, so they can be
+/// selected (e.g. to unlock them). Hidden and locked layers are still skipped.
+pub fn hit_test_selectable(doc: &Document, p: Point, tolerance: f64) -> Option<ObjectId> {
+    hit(doc, p, tolerance, true)
+}
+
+fn hit(doc: &Document, p: Point, tolerance: f64, include_locked: bool) -> Option<ObjectId> {
     doc.objects
         .iter()
         .rev()
-        .filter(|o| !o.locked && doc.layer(o.layer).is_some_and(|l| l.visible && !l.locked))
+        .filter(|o| include_locked || !o.locked)
+        .filter(|o| doc.layer(o.layer).is_some_and(|l| l.visible && !l.locked))
         .find(|o| hits(o, p, tolerance))
         .map(|o| o.id)
 }
@@ -121,5 +132,25 @@ mod tests {
         }]);
         assert!(hit_test(&d, Point::new(2500., 480.), 10.).is_some());
         assert!(hit_test(&d, Point::new(2500., 600.), 10.).is_none());
+    }
+
+    #[test]
+    fn selectable_hit_includes_locked_objects() {
+        let mut d = doc_with(vec![ObjectKind::Plant {
+            position: Point::new(1000., 1000.),
+            spread: 600.,
+            height: 500.,
+            symbol: PlantSymbol::Round,
+            category: PlantCategory::Shrub,
+            catalog_id: None,
+        }]);
+        let mut p = d.objects[0].clone();
+        p.locked = true;
+        d.apply(Command::Replace { object: p }, 1).unwrap();
+        assert_eq!(hit_test(&d, Point::new(1000., 1000.), 10.), None);
+        assert_eq!(
+            hit_test_selectable(&d, Point::new(1000., 1000.), 10.),
+            Some(d.objects[0].id)
+        );
     }
 }

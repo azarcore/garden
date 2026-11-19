@@ -4,11 +4,11 @@ use garden_core::command::{Command, CommandError};
 use garden_core::editor::Editor;
 use garden_core::geometry::Point;
 use garden_core::model::{Document, LayerId, Object, ObjectId};
-use garden_core::query::{SnapKind, SnapResult, SnapSettings, hit_test, snap};
+use garden_core::query::{SnapKind, SnapResult, SnapSettings, hit_test_selectable, snap};
 use garden_core::units::UnitSystem;
 use kurbo::{Rect, Vec2};
 
-use crate::objects::{object_bounds, translate_kind};
+use crate::objects::{object_bounds, object_vertices, translate_kind};
 use crate::render::outline;
 use crate::tools::{Input, Key, Modifiers, Preview, ToolKind};
 use crate::viewport::Viewport;
@@ -31,8 +31,10 @@ pub(crate) enum Gesture {
         start: Point,
         additive: bool,
     },
+    /// `anchor` is the selected corner nearest the press; it is what snaps.
     Moving {
         start: Point,
+        anchor: Point,
         delta: Vec2,
     },
     Marquee {
@@ -43,6 +45,8 @@ pub(crate) enum Gesture {
     /// Rectangle / ellipse tools.
     DragShape {
         start: Point,
+        /// Unsnapped press position, to tell a click from a drag.
+        raw_start: Point,
         current: Point,
         shift: bool,
     },
@@ -117,7 +121,15 @@ impl EditorState {
         }
     }
 
+    /// Undo. While drawing a polygon or line this removes the last placed point instead.
     pub fn undo(&mut self, now_ms: i64) -> bool {
+        if let Gesture::Poly { points, .. } = &mut self.gesture
+            && points.pop().is_some()
+        {
+            self.preview.shapes.clear();
+            self.preview.dims.clear();
+            return true;
+        }
         let done = self.editor.undo(now_ms);
         self.after_history_change();
         done
@@ -261,7 +273,7 @@ impl EditorState {
         match input {
             Input::Down(p, m) => {
                 let tol = self.viewport.px_to_mm(self.hit_radius_px);
-                match hit_test(self.doc(), p, tol) {
+                match hit_test_selectable(self.doc(), p, tol) {
                     Some(id) if m.shift => {
                         if let Some(i) = self.selection.iter().position(|s| *s == id) {
                             self.selection.remove(i);
@@ -356,8 +368,15 @@ impl EditorState {
         let threshold = self.drag_threshold_mm();
         self.gesture = match std::mem::replace(&mut self.gesture, Gesture::Idle) {
             Gesture::PressedOnObject { start } if start.distance(p) > threshold => {
+                let anchor = self
+                    .unlocked_selection()
+                    .iter()
+                    .flat_map(|o| object_vertices(&o.kind))
+                    .min_by(|a, b| a.distance(start).total_cmp(&b.distance(start)))
+                    .unwrap_or(start);
                 Gesture::Moving {
                     start,
+                    anchor,
                     delta: Vec2::ZERO,
                 }
             }
@@ -378,9 +397,10 @@ impl EditorState {
             other => other,
         };
         match self.gesture.clone() {
-            Gesture::Moving { start, .. } => {
-                let snapped = self.snap_point(p, m, &self.selection);
-                let delta = snapped.point - start;
+            Gesture::Moving { start, anchor, .. } => {
+                // Snap where the grabbed corner would land, not the cursor.
+                let snapped = self.snap_point(anchor + (p - start), m, &self.selection);
+                let delta = snapped.point - anchor;
                 self.preview = Preview {
                     shapes: self
                         .unlocked_selection()
@@ -390,7 +410,11 @@ impl EditorState {
                     snap: Some(snapped).filter(|s| s.kind != SnapKind::None),
                     ..Preview::default()
                 };
-                self.gesture = Gesture::Moving { start, delta };
+                self.gesture = Gesture::Moving {
+                    start,
+                    anchor,
+                    delta,
+                };
             }
             Gesture::Marquee { start, current, .. } => {
                 self.preview = Preview {
@@ -526,5 +550,29 @@ mod tests {
         s.selection = vec![s.doc().objects[0].id];
         s.undo(2);
         assert!(s.selection.is_empty());
+    }
+
+    #[test]
+    fn locked_object_can_be_selected_but_not_moved() {
+        let mut s = state_with(vec![plant_at(1000., 1000., 600.)]);
+        let mut o = s.doc().objects[0].clone();
+        o.locked = true;
+        s.replace_object(o, 1).unwrap();
+        click(&mut s, Point::new(1000., 1000.), NO);
+        assert_eq!(s.selection, vec![s.doc().objects[0].id]); // so it can be unlocked
+        s.handle(Input::Down(Point::new(1000., 1000.), NO), 2);
+        s.handle(Input::Move(Point::new(3000., 1000.), NO), 2);
+        s.handle(Input::Up(Point::new(3000., 1000.), NO), 2);
+        assert_eq!(position(&s, 0), Point::new(1000., 1000.));
+    }
+
+    #[test]
+    fn move_snaps_the_object_not_the_cursor() {
+        let mut s = state_with(vec![plant_at(1000., 1000., 600.)]);
+        // grab the plant off-centre, drag ~half a metre right
+        s.handle(Input::Down(Point::new(1030., 1010.), NO), 1);
+        s.handle(Input::Move(Point::new(1530., 1010.), NO), 1);
+        s.handle(Input::Up(Point::new(1530., 1010.), NO), 1);
+        assert_eq!(position(&s, 0), Point::new(1500., 1000.));
     }
 }

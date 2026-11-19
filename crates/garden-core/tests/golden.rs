@@ -23,6 +23,31 @@ fn v1_sample_always_loads() {
     assert_eq!(distinct.len(), 8, "every ObjectKind appears");
 }
 
+/// A file with an empty `layers` list (hand-written or from a buggy build)
+/// gets one usable layer, and objects on missing layers move onto it.
+#[test]
+fn file_without_layers_gets_one() {
+    let doc = io::from_json(include_str!("fixtures/no_layers.garden.json"))
+        .expect("file without layers must load");
+    assert_eq!(doc.layers.len(), 1);
+    let layer = &doc.layers[0];
+    assert!(layer.visible && !layer.locked);
+    assert_eq!(doc.objects.len(), 1);
+    assert_eq!(doc.objects[0].layer, layer.id);
+}
+
+/// Objects pointing at a layer that isn't in the file move to the first layer.
+#[test]
+fn objects_on_missing_layers_move_to_the_first() {
+    let mut v: serde_json::Value =
+        serde_json::from_str(include_str!("fixtures/v1_sample.garden.json")).unwrap();
+    v["objects"][0]["layer"] = serde_json::json!(LayerId::new());
+    let doc = io::from_json(&v.to_string()).unwrap();
+    assert_eq!(doc.layers.len(), 2);
+    assert_eq!(doc.objects[0].layer, doc.layers[0].id);
+    assert_eq!(doc.objects[6].layer, doc.layers[1].id); // untouched
+}
+
 /// Writes the fixture. Run once: `cargo test -p garden-core --test golden -- --ignored`.
 #[test]
 #[ignore]

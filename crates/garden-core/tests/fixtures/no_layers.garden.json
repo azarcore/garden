@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "id": "5d0c2f6e-3b9a-4c1e-9f4a-1d2e3f4a5b6c",
+  "name": "No layers",
+  "created": 1763500000000,
+  "modified": 1763500000000,
+  "units": "metric",
+  "layers": [],
+  "objects": [
+    {
+      "id": "0f1e2d3c-4b5a-4968-8776-655443322110",
+      "name": "Lavender",
+      "kind": {
+        "type": "plant",
+        "position": { "x": 2000.0, "y": 1500.0 },
+        "spread": 600.0,
+        "height": 500.0,
+        "symbol": "spiky",
+        "category": "shrub",
+        "catalog_id": "lavender"
+      },
+      "style": { "fill": null, "stroke": null, "material": null },
+      "layer": "eda9cdac-32c9-4d9f-a4f7-8a199ce7709a",
+      "locked": false,
+      "revision": 1,
+      "modified": 1763500000000
+    }
+  ],
+  "tombstones": [],
+  "background": null,
+  "custom_plants": []
+}

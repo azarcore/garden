@@ -18,6 +18,9 @@ impl ObjectId {
 pub struct LayerId(pub Uuid);
 
 impl LayerId {
+    /// Stands in for "no layer"; never the id of a real layer.
+    pub const NIL: LayerId = LayerId(Uuid::nil());
+
     #[allow(clippy::new_without_default)]
     pub fn new() -> Self {
         LayerId(Uuid::new_v4())

@@ -13,6 +13,18 @@ pub struct Layer {
     pub locked: bool,
 }
 
+impl Layer {
+    /// The layer a new design starts with.
+    fn default_layer() -> Layer {
+        Layer {
+            id: LayerId::new(),
+            name: "Garden".into(),
+            visible: true,
+            locked: false,
+        }
+    }
+}
+
 /// Marker left behind when an object is deleted, so future sync can see the delete.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Tombstone {
@@ -47,17 +59,32 @@ impl Document {
             created: now_ms,
             modified: now_ms,
             units: UnitSystem::default(),
-            layers: vec![Layer {
-                id: LayerId::new(),
-                name: "Garden".into(),
-                visible: true,
-                locked: false,
-            }],
+            layers: vec![Layer::default_layer()],
             objects: Vec::new(),
             tombstones: Vec::new(),
             background: None,
             custom_plants: Vec::new(),
         }
+    }
+
+    /// Fix a document that came from outside (a file, storage): give it a
+    /// layer if it has none, and move objects on missing layers to the first
+    /// layer. Returns true when anything changed.
+    pub fn repair(&mut self) -> bool {
+        let mut changed = false;
+        if self.layers.is_empty() {
+            self.layers.push(Layer::default_layer());
+            changed = true;
+        }
+        let first = self.layers[0].id;
+        let known: std::collections::HashSet<LayerId> = self.layers.iter().map(|l| l.id).collect();
+        for object in &mut self.objects {
+            if !known.contains(&object.layer) {
+                object.layer = first;
+                changed = true;
+            }
+        }
+        changed
     }
 
     /// True when the whole document can be saved (no NaN or infinite numbers).

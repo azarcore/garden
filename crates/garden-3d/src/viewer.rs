@@ -23,6 +23,8 @@ use wasm_bindgen::prelude::*;
 static PENDING: Mutex<Option<Scene>> = Mutex::new(None);
 /// Wakes the (otherwise idle) viewer when a new snapshot arrives.
 static WAKER: Mutex<Option<EventLoopProxy<WinitUserEvent>>> = Mutex::new(None);
+/// Set if the viewer panicked (e.g. the GPU lacks what Bevy needs).
+static FAILED: AtomicBool = AtomicBool::new(false);
 /// Whether the Bevy app is already running.
 static STARTED: AtomicBool = AtomicBool::new(false);
 
@@ -72,6 +74,12 @@ pub fn open(canvas_selector: &str, design_json: &str) -> Result<(), JsValue> {
     Ok(())
 }
 
+/// True once the viewer has crashed; the page then shows a message.
+#[wasm_bindgen]
+pub fn has_failed() -> bool {
+    FAILED.load(Ordering::SeqCst)
+}
+
 /// Show another snapshot in the running viewer (re-opening 3D after edits).
 #[wasm_bindgen]
 pub fn show(design_json: &str) -> Result<(), JsValue> {
@@ -80,42 +88,48 @@ pub fn show(design_json: &str) -> Result<(), JsValue> {
 }
 
 fn start(canvas_selector: &str) {
-    App::new()
-        .add_plugins(
-            DefaultPlugins
-                .set(WindowPlugin {
-                    primary_window: Some(Window {
-                        canvas: Some(canvas_selector.to_string()),
-                        fit_canvas_to_parent: true,
-                        prevent_default_event_handling: true,
-                        ..default()
-                    }),
-                    ..default()
-                })
-                .set(bevy::log::LogPlugin {
-                    level: bevy::log::Level::WARN,
+    let mut app = App::new();
+    app.add_plugins(
+        DefaultPlugins
+            .set(WindowPlugin {
+                primary_window: Some(Window {
+                    canvas: Some(canvas_selector.to_string()),
+                    fit_canvas_to_parent: true,
+                    prevent_default_event_handling: true,
                     ..default()
                 }),
-        )
-        // Redraw on input only (and now and then, to pick up a new snapshot),
-        // so a closed 3D view costs next to nothing.
-        .insert_resource(WinitSettings {
-            focused_mode: UpdateMode::reactive(Duration::from_millis(500)),
-            unfocused_mode: UpdateMode::reactive_low_power(Duration::from_secs(1)),
-        })
-        .insert_resource(ClearColor(SKY))
-        .insert_resource(GlobalAmbientLight {
-            color: Color::WHITE,
-            brightness: 700.0,
-            ..default()
-        })
-        .add_systems(Startup, (setup, remember_waker))
-        .init_resource::<Settling>()
-        .add_systems(
-            Update,
-            (apply_pending, orbit_controls, keep_drawing).chain(),
-        )
-        .run();
+                ..default()
+            })
+            .set(bevy::log::LogPlugin {
+                level: bevy::log::Level::WARN,
+                ..default()
+            }),
+    )
+    // Redraw on input only (and now and then, to pick up a new snapshot),
+    // so a closed 3D view costs next to nothing.
+    .insert_resource(WinitSettings {
+        focused_mode: UpdateMode::reactive(Duration::from_millis(500)),
+        unfocused_mode: UpdateMode::reactive_low_power(Duration::from_secs(1)),
+    })
+    .insert_resource(ClearColor(SKY))
+    .insert_resource(GlobalAmbientLight {
+        color: Color::WHITE,
+        brightness: 700.0,
+        ..default()
+    })
+    .add_systems(Startup, (setup, remember_waker))
+    .init_resource::<Settling>()
+    .add_systems(
+        Update,
+        (apply_pending, orbit_controls, keep_drawing).chain(),
+    );
+    // after the plugins: Bevy installs its own panic hook while adding them
+    let previous = std::panic::take_hook();
+    std::panic::set_hook(Box::new(move |info| {
+        FAILED.store(true, Ordering::SeqCst);
+        previous(info);
+    }));
+    app.run();
 }
 
 /// Redraws still owed after the last new scene.

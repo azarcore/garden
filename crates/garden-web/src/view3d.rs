@@ -69,6 +69,11 @@ fn snapshot(state: RwSignal<EditorState>) -> Option<String> {
 /// Show the 3D view with the current design, loading the bundle the first time.
 pub fn open_3d(view: View3d, state: RwSignal<EditorState>) {
     view.open.set(true);
+    focus_canvas();
+    if view.module.with_value(Option::is_some) && viewer_failed(view) {
+        view.status.set(Status::Failed(EN.err_3d_crashed));
+        return;
+    }
     match view.status.get_untracked() {
         Status::Loading => {} // the design is read when loading finishes
         Status::Ready => {
@@ -87,12 +92,58 @@ pub fn open_3d(view: View3d, state: RwSignal<EditorState>) {
             view.status.set(Status::Loading);
             spawn_local(async move {
                 let result = load_and_start(view, state).await;
-                view.status.set(match result {
-                    Ok(()) => Status::Ready,
-                    Err(_) => Status::Failed(EN.err_3d_failed),
-                });
+                match result {
+                    Ok(()) => {
+                        view.status.set(Status::Ready);
+                        watch_for_crash(view).await;
+                    }
+                    Err(_) => view.status.set(Status::Failed(EN.err_3d_failed)),
+                }
             });
         }
+    }
+}
+
+/// Whether the loaded viewer reports that it crashed.
+fn viewer_failed(view: View3d) -> bool {
+    view.module
+        .get_value()
+        .and_then(|m| call(&m, "has_failed", &[]).ok())
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+}
+
+/// Wait `ms` milliseconds.
+async fn sleep(ms: i32) {
+    let p = js_sys::Promise::new(&mut |resolve, _| {
+        if let Some(w) = web_sys::window() {
+            let _ = w.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, ms);
+        }
+    });
+    let _ = JsFuture::from(p).await;
+}
+
+/// The viewer can fail after it starts (e.g. the GPU can't do what it
+/// needs); check now and then so people get a message instead of a blank sky.
+async fn watch_for_crash(view: View3d) {
+    loop {
+        sleep(1500).await;
+        if viewer_failed(view) {
+            view.status.set(Status::Failed(EN.err_3d_crashed));
+            return;
+        }
+    }
+}
+
+/// Keyboard focus goes to the 3D view, so Space/Enter can't press the
+/// button that opened it.
+fn focus_canvas() {
+    if let Some(el) = web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.get_element_by_id(CANVAS_ID))
+        .and_then(|e| e.dyn_into::<web_sys::HtmlElement>().ok())
+    {
+        let _ = el.focus();
     }
 }
 

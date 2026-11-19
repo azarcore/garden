@@ -191,6 +191,7 @@ pub struct Strings {
     pub help_3d: &'static str,
     pub err_no_webgl: &'static str,
     pub err_3d_failed: &'static str,
+    pub err_3d_crashed: &'static str,
 }
 
 pub static EN: Strings = Strings {
@@ -381,6 +382,7 @@ pub static EN: Strings = Strings {
     help_3d: "Drag to turn · right-drag to move · scroll to zoom",
     err_no_webgl: "3D needs a browser with WebGL2",
     err_3d_failed: "Couldn't load the 3D view. Check your connection and try again.",
+    err_3d_crashed: "The 3D view stopped working. Reload the page to try again.",
 };
 
 /// Heading for a group of plants.

@@ -1665,3 +1665,8 @@ button.title-card {
   white-space: nowrap;
   pointer-events: none;
 }
+
+/* the editor's cards keep their own positioning */
+.editor {
+  display: contents;
+}

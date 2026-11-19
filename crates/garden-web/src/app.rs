@@ -168,6 +168,8 @@ pub fn App() -> impl IntoView {
 
     view! {
         <div class="app">
+            // While 3D covers it, the editor can't be reached by Tab or typing.
+            <div class="editor" inert=move || view3d.open.get()>
             <main class="canvas-cell">
                 <Canvas />
             </main>
@@ -181,6 +183,7 @@ pub fn App() -> impl IntoView {
             <Inspector />
             <HintBar />
             <ToolDock />
+            </div>
             <crate::view3d::View3dOverlay />
         </div>
     }

@@ -5,3 +5,4 @@ pub mod io;
 pub mod model;
 pub mod command;
 pub mod editor;
+pub mod query;

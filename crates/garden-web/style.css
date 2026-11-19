@@ -1405,3 +1405,175 @@ button.title-card {
   stroke-width: 1px;
   vector-effect: non-scaling-stroke;
 }
+
+/* ── Inspector: edges and arrange ─────────────────────────── */
+.inspector-section {
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+.inspector-section h3 {
+  margin: 0 4px 8px;
+  font-size: 13px;
+  font-weight: 650;
+}
+.inspector-section h3 + .icon-row + h3 {
+  margin-top: 10px;
+}
+.edge-head,
+.edge-row {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 0.85fr);
+  gap: 6px;
+  align-items: start;
+}
+.edge-head {
+  font-size: 11.5px;
+  color: var(--muted);
+  margin: 0 0 4px;
+}
+.edge-row {
+  margin-bottom: 6px;
+}
+.edge-num {
+  padding-top: 7px;
+  font-size: 12px;
+  color: var(--muted);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.edge-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.edge-cell input,
+.edge-kind,
+.edge-static {
+  width: 100%;
+  text-overflow: ellipsis;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  border-radius: 9px;
+  border: 0;
+  background: var(--tile);
+  color: var(--text);
+  font: 600 13px var(--font);
+  font-variant-numeric: tabular-nums;
+}
+.edge-static {
+  color: var(--muted);
+}
+.edge-kind {
+  padding-right: 2px;
+}
+.edge-cell input:focus,
+.edge-kind:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+.edge-cell input.invalid {
+  color: var(--error);
+}
+.edge-cell .error {
+  color: var(--error);
+  font-size: 11px;
+  line-height: 1.25;
+}
+.icon-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+}
+.layer-pick {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin: 10px 4px 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.layer-pick select {
+  flex: 1;
+  max-width: 170px;
+  padding: 6px 8px;
+  border-radius: 9px;
+  border: 0;
+  background: var(--tile);
+  color: var(--text);
+  font: 600 13px var(--font);
+}
+.multi-count {
+  margin: 0;
+}
+
+/* ── Layers card ───────────────────────────────────────────── */
+.layers-card {
+  top: 76px;
+  right: 16px;
+  width: 320px;
+  padding: 12px 14px 14px;
+  z-index: 5;
+}
+.layer-list {
+  list-style: none;
+  margin: 4px 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.layer-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 4px 4px 8px;
+  border-radius: 11px;
+  background: var(--tile);
+}
+.layer-row.active {
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+.layer-row.hidden-layer .layer-name {
+  color: var(--muted);
+}
+.layer-active {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border-radius: 50%;
+  border: 1.5px solid var(--muted);
+  background: transparent;
+  padding: 0;
+}
+.layer-active[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  box-shadow: inset 0 0 0 2.5px var(--tile);
+}
+.layer-name {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font: 600 14px var(--font);
+  padding: 4px;
+  border-radius: 6px;
+}
+.layer-name:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+.layers-card .trace-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.layers-card .trace-primary .icon {
+  width: 18px;
+  height: 18px;
+}

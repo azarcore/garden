@@ -5,6 +5,7 @@ mod canvas;
 mod files;
 mod icons;
 mod inspector;
+mod layers;
 mod library;
 mod plan_art;
 mod plant_picker;

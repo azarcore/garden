@@ -101,7 +101,13 @@ impl EditorState {
             .layer(layer.id)
             .is_some_and(|existing| *existing != layer)
         {
-            self.execute(Command::UpsertLayer { layer }, now_ms);
+            let (id, usable) = (layer.id, layer.visible && !layer.locked);
+            if self.execute(Command::UpsertLayer { layer }, now_ms) && !usable {
+                // what can't be seen or touched can't stay selected
+                let doc = self.editor.doc();
+                self.selection
+                    .retain(|o| doc.object(*o).is_some_and(|o| o.layer != id));
+            }
         }
     }
 
@@ -227,6 +233,16 @@ mod tests {
     use super::*;
     use crate::objects::object_bounds;
     use crate::test_util::{plant_at, state_with};
+
+    #[test]
+    fn hiding_or_locking_a_layer_deselects_its_objects() {
+        let mut s = state_with(vec![plant_at(0., 0., 600.)]);
+        s.selection = vec![s.doc().objects[0].id];
+        let mut layer = s.doc().layers[0].clone();
+        layer.visible = false;
+        s.update_layer(layer, 1);
+        assert!(s.selection.is_empty());
+    }
 
     #[test]
     fn align_left_lines_up_bounds() {

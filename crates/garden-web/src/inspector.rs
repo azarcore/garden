@@ -1,14 +1,20 @@
 //! Properties of the selected object.
 
+use garden_core::geometry::SegmentKind;
 use garden_core::model::{AreaType, Object, ObjectKind};
 use garden_core::units::UnitSystem;
-use garden_editor::inspector::{Field, apply_field, field_value, inspector_fields, measures};
+use garden_editor::inspector::{
+    EdgeRow, Field, FieldError, apply_corner_angle, apply_edge_length, apply_field,
+    apply_segment_kind, edge_rows, field_value, inspector_fields, measures,
+};
+use garden_editor::layers::{Align, ZOrder};
 use garden_editor::render::style_class;
 use garden_editor::state::EditorState;
 use garden_editor::strings::{EN, category_label, kind_label};
 use leptos::prelude::*;
 
 use crate::app::now;
+use crate::icons::{Icon, icon};
 use crate::plan_art::plant_swatch;
 
 fn field_label(f: Field) -> &'static str {
@@ -88,6 +94,197 @@ fn FieldInput(object: Object, field: Field, units: UnitSystem) -> impl IntoView 
                 on:blur=move |_| try_commit() />
             {move || error.get().map(|m| view! { <span class="error">{m}</span> })}
         </div>
+    }
+}
+
+/// A small text box for one edge's length or one corner's angle. Invalid
+/// input shows a message and changes nothing.
+#[component]
+fn EdgeField(
+    object: Object,
+    value: String,
+    label: String,
+    apply: Callback<(Object, String), Result<Object, FieldError>>,
+) -> impl IntoView {
+    let state = expect_context::<RwSignal<EditorState>>();
+    let text = RwSignal::new(value.clone());
+    let error = RwSignal::new(None::<&'static str>);
+    let object = StoredValue::new(object);
+    let try_commit = move || {
+        let (Some(input), Some(before)) = (text.try_get_untracked(), object.try_get_value()) else {
+            return;
+        };
+        match apply.run((before.clone(), input)) {
+            Ok(after) => {
+                error.set(None);
+                commit(state, &before, after);
+            }
+            Err(e) => error.set(Some(e.message(&EN))),
+        }
+    };
+    view! {
+        <span class="edge-cell">
+            <input type="text" aria-label=label prop:value=move || text.get()
+                class:invalid=move || error.get().is_some()
+                on:input=move |e| text.set(event_target_value(&e))
+                on:keydown=move |e: leptos::ev::KeyboardEvent| match e.key().as_str() {
+                    "Enter" => try_commit(),
+                    "Escape" => {
+                        text.set(value.clone());
+                        error.set(None);
+                    }
+                    _ => {}
+                }
+                on:blur=move |_| try_commit() />
+            {move || error.get().map(|m| view! { <span class="error">{m}</span> })}
+        </span>
+    }
+}
+
+fn segment_key(k: SegmentKind) -> &'static str {
+    match k {
+        SegmentKind::Line => "line",
+        SegmentKind::Arc => "arc",
+        SegmentKind::Cubic => "curve",
+    }
+}
+
+/// Every edge of the outline: its length, whether it is straight, an arc or a
+/// curve, and the corner angle after it.
+fn edges_section(object: &Object, units: UnitSystem) -> Option<impl IntoView + use<>> {
+    let rows = edge_rows(object, units);
+    if rows.is_empty() {
+        return None;
+    }
+    let state = expect_context::<RwSignal<EditorState>>();
+    let closed = garden_editor::objects::kind_shape(&object.kind).is_some_and(|s| s.closed);
+    let count = rows.len();
+    let views = rows
+        .into_iter()
+        .map(|EdgeRow { index, length, kind, angle }| {
+            let n = index + 1;
+            let length_view = if kind == SegmentKind::Line {
+                let apply = Callback::new(move |(o, t): (Object, String)| apply_edge_length(&o, index, &t, units));
+                view! { <EdgeField object=object.clone() value=length label=format!("{} {n}", EN.edge) apply=apply /> }.into_any()
+            } else {
+                view! { <span class="edge-cell edge-static">{length}</span> }.into_any()
+            };
+            let obj = object.clone();
+            let kinds = [(SegmentKind::Line, EN.straight), (SegmentKind::Arc, EN.arc), (SegmentKind::Cubic, EN.curve)]
+                .into_iter()
+                .map(|(k, label)| view! { <option value=segment_key(k) selected=k == kind>{label}</option> })
+                .collect_view();
+            let kind_view = view! {
+                <select class="edge-kind" aria-label=format!("{} {n}", EN.edge) on:change=move |e| {
+                    let key = event_target_value(&e);
+                    let to = [SegmentKind::Line, SegmentKind::Arc, SegmentKind::Cubic]
+                        .into_iter()
+                        .find(|k| segment_key(*k) == key);
+                    if let Some(to) = to
+                        && let Ok(after) = apply_segment_kind(&obj, index, to)
+                    {
+                        commit(state, &obj, after);
+                    }
+                }>{kinds}</select>
+            };
+            let vertex = if closed { (index + 1) % count.max(1) } else { index + 1 };
+            let angle_view = angle.map(|a| {
+                let apply = Callback::new(move |(o, t): (Object, String)| apply_corner_angle(&o, vertex, &t));
+                view! { <EdgeField object=object.clone() value=a label=format!("{} {}", EN.corner, n) apply=apply /> }
+            });
+            view! {
+                <div class="edge-row">
+                    <span class="edge-num">{n}</span>
+                    {length_view}
+                    {kind_view}
+                    {angle_view}
+                </div>
+            }
+        })
+        .collect_view();
+    Some(view! {
+        <section class="inspector-section">
+            <h3>{EN.edges}</h3>
+            <div class="edge-head"><span></span><span>{EN.measure_length}</span><span>{EN.field_type}</span><span>{EN.corner}</span></div>
+            {views}
+        </section>
+    })
+}
+
+/// Stacking order, alignment (two or more objects) and which layer the selection is on.
+#[component]
+fn Arrange(count: usize) -> impl IntoView {
+    let state = expect_context::<RwSignal<EditorState>>();
+    let z = move |to: ZOrder| state.update(|s| s.reorder_selection(to, now()));
+    let al = move |how: Align| state.update(|s| s.align_selection(how, now()));
+    let btn = |label: &'static str, ic: Icon, on: Box<dyn Fn() + Send + Sync>| {
+        view! { <button class="icon-btn" data-tip=label aria-label=label on:click=move |_| on()>{icon(ic)}</button> }
+    };
+    let order = view! {
+        <div class="icon-row">
+            {btn(EN.bring_front, Icon::Front, Box::new(move || z(ZOrder::Front)))}
+            {btn(EN.forward, Icon::Forward, Box::new(move || z(ZOrder::Forward)))}
+            {btn(EN.backward, Icon::Backward, Box::new(move || z(ZOrder::Backward)))}
+            {btn(EN.send_back, Icon::Back, Box::new(move || z(ZOrder::Back)))}
+        </div>
+    };
+    let align = (count >= 2).then(|| {
+        view! {
+            <h3>{EN.align}</h3>
+            <div class="icon-row">
+                {btn(EN.align_left, Icon::AlignLeft, Box::new(move || al(Align::Left)))}
+                {btn(EN.align_center_x, Icon::AlignCenterX, Box::new(move || al(Align::CenterX)))}
+                {btn(EN.align_right, Icon::AlignRight, Box::new(move || al(Align::Right)))}
+                {btn(EN.align_top, Icon::AlignTop, Box::new(move || al(Align::Top)))}
+                {btn(EN.align_center_y, Icon::AlignCenterY, Box::new(move || al(Align::CenterY)))}
+                {btn(EN.align_bottom, Icon::AlignBottom, Box::new(move || al(Align::Bottom)))}
+            </div>
+        }
+    });
+    let layers = Memo::new(move |_| {
+        state.with(|s| {
+            let current = s
+                .selection
+                .first()
+                .and_then(|id| s.doc().object(*id))
+                .map(|o| o.layer);
+            let all: Vec<_> = s
+                .doc()
+                .layers
+                .iter()
+                .map(|l| (l.id, l.name.clone()))
+                .collect();
+            (all, current)
+        })
+    });
+    let layer_select = move || {
+        let (all, current) = layers.get();
+        (all.len() > 1).then(|| {
+            let options = all
+                .iter()
+                .map(|(id, name)| view! { <option value=id.0.to_string() selected=Some(*id) == current>{name.clone()}</option> })
+                .collect_view();
+            view! {
+                <label class="layer-pick">
+                    <span>{EN.move_to_layer}</span>
+                    <select on:change=move |e| {
+                        let v = event_target_value(&e);
+                        if let Some((id, _)) = all.iter().find(|(id, _)| id.0.to_string() == v) {
+                            let id = *id;
+                            state.update(|s| s.move_selection_to_layer(id, now()));
+                        }
+                    }>{options}</select>
+                </label>
+            }
+        })
+    };
+    view! {
+        <section class="inspector-section">
+            <h3>{EN.arrange}</h3>
+            {order}
+            {align}
+            {layer_select}
+        </section>
     }
 }
 
@@ -172,6 +369,7 @@ fn ObjectPanel(
         }
         _ => None,
     };
+    let edges = edges_section(&object, units);
     let locked = object.locked;
     let obj = object.clone();
     view! {
@@ -187,6 +385,8 @@ fn ObjectPanel(
             } />
             {EN.field_locked}
         </label>
+        {edges}
+        <Arrange count=1 />
     }
 }
 
@@ -212,7 +412,12 @@ pub fn Inspector() -> impl IntoView {
             view! { <aside class="card inspector"><ObjectPanel object=object units=units.get() measures=m /></aside> }
                 .into_any(),
         ),
-        (n, _) => Some(view! { <aside class="card inspector small">{format!("{n} {}", EN.n_selected)}</aside> }.into_any()),
+        (n, _) => Some(view! {
+            <aside class="card inspector small">
+                <p class="multi-count">{format!("{n} {}", EN.n_selected)}</p>
+                <Arrange count=n />
+            </aside>
+        }.into_any()),
     }
     }
 }

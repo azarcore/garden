@@ -305,6 +305,7 @@ pub fn ControlsCard() -> impl IntoView {
     let set_units = move |u: UnitSystem| state.update(|s| s.set_units(u, now()));
     let trace = expect_context::<crate::trace::Trace>();
     let crate::print::PrintOpen(print_open) = expect_context::<crate::print::PrintOpen>();
+    let crate::layers::LayersOpen(layers_open) = expect_context::<crate::layers::LayersOpen>();
 
     view! {
             <div class="card controls" role="toolbar" aria-label=EN.actions_label>
@@ -333,6 +334,9 @@ pub fn ControlsCard() -> impl IntoView {
             <button class="icon-btn toggle" data-tip=EN.print aria-label=EN.print
                 aria-pressed=move || print_open.get().to_string()
                 on:click=move |_| print_open.update(|o| *o = !*o)>{icon(Icon::Printer)}</button>
+            <button class="icon-btn toggle" data-tip=EN.layers aria-label=EN.layers
+                aria-pressed=move || layers_open.get().to_string()
+                on:click=move |_| layers_open.update(|o| *o = !*o)>{icon(Icon::Layers)}</button>
                 <span class="card-sep"></span>
                             <div class="segmented" role="group">
                     <button aria-pressed=move || (units.get() == UnitSystem::Metric).to_string()

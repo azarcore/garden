@@ -71,6 +71,10 @@ pub fn flat_polygon(shape: &Shape, y: f64) -> Option<(Vec<[f32; 3]>, Vec<u32>)> 
 
 /// Add the outline's top face at `y`; returns the outline points on success.
 pub(crate) fn add_top(b: &mut MeshBuilder, shape: &Shape, y: f64) -> Option<Vec<[f64; 2]>> {
+    // only closed, well-formed outlines are filled (as in 2D)
+    if !shape.closed || !shape.is_finite() {
+        return None;
+    }
     let pts = outline_m(shape);
     // compare with the flattened outline actually being filled: flattening
     // shaves a few percent off small curves, which mustn't count as a failure

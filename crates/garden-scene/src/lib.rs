@@ -854,6 +854,35 @@ mod tests {
     }
 
     #[test]
+    fn open_or_broken_outlines_are_not_filled() {
+        let open = Shape::polyline(
+            &[Point::ZERO, Point::new(2000., 0.), Point::new(0., 2000.)],
+            false,
+        );
+        let mut broken = Shape::rect(Point::ZERO, 2000., 2000.);
+        broken.segments[1] = garden_core::geometry::Segment::Line {
+            to: Point::new(f64::NAN, 2000.),
+        };
+        let mut d = doc_with(vec![ObjectKind::Area {
+            area_type: AreaType::Lawn,
+            shape: open,
+        }]);
+        // commands refuse non-finite shapes, but a hand-edited file could still carry one
+        let layer = d.layers[0].id;
+        d.objects.push(garden_core::model::Object::new(
+            "broken",
+            ObjectKind::Area {
+                area_type: AreaType::Lawn,
+                shape: broken,
+            },
+            layer,
+        ));
+        let s = build(&d);
+        assert_eq!(s.skipped, 2);
+        assert!(s.meshes.iter().all(|m| m.kind != SurfaceKind::Lawn));
+    }
+
+    #[test]
     fn small_round_ponds_are_kept() {
         let s = build(&doc_with(vec![ObjectKind::Area {
             area_type: AreaType::Water,

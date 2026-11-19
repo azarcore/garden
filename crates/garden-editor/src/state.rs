@@ -105,6 +105,8 @@ pub struct EditorState {
     pub(crate) preview: Preview,
     /// Point editing of one object, if active.
     pub(crate) node: Option<crate::handles::NodeEdit>,
+    /// The layer the person chose for new objects.
+    pub(crate) active: Option<LayerId>,
     /// Successful document changes so far (for autosave).
     changes: u64,
 }
@@ -124,6 +126,7 @@ impl EditorState {
             gesture: Gesture::Idle,
             preview: Preview::default(),
             node: None,
+            active: None,
             changes: 0,
         };
         s.fit_to_content();
@@ -196,6 +199,7 @@ impl EditorState {
         self.editor = Editor::new(doc);
         self.selection.clear();
         self.node = None;
+        self.active = None;
         self.cancel_gesture();
         self.fit_to_content();
     }
@@ -398,20 +402,10 @@ impl EditorState {
     }
 
     /// The single path every document change goes through (keeps `changes` honest).
-    fn try_execute(&mut self, cmd: Command, now_ms: i64) -> Result<(), CommandError> {
+    pub(crate) fn try_execute(&mut self, cmd: Command, now_ms: i64) -> Result<(), CommandError> {
         self.editor.execute(cmd, now_ms)?;
         self.changes += 1;
         Ok(())
-    }
-
-    /// Where new objects go: the first visible, unlocked layer.
-    pub(crate) fn active_layer(&self) -> LayerId {
-        let layers = &self.doc().layers;
-        layers
-            .iter()
-            .find(|l| l.visible && !l.locked)
-            .unwrap_or(&layers[0])
-            .id
     }
 
     pub(crate) fn drag_threshold_mm(&self) -> f64 {
@@ -617,6 +611,7 @@ impl EditorState {
 mod tests {
     use super::*;
     use crate::catalog::builtin_plants;
+    use crate::layers::ZOrder;
     use crate::test_util::{NO, SHIFT, click, plant_at, state_with};
     use garden_core::model::ObjectKind;
 
@@ -819,5 +814,92 @@ mod tests {
         assert_eq!(s.doc().name, "Back garden");
         assert!(s.undo(3));
         assert_eq!(s.doc().name, "g");
+    }
+
+    #[test]
+    fn new_layers_become_active_and_receive_new_objects() {
+        let mut s = state_with(vec![]);
+        let first = s.active_layer_id();
+        let l2 = s.add_layer(1);
+        assert_eq!(s.active_layer_id(), l2);
+        assert_eq!(s.doc().layers[1].name, "Layer 2");
+        s.set_tool(ToolKind::Plant(builtin_plants()[7].clone()));
+        click(&mut s, Point::new(0., 0.), NO);
+        assert_eq!(s.doc().objects[0].layer, l2);
+        s.set_active_layer(first);
+        assert_eq!(s.active_layer_id(), first);
+        s.set_active_layer(garden_core::model::LayerId::new()); // unknown: ignored
+        assert_eq!(s.active_layer_id(), first);
+    }
+
+    #[test]
+    fn hidden_or_locked_active_layer_falls_back() {
+        let mut s = state_with(vec![]);
+        let first = s.active_layer_id();
+        let l2 = s.add_layer(1);
+        let mut layer = s.doc().layers[1].clone();
+        layer.locked = true;
+        s.update_layer(layer, 2);
+        assert!(s.doc().layers[1].locked);
+        assert_eq!(s.active_layer_id(), first);
+        assert!(s.undo(3));
+        assert_eq!(s.active_layer_id(), l2);
+    }
+
+    #[test]
+    fn layers_with_objects_cannot_be_deleted() {
+        let mut s = state_with(vec![plant_at(0., 0., 600.)]);
+        let first = s.doc().layers[0].id;
+        assert_eq!(s.delete_layer(first, 1), Err(CommandError::LayerInUse));
+        let l2 = s.add_layer(2);
+        s.selection = vec![s.doc().objects[0].id];
+        s.move_selection_to_layer(l2, 3);
+        assert_eq!(s.doc().objects[0].layer, l2);
+        s.set_active_layer(first);
+        s.delete_layer(first, 4).unwrap();
+        assert_eq!(s.active_layer_id(), l2);
+        assert_eq!(s.delete_layer(l2, 5), Err(CommandError::LayerInUse));
+        assert_eq!(s.doc().layers.len(), 1);
+    }
+
+    #[test]
+    fn layer_names_stay_unique() {
+        let mut s = state_with(vec![]);
+        let l2 = s.add_layer(1);
+        s.add_layer(2);
+        s.delete_layer(l2, 3).unwrap();
+        s.add_layer(4);
+        let names: Vec<_> = s.doc().layers.iter().map(|l| l.name.clone()).collect();
+        assert_eq!(names[1..], ["Layer 3".to_string(), "Layer 2".to_string()]);
+    }
+
+    #[test]
+    fn reorder_keeps_relative_order_in_one_step() {
+        let mut s = state_with(vec![
+            plant_at(0., 0., 1.),
+            plant_at(10., 0., 1.),
+            plant_at(20., 0., 1.),
+            plant_at(30., 0., 1.),
+        ]);
+        let ids: Vec<_> = s.doc().objects.iter().map(|o| o.id).collect();
+        let order = |s: &EditorState| s.doc().objects.iter().map(|o| o.id).collect::<Vec<_>>();
+        s.selection = vec![ids[0], ids[1]];
+        s.reorder_selection(ZOrder::Front, 1);
+        assert_eq!(order(&s), vec![ids[2], ids[3], ids[0], ids[1]]);
+        s.selection = vec![ids[1]];
+        s.reorder_selection(ZOrder::Backward, 2);
+        assert_eq!(s.doc().objects[2].id, ids[1]);
+        s.selection = vec![ids[2], ids[0]];
+        s.reorder_selection(ZOrder::Back, 3);
+        assert_eq!(order(&s)[..2], [ids[2], ids[0]]);
+        s.reorder_selection(ZOrder::Back, 4); // already there: no change, no undo step
+        assert!(s.undo(5));
+        assert!(s.undo(5));
+        assert!(s.undo(5));
+        assert_eq!(order(&s), ids);
+        assert!(!s.can_undo());
+        s.selection = vec![ids[2]];
+        s.reorder_selection(ZOrder::Forward, 6);
+        assert_eq!(order(&s), vec![ids[0], ids[1], ids[3], ids[2]]);
     }
 }

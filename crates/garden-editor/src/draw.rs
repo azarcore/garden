@@ -27,7 +27,7 @@ pub(crate) fn handle(s: &mut EditorState, input: Input, now_ms: i64) {
             }
             if let Input::Up(p, m) = input {
                 let at = snapped(s, p, m);
-                let object = def.place(at, s.active_layer());
+                let object = def.place(at, s.active_layer_id());
                 let id = object.id;
                 let index = s.doc().objects.len();
                 if s.execute(Command::Insert { object, index }, now_ms) {
@@ -57,7 +57,7 @@ fn closed_kind(target: &DrawTarget, shape: Shape) -> ObjectKind {
 
 /// Add a new object on top, select it and go back to the select tool.
 pub(crate) fn insert_new(s: &mut EditorState, kind: ObjectKind, now_ms: i64, back_to_select: bool) {
-    let object = Object::new(default_name(&kind), kind, s.active_layer());
+    let object = Object::new(default_name(&kind), kind, s.active_layer_id());
     let id = object.id;
     let index = s.doc().objects.len();
     if s.execute(Command::Insert { object, index }, now_ms) {

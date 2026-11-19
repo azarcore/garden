@@ -110,6 +110,7 @@ pub mod catalog;
 mod draw;
 pub mod handles;
 pub mod inspector;
+pub mod layers;
 pub mod library;
 pub mod objects;
 pub mod print;

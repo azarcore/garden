@@ -152,6 +152,8 @@ const GROUND_Y: f64 = -0.01;
 const GROUND_MARGIN_M: f64 = 10.0;
 /// Each later object sits this much higher, so overlapping surfaces don't flicker.
 const LAYER_STEP_M: f64 = 0.0002;
+/// Flat surfaces never rise more than this above their base height.
+const MAX_LIFT_M: f64 = 0.02;
 /// Raised beds stand this high.
 const BED_HEIGHT_M: f64 = 0.12;
 /// Plants are never flatter than this (metres).
@@ -205,7 +207,12 @@ pub(crate) fn fill_color(o: &Object, fallback: Color) -> Rgba {
 pub fn build(doc: &Document) -> Scene {
     let mut scene = Scene::default();
     let mut bounds: Option<Rect> = None;
-    for (index, o) in doc.objects.iter().enumerate() {
+    // How many flat surfaces came before: each sits a hair above the last.
+    let mut surfaces_so_far = 0usize;
+    // Raised beds (outline and top height), so plants in them stand on the soil.
+    let mut beds: Vec<(&garden_core::geometry::Shape, f64)> = Vec::new();
+    let mut plants: Vec<&Object> = Vec::new();
+    for o in &doc.objects {
         if !doc.layer(o.layer).is_some_and(|l| l.visible) {
             continue;
         }
@@ -217,7 +224,16 @@ pub fn build(doc: &Document) -> Scene {
         }
         let b = object_bounds(&o.kind);
         bounds = Some(bounds.map_or(b, |a| a.union(b)));
-        let lift = LAYER_STEP_M * index as f64;
+        let flat = matches!(
+            o.kind,
+            ObjectKind::PlotBoundary { .. } | ObjectKind::Area { .. } | ObjectKind::Path { .. }
+        );
+        let lift = if flat {
+            surfaces_so_far += 1;
+            (LAYER_STEP_M * (surfaces_so_far - 1) as f64).min(MAX_LIFT_M)
+        } else {
+            0.0
+        };
         let mut mb = MeshBuilder::default();
         let built = match &o.kind {
             ObjectKind::PlotBoundary { shape } => surfaces::add_top(&mut mb, shape, lift)
@@ -226,8 +242,12 @@ pub fn build(doc: &Document) -> Scene {
                 let kind = area_kind(*area_type);
                 let color = fill_color(o, PLOT_COLOR);
                 if kind == SurfaceKind::Bed {
-                    surfaces::add_prism(&mut mb, shape, 0.0, BED_HEIGHT_M + lift)
-                        .map(|_| (kind, color))
+                    let top = BED_HEIGHT_M + lift;
+                    let made = surfaces::add_prism(&mut mb, shape, 0.0, top).map(|_| (kind, color));
+                    if made.is_some() {
+                        beds.push((shape, top));
+                    }
+                    made
                 } else {
                     surfaces::add_top(&mut mb, shape, surface_height(kind) + lift)
                         .map(|_| (kind, color))
@@ -267,24 +287,8 @@ pub fn build(doc: &Document) -> Scene {
                 footprint, height, ..
             } => surfaces::add_prism(&mut mb, footprint, 0.0, height.max(1.0) / 1000.0 + lift)
                 .map(|_| (SurfaceKind::Structure, fill_color(o, PLOT_COLOR))),
-            ObjectKind::Plant {
-                position,
-                spread,
-                height,
-                category,
-                symbol,
-                ..
-            } => {
-                let mut color = fill_color(o, PLOT_COLOR);
-                color[3] = 1.0;
-                scene.plants.push(PlantInstance {
-                    position: mm_to_world(*position, 0.0),
-                    spread: (spread.max(1.0) / 1000.0) as f32,
-                    height: (height / 1000.0).max(MIN_PLANT_HEIGHT_M) as f32,
-                    category: *category,
-                    symbol: *symbol,
-                    color,
-                });
+            ObjectKind::Plant { .. } => {
+                plants.push(o); // placed once every bed is known
                 continue;
             }
             ObjectKind::Label { .. } | ObjectKind::Dimension { .. } => continue,
@@ -293,6 +297,35 @@ pub fn build(doc: &Document) -> Scene {
             Some((kind, color)) if !mb.is_empty() => scene.meshes.push(mb.finish(kind, color)),
             _ => scene.skipped += 1,
         }
+    }
+    for o in plants {
+        let ObjectKind::Plant {
+            position,
+            spread,
+            height,
+            category,
+            symbol,
+            ..
+        } = &o.kind
+        else {
+            continue;
+        };
+        // stand on the highest raised bed it is planted in, else on the ground
+        let ground_y = beds
+            .iter()
+            .filter(|(shape, _)| shape.contains(*position))
+            .map(|(_, top)| *top)
+            .fold(0.0, f64::max);
+        let mut color = fill_color(o, PLOT_COLOR);
+        color[3] = 1.0;
+        scene.plants.push(PlantInstance {
+            position: mm_to_world(*position, ground_y),
+            spread: (spread.max(1.0) / 1000.0) as f32,
+            height: (height / 1000.0).max(MIN_PLANT_HEIGHT_M) as f32,
+            category: *category,
+            symbol: *symbol,
+            color,
+        });
     }
     scene.meshes.insert(0, ground(bounds));
     scene.camera = Some(camera(bounds));
@@ -764,5 +797,59 @@ mod tests {
             assert!(m.positions.iter().flatten().all(|v| v.is_finite()));
         }
         assert!(s.meshes.iter().any(|m| m.kind == SurfaceKind::Hedge));
+    }
+
+    #[test]
+    fn many_plants_dont_lift_later_surfaces() {
+        let mut kinds: Vec<ObjectKind> = (0..400)
+            .map(|i| plant_at(i as f64 * 10., 0., 300.))
+            .collect();
+        kinds.push(lawn_rect());
+        let s = build(&doc_with(kinds));
+        let lawn = s
+            .meshes
+            .iter()
+            .find(|m| m.kind == SurfaceKind::Lawn)
+            .unwrap();
+        assert!(
+            lawn.positions[0][1] < 0.01,
+            "lawn at {}",
+            lawn.positions[0][1]
+        );
+    }
+
+    #[test]
+    fn surface_lift_is_capped() {
+        let kinds: Vec<ObjectKind> = (0..1000).map(|_| lawn_rect()).collect();
+        let s = build(&doc_with(kinds));
+        let top = s
+            .meshes
+            .iter()
+            .flat_map(|m| m.positions.iter().map(|p| p[1]))
+            .fold(f32::MIN, f32::max);
+        assert!(top < 0.04, "surfaces reach {top}");
+    }
+
+    #[test]
+    fn plants_in_a_raised_bed_stand_on_it() {
+        let s = build(&doc_with(vec![
+            plant_at(1000., 500., 300.), // listed before the bed it sits in
+            ObjectKind::Area {
+                area_type: AreaType::Bed,
+                shape: Shape::rect(Point::ZERO, 2000., 1000.),
+            },
+            plant_at(5000., 500., 300.), // outside it
+        ]));
+        let bed_top = s
+            .meshes
+            .iter()
+            .find(|m| m.kind == SurfaceKind::Bed)
+            .unwrap()
+            .positions
+            .iter()
+            .map(|p| p[1])
+            .fold(f32::MIN, f32::max);
+        assert!((s.plants[0].position[1] - bed_top).abs() < 1e-6);
+        assert_eq!(s.plants[1].position[1], 0.0);
     }
 }

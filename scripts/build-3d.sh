@@ -17,17 +17,23 @@ OUT="${TRUNK_STAGING_DIR:-$ROOT/crates/garden-web/dist}/garden3d"
 
 # wasm-bindgen's CLI must match the library version in Cargo.lock exactly.
 WANT=$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/version = |"/, ""); print; exit }' "$ROOT/Cargo.lock")
+# Print the first of PATH's copy and Trunk's cached copies of tool $1 for which
+# `$1 --version` matches $3 (empty = any version); $2 = Trunk cache folder pattern.
 find_tool() {
-  # $1 = tool name, $2 = Trunk cache folder pattern
-  if command -v "$1" >/dev/null 2>&1; then command -v "$1"; return; fi
-  for dir in "$HOME/Library/Caches/dev.trunkrs.trunk" "${XDG_CACHE_HOME:-$HOME/.cache}/trunk"; do
-    for f in "$dir"/$2/"$1" "$dir"/$2/bin/"$1"; do
-      [ -x "$f" ] && { echo "$f"; return; }
-    done
+  for f in "$(command -v "$1" 2>/dev/null || true)" \
+    "$HOME/Library/Caches/dev.trunkrs.trunk"/$2/"$1" \
+    "$HOME/Library/Caches/dev.trunkrs.trunk"/$2/bin/"$1" \
+    "${XDG_CACHE_HOME:-$HOME/.cache}/trunk"/$2/"$1" \
+    "${XDG_CACHE_HOME:-$HOME/.cache}/trunk"/$2/bin/"$1"; do
+    [ -n "$f" ] && [ -x "$f" ] || continue
+    if [ -z "$3" ] || "$f" --version 2>/dev/null | grep -q " $3\$"; then
+      echo "$f"
+      return
+    fi
   done
 }
-BINDGEN=$(find_tool wasm-bindgen "wasm-bindgen-$WANT")
-if [ -z "$BINDGEN" ] || ! "$BINDGEN" --version | grep -q " $WANT\$"; then
+BINDGEN=$(find_tool wasm-bindgen "wasm-bindgen-$WANT" "$WANT")
+if [ -z "$BINDGEN" ]; then
   echo "build-3d: needs wasm-bindgen $WANT (cargo install wasm-bindgen-cli --version $WANT)" >&2
   exit 1
 fi
@@ -42,8 +48,10 @@ mkdir -p "$OUT"
   "$TARGET_DIR/wasm32-unknown-unknown/$PROFILE/garden_3d.wasm"
 
 if [ "$PROFILE" = release-3d ]; then
-  OPT=$(find_tool wasm-opt "wasm-opt-version_*")
-  if [ -n "$OPT" ]; then
+  OPT=$(find_tool wasm-opt "wasm-opt-version_*" "")
+  if [ -z "$OPT" ]; then
+    echo "build-3d: wasm-opt not found; the 3D bundle is not size-optimised" >&2
+  else
     "$OPT" -O2 --enable-bulk-memory --enable-nontrapping-float-to-int \
       -o "$OUT/garden_3d_bg.wasm" "$OUT/garden_3d_bg.wasm"
   fi

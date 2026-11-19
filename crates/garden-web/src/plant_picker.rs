@@ -1,4 +1,4 @@
-//! Plant catalog list, shown while the plant tool is active.
+//! Plant catalog flyout, shown beside the tool rail while the plant tool is active.
 
 use garden_core::model::PlantCategory;
 use garden_core::units::format_length;
@@ -9,6 +9,7 @@ use garden_editor::tools::ToolKind;
 use leptos::prelude::*;
 
 use crate::app::LastPlant;
+use crate::plan_art::plant_swatch;
 
 #[component]
 pub fn PlantPicker() -> impl IntoView {
@@ -34,27 +35,41 @@ pub fn PlantPicker() -> impl IntoView {
                     .cloned()
                     .map(|p| {
                         let id = p.id.clone();
-                        let pressed = move || (last_plant.with(|l| l.id == id)).to_string();
+                        let pressed = move || last_plant.with(|l| l.id == id).to_string();
                         let size = format_length(p.spread, units.get());
                         let name = p.name.clone();
+                        let swatch = plant_swatch(p.symbol, p.category);
+                        let title = format!("{name}: {size} {}", EN.plant_mature);
                         view! {
-                            <button aria-pressed=pressed on:click=move |_| {
-                                last_plant.set(p.clone());
-                                state.update(|s| s.set_tool(ToolKind::Plant(p.clone())));
-                            }>
-                                <span>{name}</span><span class="size">{size}</span>
+                            <button class="specimen" aria-pressed=pressed
+                                title=title
+                                on:click=move |_| {
+                                    last_plant.set(p.clone());
+                                    state.update(|s| s.set_tool(ToolKind::Plant(p.clone())));
+                                }>
+                                {swatch}
+                                <span class="specimen-name">{name.clone()}</span>
+                                <span class="specimen-size">{size}</span>
                             </button>
                         }
                     })
                     .collect_view();
-                view! { <h3>{category_label(&EN, cat)}</h3>{rows} }
+                view! {
+                    <section class="plant-group">
+                        <h3>{category_label(&EN, cat)}</h3>
+                        <div class="specimens">{rows}</div>
+                    </section>
+                }
             })
             .collect_view()
     };
 
     view! {
         <Show when=move || active.get()>
-            <nav class="picker" aria-label=EN.plants_heading>{list}</nav>
+            <aside class="picker" aria-label=EN.plants_heading>
+                <h2>{EN.plants_heading}</h2>
+                {list}
+            </aside>
         </Show>
     }
 }

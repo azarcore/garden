@@ -2,9 +2,10 @@
 
 mod app;
 mod canvas;
+mod icons;
 mod inspector;
+mod plan_art;
 mod plant_picker;
-mod status;
 mod toolbar;
 
 fn main() {

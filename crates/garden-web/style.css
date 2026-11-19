@@ -1,40 +1,46 @@
+/* Garden Planner — a planting plan on drafting vellum.
+   Chrome stays quiet; the plan carries the character. */
+
 :root {
-  --bg: #f4f2ec;
-  --panel: #ffffff;
-  --border: #dcd8cd;
-  --text: #2a2a26;
-  --muted: #6d6a60;
-  --accent: #1f6feb;
-  --accent-soft: #dbe7fd;
-  --danger: #c0392b;
-  --paper: #fbfaf6;
-  --grid: #dcd7c8;
+  --vellum: #eef1e7; /* plan paper, green-tinted */
+  --ink: #24372b; /* moss ink: text and plan linework */
+  --panel: #f7f9f3; /* fern panel */
+  --line: #cbd5c4; /* lichen rules */
+  --marigold: #e0a526; /* selection, active tool */
+  --marigold-tint: #f6e8c4;
+  --bark: #6e5440;
+  --muted: #5e6e61;
+  --hover: rgba(36, 55, 43, 0.06);
+  --error: #b0302a;
+  --bg: #e6ebdf;
+  --ui-font: "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --plan-font: "IBM Plex Sans Condensed", "Arial Narrow", sans-serif-condensed, sans-serif;
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --bg: #1c1d1f;
-    --panel: #26282b;
-    --border: #3a3d42;
-    --text: #e8e6e1;
-    --muted: #a09d95;
-    --accent: #5b9cff;
-    --accent-soft: #23324a;
-    --danger: #ff6b5b;
+    --ink-ui: #e3eadf;
+    --panel: #1f2721;
+    --line: #34423a;
+    --muted: #9fae9f;
+    --hover: rgba(227, 234, 223, 0.07);
+    --marigold-tint: #4a3c17;
+    --error: #ff8a7a;
+    --bg: #171d19;
     color-scheme: dark;
   }
 }
 
 :root[data-theme="dark"] {
-  --bg: #1c1d1f;
-  --panel: #26282b;
-  --border: #3a3d42;
-  --text: #e8e6e1;
-  --muted: #a09d95;
-  --accent: #5b9cff;
-  --accent-soft: #23324a;
-  --danger: #ff6b5b;
+  --ink-ui: #e3eadf;
+  --panel: #1f2721;
+  --line: #34423a;
+  --muted: #9fae9f;
+  --hover: rgba(227, 234, 223, 0.07);
+  --marigold-tint: #4a3c17;
+  --error: #ff8a7a;
+  --bg: #171d19;
   color-scheme: dark;
 }
 
@@ -46,120 +52,238 @@ html,
 body {
   margin: 0;
   height: 100%;
-  background: var(--bg);
-  color: var(--text);
-  font: 14px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;
   overflow: hidden;
-}
-
-.app {
-  display: grid;
-  grid-template-columns: auto 1fr 280px;
-  grid-template-rows: auto 1fr auto;
-  grid-template-areas:
-    "toolbar toolbar toolbar"
-    "picker canvas inspector"
-    "status status status";
-  height: 100vh;
-}
-
-.toolbar {
-  grid-area: toolbar;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  align-items: center;
-  padding: 6px 16px;
-  background: var(--panel);
-  border-bottom: 1px solid var(--border);
-}
-
-.toolbar .sep {
-  width: 1px;
-  align-self: stretch;
-  background: var(--border);
-  margin: 0 6px;
-}
-
-.toolbar .title {
-  font-weight: 600;
-  margin-right: 10px;
+  background: var(--bg);
+  color: var(--ink-ui, var(--ink));
+  font: 14px/1.45 var(--ui-font);
+  -webkit-font-smoothing: antialiased;
 }
 
 button {
   font: inherit;
-  color: var(--text);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  padding: 4px 9px;
+  color: inherit;
+  background: none;
+  border: 0;
   cursor: pointer;
 }
 
-button:hover:not(:disabled) {
-  background: var(--accent-soft);
-}
-
-button[aria-pressed="true"] {
-  background: var(--accent-soft);
-  border-color: var(--accent);
-}
-
 button:disabled {
-  opacity: 0.4;
+  opacity: 0.35;
   cursor: default;
 }
 
-button .key {
-  color: var(--muted);
-  font-size: 11px;
-  margin-left: 4px;
+:focus-visible {
+  outline: 2px solid var(--marigold);
+  outline-offset: 2px;
 }
 
-.picker {
-  grid-area: picker;
-  width: 220px;
-  overflow-y: auto;
-  background: var(--panel);
-  border-right: 1px solid var(--border);
-  padding: 8px 12px;
+/* ---------- layout ---------- */
+
+.app {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr) 296px;
+  grid-template-rows: 54px minmax(0, 1fr);
+  grid-template-areas:
+    "top top top"
+    "rail canvas inspector";
+  height: 100vh;
 }
 
-.picker h3 {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-  margin: 12px 0 4px;
-}
+/* ---------- top bar ---------- */
 
-.picker button {
+.topbar {
+  grid-area: top;
   display: flex;
-  justify-content: space-between;
-  width: 100%;
-  text-align: left;
+  align-items: center;
+  gap: 16px;
+  padding: 0 16px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
 }
 
-.picker .size {
-  color: var(--muted);
-  font-size: 12px;
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
 }
+
+.brand-mark {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--vellum);
+}
+
+.brand-mark .icon {
+  width: 19px;
+  height: 19px;
+}
+
+.brand-name {
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.doc-name {
+  color: var(--muted);
+  padding-left: 10px;
+  border-left: 1px solid var(--line);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: auto;
+}
+
+.bar-gap {
+  width: 10px;
+}
+
+.icon-btn {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+}
+
+.icon-btn:hover:not(:disabled) {
+  background: var(--hover);
+}
+
+.settings {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding-left: 14px;
+  border-left: 1px solid var(--line);
+}
+
+.segmented {
+  display: flex;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.segmented button {
+  padding: 3px 11px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.segmented button[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--vellum);
+}
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.toggle input {
+  accent-color: var(--ink);
+  margin: 0;
+}
+
+/* ---------- tool rail ---------- */
+
+.rail {
+  grid-area: rail;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 1px;
+  padding: 8px 8px;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  overflow-y: auto;
+}
+
+.rail-tool {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 5px 2px 4px;
+  border-radius: 9px;
+}
+
+.rail-tool .icon {
+  width: 20px;
+  height: 20px;
+}
+
+.rail-tool:hover {
+  background: var(--hover);
+}
+
+.rail-tool[aria-pressed="true"] {
+  background: var(--marigold-tint);
+}
+
+.rail-tool[aria-pressed="true"]::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--marigold);
+}
+
+.rail-label {
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.15;
+  text-align: center;
+}
+
+.rail-divider {
+  width: 28px;
+  margin: 4px auto;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+/* ---------- canvas ---------- */
 
 .canvas-cell {
   grid-area: canvas;
   position: relative;
   min-width: 0;
   min-height: 0;
+  background: var(--vellum);
 }
 
 .plan {
   display: block;
   width: 100%;
   height: 100%;
-  background: var(--paper);
+  background: var(--vellum);
   touch-action: none;
   user-select: none;
-  cursor: default;
+  -webkit-user-select: none;
 }
 
 .plan.drawing {
@@ -175,137 +299,423 @@ button .key {
 }
 
 .grid-line {
-  stroke: var(--grid);
+  stroke: rgba(36, 55, 43, 0.09);
   stroke-width: 1;
 }
 
-.plan .label,
+/* plot boundary: a property line */
+.obj.plot path {
+  stroke-width: 2px;
+  stroke-dasharray: 16 5 3 5;
+}
+
+/* textures (world units, mm) */
+.tex-stroke {
+  fill: none;
+  stroke-linecap: round;
+}
+
+.lawn-blade {
+  stroke: rgba(62, 98, 52, 0.55);
+  stroke-width: 28;
+}
+
+.bed-mulch {
+  stroke: rgba(92, 64, 42, 0.5);
+  stroke-width: 34;
+}
+
+.paving-joint {
+  stroke: rgba(122, 116, 104, 0.6);
+  stroke-width: 22;
+}
+
+.gravel-stone {
+  fill: rgba(128, 116, 90, 0.7);
+}
+
+.water-ripple {
+  stroke: rgba(255, 255, 255, 0.75);
+  stroke-width: 40;
+}
+
+.roof-hatch {
+  stroke: rgba(110, 84, 64, 0.35);
+  stroke-width: 26;
+}
+
+/* linear things: a darker edge under a lighter body */
+.obj .edge {
+  stroke: rgba(110, 84, 64, 0.45);
+}
+
+.obj.fence .edge,
+.obj.wall .edge {
+  stroke: var(--ink);
+}
+
+.obj.hedge .edge {
+  stroke: #3f5e3c;
+}
+
+.lettering,
 .plan .dim {
+  font-family: var(--plan-font);
   paint-order: stroke;
-  stroke: var(--paper);
-  stroke-width: 3px;
+  stroke: var(--vellum);
+  stroke-width: 4px;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
 }
 
+.lettering {
+  fill: var(--ink);
+}
+
 .plan .dim {
-  fill: var(--accent);
+  fill: var(--ink);
   font-weight: 600;
 }
 
-.plan .preview path,
-.plan .preview circle,
-.plan .preview line {
-  stroke-dasharray: 5 4;
+.obj.dimension line {
+  stroke: var(--ink);
 }
 
-.plan .marquee {
-  fill: rgba(31, 111, 235, 0.08);
-  stroke: var(--accent);
+.selection {
+  fill: none;
+  stroke: var(--marigold);
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 1.5px rgba(224, 165, 38, 0.8));
+}
+
+.preview {
+  fill: rgba(224, 165, 38, 0.1);
+  stroke: var(--marigold);
+  stroke-width: 1.75;
+  stroke-dasharray: 6 4;
+}
+
+.snap circle,
+.snap path {
+  fill: none;
+  stroke: var(--marigold);
+  stroke-width: 1.5;
+}
+
+.marquee {
+  fill: rgba(224, 165, 38, 0.08);
+  stroke: var(--marigold);
+  stroke-width: 1;
   stroke-dasharray: 4 3;
+}
+
+/* legend: scale bar and readout floating on the plan */
+.legend,
+.readout {
+  position: absolute;
+  bottom: 14px;
+  padding: 7px 10px 6px;
+  border-radius: 8px;
+  background: rgba(238, 241, 231, 0.88);
+  backdrop-filter: blur(2px);
+  color: var(--ink);
+  font-family: var(--plan-font);
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.legend {
+  left: 14px;
+}
+
+.readout {
+  right: 14px;
+  display: flex;
+  gap: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.readout .zoom {
+  color: var(--muted);
+}
+
+.scale-bar svg {
+  display: block;
+}
+
+.bar-dark {
+  fill: var(--ink);
+}
+
+.bar-light {
+  fill: var(--vellum);
+}
+
+.bar-frame {
+  fill: none;
+  stroke: var(--ink);
   stroke-width: 1;
 }
 
+.scale-labels {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 3px;
+  line-height: 1;
+}
+
+/* ---------- plant picker (flyout over the plan) ---------- */
+
+.picker {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  width: 272px;
+  overflow-y: auto;
+  padding: 14px 14px 20px;
+  background: var(--panel);
+  border-right: 1px solid var(--line);
+  box-shadow: 6px 0 18px rgba(36, 55, 43, 0.08);
+  z-index: 2;
+}
+
+.picker h2 {
+  margin: 0 0 4px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.plant-group h3 {
+  margin: 14px 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.specimens {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.specimen {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  grid-template-rows: auto auto;
+  column-gap: 8px;
+  align-items: center;
+  padding: 6px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  text-align: left;
+}
+
+.specimen:hover {
+  background: var(--hover);
+}
+
+.specimen[aria-pressed="true"] {
+  border-color: var(--marigold);
+  background: var(--marigold-tint);
+}
+
+.specimen .swatch {
+  grid-row: span 2;
+  width: 34px;
+  height: 34px;
+}
+
+.specimen-name {
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.specimen-size {
+  font-family: var(--plan-font);
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.swatch-fill {
+  fill: rgba(156, 186, 120, 0.55);
+  stroke: #34543a;
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+}
+
+.swatch.cat-tree .swatch-fill {
+  fill: rgba(118, 156, 104, 0.45);
+}
+
+.swatch.cat-shrub .swatch-fill {
+  fill: rgba(132, 170, 110, 0.6);
+}
+
+.swatch-marks {
+  fill: none;
+  stroke: #34543a;
+  stroke-width: 1.5;
+  opacity: 0.6;
+}
+
+.swatch-dot {
+  fill: #34543a;
+}
+
+/* ---------- inspector ---------- */
+
 .inspector {
   grid-area: inspector;
+  padding: 18px 18px 24px;
   background: var(--panel);
-  border-left: 1px solid var(--border);
-  padding: 12px 16px;
+  border-left: 1px solid var(--line);
   overflow-y: auto;
 }
 
 .inspector h2 {
-  font-size: 15px;
-  margin: 0 0 12px;
+  margin: 0 0 16px;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: -0.015em;
 }
 
 .inspector .muted {
   color: var(--muted);
+  margin: 0;
 }
 
 .field {
   display: flex;
   flex-direction: column;
-  gap: 3px;
-  margin-bottom: 12px;
+  gap: 4px;
+  margin-bottom: 14px;
 }
 
 .field label {
-  font-size: 12px;
+  font-size: 12.5px;
+  font-weight: 500;
   color: var(--muted);
 }
 
 .field input[type="text"],
 .field select {
-  font: inherit;
-  color: var(--text);
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 5px 8px;
+  font: 15px var(--plan-font);
+  color: var(--ink);
+  background: var(--vellum);
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 7px 9px;
+}
+
+.field input[type="text"]:focus,
+.field select:focus {
+  outline: 2px solid var(--marigold);
+  outline-offset: 0;
+  border-color: transparent;
 }
 
 .field input.invalid {
-  border-color: var(--danger);
+  border-color: var(--error);
 }
 
 .field .error {
-  color: var(--danger);
-  font-size: 12px;
+  color: var(--error);
+  font-size: 12.5px;
 }
 
 .field.check {
   flex-direction: row;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
+  font-size: 13px;
+  cursor: pointer;
 }
 
-.status {
-  grid-area: status;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 14px;
-  align-items: center;
-  padding: 4px 16px;
-  background: var(--panel);
-  border-top: 1px solid var(--border);
-  color: var(--muted);
-  font-size: 12px;
+.field.check input {
+  accent-color: var(--ink);
+  margin: 0;
 }
 
-.status .coords {
-  font-variant-numeric: tabular-nums;
-  min-width: 160px;
-}
+/* ---------- small screens ---------- */
 
-.status label {
-  display: flex;
-  gap: 4px;
-  align-items: center;
+@media (max-width: 900px) {
+  .toggle span {
+    display: none;
+  }
 }
 
 @media (max-width: 768px) {
   .app {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto 1fr auto auto;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto auto;
     grid-template-areas:
-      "toolbar"
-      "picker"
+      "top"
       "canvas"
-      "inspector"
-      "status";
+      "rail"
+      "inspector";
+  }
+
+  .topbar {
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 16px;
+  }
+
+  .doc-name,
+  .settings .toggle {
+    display: none;
+  }
+
+  .settings {
+    border-left: 0;
+    padding-left: 0;
+  }
+
+  .rail {
+    flex-direction: row;
+    overflow-x: auto;
+    overflow-y: hidden;
+    padding: 6px 16px;
+    border-right: 0;
+    border-top: 1px solid var(--line);
+  }
+
+  .rail-tool {
+    min-width: 58px;
+  }
+
+  .rail-tool[aria-pressed="true"]::before {
+    display: none;
+  }
+
+  .rail-divider {
+    width: 0;
+    height: 28px;
+    margin: auto 4px;
+    border-top: 0;
+    border-left: 1px solid var(--line);
   }
 
   .picker {
     width: auto;
-    max-height: 30vh;
-    border-right: 0;
-    border-bottom: 1px solid var(--border);
+    right: 0;
+    bottom: auto;
+    max-height: 60%;
   }
 
   .inspector {
     border-left: 0;
-    border-top: 1px solid var(--border);
-    max-height: 35vh;
+    border-top: 1px solid var(--line);
+    max-height: 32vh;
+    padding: 12px 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition: none !important;
+    animation: none !important;
   }
 }

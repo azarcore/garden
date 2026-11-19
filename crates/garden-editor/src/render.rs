@@ -2,7 +2,7 @@
 
 use garden_core::geometry::Point;
 use garden_core::model::{
-    AreaType, Color, Document, LinearKind, ObjectId, ObjectKind, PlantCategory,
+    AreaType, Color, Document, LinearKind, ObjectId, ObjectKind, PlantCategory, PlantSymbol,
 };
 use garden_core::query::dimension_line;
 use garden_core::units::format_length;
@@ -14,9 +14,12 @@ pub enum RenderShape {
         d: String,
         closed: bool,
     },
-    Circle {
+    /// A plant canopy: drawn as a symbol of radius `r` (half the spread).
+    Plant {
         center: Point,
         r: f64,
+        symbol: PlantSymbol,
+        category: PlantCategory,
     },
     Line {
         from: Point,
@@ -39,9 +42,36 @@ pub struct RenderItem {
     /// World mm; `None` = thin screen-space hairline.
     pub stroke_width: Option<f64>,
     pub selected: bool,
+    /// Style key for the renderer (e.g. "lawn", "bed", "fence", "plant").
+    pub class: &'static str,
 }
 
-const INK: Color = Color(40, 40, 40, 255);
+/// Style key for an object kind; see [`RenderItem::class`].
+pub fn style_class(kind: &ObjectKind) -> &'static str {
+    match kind {
+        ObjectKind::PlotBoundary { .. } => "plot",
+        ObjectKind::Area { area_type, .. } => match area_type {
+            AreaType::Bed => "bed",
+            AreaType::Lawn => "lawn",
+            AreaType::Paving => "paving",
+            AreaType::Gravel => "gravel",
+            AreaType::Water => "water",
+            AreaType::Other => "area",
+        },
+        ObjectKind::Path { .. } => "path",
+        ObjectKind::Linear { kind, .. } => match kind {
+            LinearKind::Fence => "fence",
+            LinearKind::Wall => "wall",
+            LinearKind::Hedge => "hedge",
+        },
+        ObjectKind::Structure { .. } => "structure",
+        ObjectKind::Plant { .. } => "plant",
+        ObjectKind::Label { .. } => "label",
+        ObjectKind::Dimension { .. } => "dimension",
+    }
+}
+
+const INK: Color = Color(36, 55, 43, 255);
 
 /// Default (fill, stroke) colours for each kind of object.
 pub fn default_style(kind: &ObjectKind) -> (Option<Color>, Option<Color>) {
@@ -49,35 +79,35 @@ pub fn default_style(kind: &ObjectKind) -> (Option<Color>, Option<Color>) {
         ObjectKind::PlotBoundary { .. } => (None, Some(INK)),
         ObjectKind::Area { area_type, .. } => {
             let fill = match area_type {
-                AreaType::Lawn => Color(126, 176, 92, 255),
-                AreaType::Bed => Color(150, 111, 77, 255),
-                AreaType::Paving => Color(190, 186, 178, 255),
-                AreaType::Gravel => Color(214, 205, 186, 255),
-                AreaType::Water => Color(110, 160, 210, 255),
-                AreaType::Other => Color(200, 200, 190, 255),
+                AreaType::Lawn => Color(169, 196, 138, 255),
+                AreaType::Bed => Color(176, 138, 104, 255),
+                AreaType::Paving => Color(211, 208, 198, 255),
+                AreaType::Gravel => Color(226, 218, 198, 255),
+                AreaType::Water => Color(156, 195, 217, 255),
+                AreaType::Other => Color(205, 205, 192, 255),
             };
-            (Some(fill), None)
+            (Some(fill), Some(Color(36, 55, 43, 140)))
         }
         ObjectKind::Structure { .. } => (
-            Some(Color(176, 140, 110, 255)),
-            Some(Color(90, 70, 55, 255)),
+            Some(Color(201, 180, 155, 255)),
+            Some(Color(110, 84, 64, 255)),
         ),
-        ObjectKind::Path { .. } => (None, Some(Color(205, 190, 160, 255))),
+        ObjectKind::Path { .. } => (None, Some(Color(222, 210, 182, 255))),
         ObjectKind::Linear { kind, .. } => {
             let c = match kind {
-                LinearKind::Fence => Color(120, 90, 60, 255),
-                LinearKind::Wall => Color(150, 150, 150, 255),
-                LinearKind::Hedge => Color(70, 120, 60, 255),
+                LinearKind::Fence => Color(138, 104, 76, 255),
+                LinearKind::Wall => Color(176, 172, 162, 255),
+                LinearKind::Hedge => Color(92, 128, 84, 255),
             };
             (None, Some(c))
         }
         ObjectKind::Plant { category, .. } => {
             let fill = match category {
-                PlantCategory::Tree => Color(60, 120, 60, 160),
-                PlantCategory::Shrub => Color(90, 150, 80, 170),
-                _ => Color(140, 180, 100, 170),
+                PlantCategory::Tree => Color(118, 156, 104, 120),
+                PlantCategory::Shrub => Color(132, 170, 110, 160),
+                _ => Color(168, 194, 124, 170),
             };
-            (Some(fill), Some(Color(50, 90, 50, 255)))
+            (Some(fill), Some(Color(52, 84, 58, 255)))
         }
         ObjectKind::Label { .. } | ObjectKind::Dimension { .. } => (None, Some(INK)),
     }
@@ -107,10 +137,16 @@ pub fn outline(kind: &ObjectKind) -> RenderShape {
             closed: shape.closed,
         },
         ObjectKind::Plant {
-            position, spread, ..
-        } => RenderShape::Circle {
+            position,
+            spread,
+            symbol,
+            category,
+            ..
+        } => RenderShape::Plant {
             center: *position,
             r: spread / 2.0,
+            symbol: *symbol,
+            category: *category,
         },
         ObjectKind::Label {
             position,
@@ -146,6 +182,7 @@ pub fn scene(doc: &Document, selection: &[ObjectId]) -> Vec<RenderItem> {
             stroke,
             stroke_width,
             selected,
+            class: style_class(&o.kind),
         };
         let path = |s: &garden_core::geometry::Shape| RenderShape::Path {
             d: s.to_bez_path().to_svg(),
@@ -163,17 +200,7 @@ pub fn scene(doc: &Document, selection: &[ObjectId]) -> Vec<RenderItem> {
             ObjectKind::Linear {
                 shape, thickness, ..
             } => items.push(item(path(shape), None, stroke, Some(*thickness))),
-            ObjectKind::Plant {
-                position, spread, ..
-            } => items.push(item(
-                RenderShape::Circle {
-                    center: *position,
-                    r: spread / 2.0,
-                },
-                fill,
-                stroke,
-                None,
-            )),
+            ObjectKind::Plant { .. } => items.push(item(outline(&o.kind), fill, stroke, None)),
             ObjectKind::Label {
                 position,
                 text,
@@ -219,13 +246,14 @@ mod tests {
     use crate::test_util::{doc_with, lawn_rect, plant_at};
     use garden_core::command::Command;
     use garden_core::geometry::Shape;
+    use garden_core::model::PlantSymbol;
 
     #[test]
     fn scene_follows_z_order_and_skips_hidden_layers() {
         let mut d = doc_with(vec![lawn_rect(), plant_at(1000., 1000., 600.)]);
         let s = scene(&d, &[]);
         assert_eq!(s.len(), 2);
-        assert!(matches!(s[1].shape, RenderShape::Circle { r, .. } if r == 300.));
+        assert!(matches!(s[1].shape, RenderShape::Plant { r, .. } if r == 300.));
         let mut l = d.layers[0].clone();
         l.visible = false;
         d.apply(Command::UpsertLayer { layer: l }, 1).unwrap();
@@ -278,5 +306,43 @@ mod tests {
     #[test]
     fn css_colour() {
         assert_eq!(color_css(Color(10, 20, 30, 255)), "rgba(10,20,30,1.000)");
+    }
+
+    #[test]
+    fn plants_render_as_canopy_symbols() {
+        let d = doc_with(vec![plant_at(1000., 1000., 600.)]);
+        let it = &scene(&d, &[])[0];
+        assert_eq!(
+            it.shape,
+            RenderShape::Plant {
+                center: Point::new(1000., 1000.),
+                r: 300.,
+                symbol: PlantSymbol::Round,
+                category: PlantCategory::Shrub
+            }
+        );
+        assert_eq!(it.class, "plant");
+    }
+
+    #[test]
+    fn items_carry_a_style_class() {
+        let classes: Vec<&str> = scene(&doc_with(crate::test_util::all_kinds_sample()), &[])
+            .iter()
+            .map(|i| i.class)
+            .collect();
+        assert_eq!(
+            classes,
+            vec![
+                "plot",
+                "lawn",
+                "path",
+                "hedge",
+                "structure",
+                "plant",
+                "label",
+                "dimension",
+                "dimension"
+            ]
+        );
     }
 }

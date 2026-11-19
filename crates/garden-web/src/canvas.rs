@@ -1,16 +1,18 @@
-//! The SVG plan view: grid, design, previews, and pointer/wheel handling.
+//! The SVG plan view: events, viewport, and the overlays (scale bar, readout).
 
 use garden_core::geometry::Point;
-use garden_core::model::Color;
-use garden_editor::render::{RenderItem, RenderShape, color_css, scene};
+use garden_core::units::{UnitSystem, format_length};
+use garden_editor::render::scene;
 use garden_editor::state::EditorState;
-use garden_editor::tools::{Input, Modifiers, Preview, ToolKind};
+use garden_editor::tools::{Input, Modifiers, ToolKind};
+use garden_editor::viewport::Viewport;
 use leptos::ev;
 use leptos::prelude::*;
-
-use crate::app::{Cursor, SpaceHeld, now};
 use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
+
+use crate::app::{Cursor, SpaceHeld, now};
+use crate::plan_art::{defs, item_view, preview_view};
 
 fn modifiers(e: &ev::MouseEvent) -> Modifiers {
     Modifiers {
@@ -20,118 +22,76 @@ fn modifiers(e: &ev::MouseEvent) -> Modifiers {
     }
 }
 
-const ACCENT: &str = "var(--accent)";
-const HAIRLINE_PX: f64 = 1.5;
-const LABEL_PX: f64 = 12.0;
-
-fn css(c: Option<Color>) -> String {
-    c.map(color_css).unwrap_or_else(|| "none".to_string())
-}
-
-/// One drawn object. `mm_per_px` converts screen sizes to world sizes.
-fn item_view(it: RenderItem, mm_per_px: f64) -> AnyView {
-    let fill = css(it.fill);
-    let stroke = css(it.stroke);
-    let (stroke_width, vector_effect) = match it.stroke_width {
-        Some(w) => (w, None),
-        None => (HAIRLINE_PX, Some("non-scaling-stroke")),
+/// A "nice" scale-bar length (mm) that is at most `max_px` wide on screen.
+fn scale_bar_length(scale: f64, units: UnitSystem, max_px: f64) -> f64 {
+    let steps: &[f64] = match units {
+        UnitSystem::Metric => &[
+            100., 200., 500., 1000., 2000., 5000., 10_000., 20_000., 50_000., 100_000.,
+        ],
+        UnitSystem::Imperial => &[
+            304.8, 609.6, 1524., 3048., 6096., 15_240., 30_480., 60_960., 152_400.,
+        ],
     };
-    let main = match it.shape.clone() {
-        RenderShape::Path { d, .. } => view! {
-            <path d=d fill=fill stroke=stroke stroke-width=stroke_width vector-effect=vector_effect
-                stroke-linecap="round" stroke-linejoin="round" />
-        }
-        .into_any(),
-        RenderShape::Circle { center, r } => view! {
-            <circle cx=center.x cy=center.y r=r fill=fill stroke=stroke stroke-width=HAIRLINE_PX
-                vector-effect="non-scaling-stroke" />
-        }
-        .into_any(),
-        RenderShape::Line { from, to } => view! {
-            <line x1=from.x y1=from.y x2=to.x y2=to.y stroke=stroke stroke-width=HAIRLINE_PX
-                vector-effect="non-scaling-stroke" />
-        }
-        .into_any(),
-        RenderShape::Text { at, text, size } => {
-            let size = if size > 0.0 {
-                size
-            } else {
-                LABEL_PX * mm_per_px
-            };
-            view! {
-                <text x=at.x y=at.y font-size=size fill=stroke text-anchor="middle"
-                    dominant-baseline="middle" class="label">{text}</text>
-            }
-            .into_any()
-        }
-    };
-    if !it.selected {
-        return main;
-    }
-    let highlight = highlight_view(&it.shape, mm_per_px);
-    view! { <g>{main}{highlight}</g> }.into_any()
-}
-
-/// Accent outline drawn over selected objects and previews.
-fn highlight_view(shape: &RenderShape, mm_per_px: f64) -> AnyView {
-    match shape.clone() {
-        RenderShape::Path { d, .. } => view! {
-            <path d=d fill="none" stroke=ACCENT stroke-width="2" vector-effect="non-scaling-stroke" />
-        }
-        .into_any(),
-        RenderShape::Circle { center, r } => view! {
-            <circle cx=center.x cy=center.y r=r fill="none" stroke=ACCENT stroke-width="2"
-                vector-effect="non-scaling-stroke" />
-        }
-        .into_any(),
-        RenderShape::Line { from, to } => view! {
-            <line x1=from.x y1=from.y x2=to.x y2=to.y stroke=ACCENT stroke-width="2"
-                vector-effect="non-scaling-stroke" />
-        }
-        .into_any(),
-        RenderShape::Text { at, .. } => {
-            let r = 6.0 * mm_per_px;
-            view! {
-                <circle cx=at.x cy=at.y r=r fill="none" stroke=ACCENT stroke-width="2"
-                    vector-effect="non-scaling-stroke" />
-            }
-            .into_any()
-        }
-    }
-}
-
-fn preview_view(p: Preview, mm_per_px: f64) -> impl IntoView {
-    let shapes = p
-        .shapes
+    steps
         .iter()
-        .map(|s| {
-            let outline = highlight_view(s, mm_per_px);
-            view! { <g class="preview">{outline}</g> }
-        })
-        .collect_view();
-    let dims = p
-        .dims
-        .into_iter()
-        .map(|(at, text)| {
-            view! {
-                <text x=at.x y=at.y font-size=LABEL_PX * mm_per_px text-anchor="middle"
-                    dominant-baseline="middle" class="dim">{text}</text>
-            }
-        })
-        .collect_view();
-    let snap = p.snap.map(|s| {
+        .rev()
+        .copied()
+        .find(|mm| mm * scale <= max_px)
+        .unwrap_or(steps[0])
+}
+
+/// Map-style scale bar plus cursor readout, floating over the plan.
+#[component]
+fn PlanLegend() -> impl IntoView {
+    let state = expect_context::<RwSignal<EditorState>>();
+    let Cursor(cursor) = expect_context::<Cursor>();
+    let view_info = Memo::new(move |_| state.with(|s| (s.viewport.scale, s.doc().units)));
+    let bar = move || {
+        let (scale, units) = view_info.get();
+        let len = scale_bar_length(scale, units, 150.0);
+        let px = len * scale;
+        let seg = px / 4.0;
+        let blocks = (0..4)
+            .map(|i| {
+                let class = if i % 2 == 0 { "bar-dark" } else { "bar-light" };
+                view! { <rect x=i as f64 * seg y="0" width=seg height="6" class=class /> }
+            })
+            .collect_view();
         view! {
-            <circle cx=s.point.x cy=s.point.y r=4.0 * mm_per_px class="snap" fill="none" stroke=ACCENT
-                stroke-width="1.5" vector-effect="non-scaling-stroke" />
+            <div class="scale-bar">
+                <svg width=px + 2.0 height="8" viewBox=format!("-1 -1 {} 8", px + 2.0) aria-hidden="true">
+                    {blocks}
+                    <rect x="0" y="0" width=px height="6" class="bar-frame" />
+                </svg>
+                <div class="scale-labels" style=format!("width:{px}px")>
+                    <span>"0"</span>
+                    <span>{format_length(len, units)}</span>
+                </div>
+            </div>
         }
-    });
-    let marquee = p.marquee.map(|r| {
+    };
+    let readout = move || {
+        let (scale, units) = view_info.get();
+        let zoom = (scale / Viewport::DEFAULT_SCALE * 100.0).round();
+        let pos = cursor
+            .get()
+            .map(|p| {
+                format!(
+                    "{}, {}",
+                    format_length(p.x, units),
+                    format_length(p.y, units)
+                )
+            })
+            .unwrap_or_default();
         view! {
-            <rect x=r.x0 y=r.y0 width=r.width() height=r.height() class="marquee"
-                vector-effect="non-scaling-stroke" />
+            <span class="pos">{pos}</span>
+            <span class="zoom">{format!("{zoom}%")}</span>
         }
-    });
-    view! { {shapes}{dims}{snap}{marquee} }
+    };
+    view! {
+        <div class="legend">{bar}</div>
+        <div class="readout">{readout}</div>
+    }
 }
 
 #[component]
@@ -311,11 +271,13 @@ pub fn Canvas() -> impl IntoView {
     view! {
         <svg node_ref=svg_ref class=class on:wheel=on_wheel on:pointerdown=on_down
             on:pointermove=on_move on:pointerup=on_up on:dblclick=on_dblclick on:contextmenu=|e: ev::MouseEvent| e.prevent_default()>
+            {defs()}
             <g transform=transform>
                 {grid}
                 {content}
                 {preview}
             </g>
         </svg>
+        <PlanLegend />
     }
 }

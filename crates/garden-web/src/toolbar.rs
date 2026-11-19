@@ -1,94 +1,127 @@
-//! Tool buttons and document actions.
+//! Tool rail (left) and top bar (document actions, units, snapping).
 
 use garden_core::model::{AreaType, LinearKind, PlantDef, StructureKind};
+use garden_core::units::UnitSystem;
 use garden_editor::state::EditorState;
 use garden_editor::strings::EN;
 use garden_editor::tools::{DrawTarget, LineTarget, ToolKind};
 use leptos::prelude::*;
 
 use crate::app::{LastPlant, now};
+use crate::icons::{Icon, icon};
 
-/// A toolbar entry: label, keyboard shortcut and the tool it selects.
+/// A tool: label, keyboard shortcut, icon, and the group it sits in.
 pub struct ToolEntry {
     pub label: &'static str,
     pub key: char,
+    pub icon: Icon,
+    pub group: u8,
     pub tool: ToolKind,
 }
 
-/// Every drawing tool, in toolbar order. The plant entry uses `plant`.
+/// Every tool, in rail order. Groups: 0 select, 1 ground, 2 lines, 3 things.
 pub fn tool_entries(plant: PlantDef) -> Vec<ToolEntry> {
-    let e = |label, key, tool| ToolEntry { label, key, tool };
+    let e = |label, key, icon, group, tool| ToolEntry {
+        label,
+        key,
+        icon,
+        group,
+        tool,
+    };
+    let line = |kind, thickness, height| {
+        ToolKind::Polyline(LineTarget::Linear {
+            kind,
+            thickness,
+            height,
+        })
+    };
     vec![
-        e(EN.tool_select, 'V', ToolKind::Select),
-        e(EN.tool_plot, 'K', ToolKind::Polygon(DrawTarget::Plot)),
+        e(EN.tool_select, 'V', Icon::Select, 0, ToolKind::Select),
+        e(
+            EN.tool_plot,
+            'K',
+            Icon::Plot,
+            1,
+            ToolKind::Polygon(DrawTarget::Plot),
+        ),
         e(
             EN.tool_bed,
             'B',
+            Icon::Bed,
+            1,
             ToolKind::Polygon(DrawTarget::Area(AreaType::Bed)),
         ),
         e(
             EN.tool_bed_rect,
             'R',
+            Icon::RectBed,
+            1,
             ToolKind::Rect(DrawTarget::Area(AreaType::Bed)),
         ),
         e(
             EN.tool_lawn,
             'E',
+            Icon::Lawn,
+            1,
             ToolKind::Ellipse(DrawTarget::Area(AreaType::Lawn)),
         ),
         e(
             EN.tool_paving,
             'A',
+            Icon::Paving,
+            1,
             ToolKind::Rect(DrawTarget::Area(AreaType::Paving)),
         ),
         e(
             EN.tool_gravel,
             'X',
+            Icon::Gravel,
+            1,
             ToolKind::Polygon(DrawTarget::Area(AreaType::Gravel)),
         ),
         e(
             EN.tool_water,
             'O',
+            Icon::Water,
+            1,
             ToolKind::Ellipse(DrawTarget::Area(AreaType::Water)),
         ),
         e(
             EN.tool_path,
             'P',
+            Icon::Path,
+            2,
             ToolKind::Polyline(LineTarget::Path { width: 900.0 }),
         ),
         e(
             EN.tool_fence,
             'F',
-            ToolKind::Polyline(LineTarget::Linear {
-                kind: LinearKind::Fence,
-                thickness: 50.0,
-                height: 1800.0,
-            }),
+            Icon::Fence,
+            2,
+            line(LinearKind::Fence, 50.0, 1800.0),
         ),
         e(
             EN.tool_wall,
             'W',
-            ToolKind::Polyline(LineTarget::Linear {
-                kind: LinearKind::Wall,
-                thickness: 200.0,
-                height: 1800.0,
-            }),
+            Icon::Wall,
+            2,
+            line(LinearKind::Wall, 200.0, 1800.0),
         ),
         e(
             EN.tool_hedge,
             'H',
-            ToolKind::Polyline(LineTarget::Linear {
-                kind: LinearKind::Hedge,
-                thickness: 600.0,
-                height: 1500.0,
-            }),
+            Icon::Hedge,
+            2,
+            line(LinearKind::Hedge, 600.0, 1500.0),
         ),
         e(
             EN.tool_structure,
             'S',
+            Icon::Structure,
+            3,
             ToolKind::Rect(DrawTarget::Structure(StructureKind::Shed)),
         ),
-        e(EN.tool_plant, 'G', ToolKind::Plant(plant)),
+        e(EN.tool_plant, 'G', Icon::Plant, 3, ToolKind::Plant(plant)),
     ]
 }
 
@@ -101,49 +134,95 @@ pub fn same_tool(a: &ToolKind, b: &ToolKind) -> bool {
 }
 
 #[component]
-pub fn Toolbar() -> impl IntoView {
+pub fn ToolRail() -> impl IntoView {
     let state = expect_context::<RwSignal<EditorState>>();
     let LastPlant(last_plant) = expect_context::<LastPlant>();
     let current = Memo::new(move |_| state.with(|s| s.tool().clone()));
-    let can_undo = Memo::new(move |_| state.with(|s| s.can_undo()));
-    let can_redo = Memo::new(move |_| state.with(|s| s.can_redo()));
-    let has_selection = Memo::new(move |_| state.with(|s| !s.selection.is_empty()));
-
     let buttons = move || {
+        let mut last_group = 0;
         tool_entries(last_plant.get())
             .into_iter()
             .map(|entry| {
+                let divider = (entry.group != last_group).then(|| view! { <hr class="rail-divider" /> });
+                last_group = entry.group;
                 let tool = entry.tool.clone();
                 let pressed = {
                     let tool = tool.clone();
                     move || same_tool(&current.get(), &tool).to_string()
                 };
                 view! {
-                    <button aria-pressed=pressed title=format!("{} ({})", entry.label, entry.key)
+                    {divider}
+                    <button class="rail-tool" aria-pressed=pressed title=format!("{} ({})", entry.label, entry.key)
                         on:click=move |_| state.update(|s| s.set_tool(tool.clone()))>
-                        {entry.label}<span class="key">{entry.key.to_string()}</span>
+                        {icon(entry.icon)}
+                        <span class="rail-label">{entry.label}</span>
                     </button>
                 }
             })
             .collect_view()
     };
+    view! { <nav class="rail" aria-label=EN.tools_label>{buttons}</nav> }
+}
+
+#[component]
+pub fn TopBar() -> impl IntoView {
+    let state = expect_context::<RwSignal<EditorState>>();
+    let can_undo = Memo::new(move |_| state.with(|s| s.can_undo()));
+    let can_redo = Memo::new(move |_| state.with(|s| s.can_redo()));
+    let has_selection = Memo::new(move |_| state.with(|s| !s.selection.is_empty()));
+    let name = Memo::new(move |_| state.with(|s| s.doc().name.clone()));
+    let units = Memo::new(move |_| state.with(|s| s.doc().units));
+    let snap_grid = Memo::new(move |_| state.with(|s| s.snap_grid));
+    let snap_objects = Memo::new(move |_| state.with(|s| s.snap_objects));
+    let set_units = move |u: UnitSystem| state.update(|s| s.set_units(u, now()));
 
     view! {
-        <header class="toolbar">
-            <span class="title">{EN.app_title}</span>
-            {buttons}
-            <span class="sep"></span>
-            <button disabled=move || !can_undo.get() on:click=move |_| { state.update(|s| { s.undo(now()); }); }>
-                {EN.undo}
-            </button>
-            <button disabled=move || !can_redo.get() on:click=move |_| { state.update(|s| { s.redo(now()); }); }>
-                {EN.redo}
-            </button>
-            <button disabled=move || !has_selection.get()
-                on:click=move |_| state.update(|s| s.duplicate_selection(now()))>{EN.duplicate}</button>
-            <button disabled=move || !has_selection.get()
-                on:click=move |_| state.update(|s| s.delete_selection(now()))>{EN.delete}</button>
-            <button on:click=move |_| state.update(|s| s.fit_to_content())>{EN.fit}</button>
+        <header class="topbar">
+            <div class="brand">
+                <span class="brand-mark">{icon(Icon::Leaf)}</span>
+                <span class="brand-name">{EN.app_title}</span>
+                <span class="doc-name">{move || name.get()}</span>
+            </div>
+            <div class="actions">
+                <button class="icon-btn" title=format!("{} (⌘Z)", EN.undo) aria-label=EN.undo
+                    disabled=move || !can_undo.get() on:click=move |_| state.update(|s| { s.undo(now()); })>
+                    {icon(Icon::Undo)}
+                </button>
+                <button class="icon-btn" title=format!("{} (⇧⌘Z)", EN.redo) aria-label=EN.redo
+                    disabled=move || !can_redo.get() on:click=move |_| state.update(|s| { s.redo(now()); })>
+                    {icon(Icon::Redo)}
+                </button>
+                <span class="bar-gap"></span>
+                <button class="icon-btn" title=format!("{} (⌘D)", EN.duplicate) aria-label=EN.duplicate
+                    disabled=move || !has_selection.get() on:click=move |_| state.update(|s| s.duplicate_selection(now()))>
+                    {icon(Icon::Duplicate)}
+                </button>
+                <button class="icon-btn" title=format!("{} (⌫)", EN.delete) aria-label=EN.delete
+                    disabled=move || !has_selection.get() on:click=move |_| state.update(|s| s.delete_selection(now()))>
+                    {icon(Icon::Delete)}
+                </button>
+                <button class="icon-btn" title=EN.fit aria-label=EN.fit on:click=move |_| state.update(|s| s.fit_to_content())>
+                    {icon(Icon::Fit)}
+                </button>
+            </div>
+            <div class="settings">
+                <div class="segmented" role="group">
+                    <button aria-pressed=move || (units.get() == UnitSystem::Metric).to_string()
+                        on:click=move |_| set_units(UnitSystem::Metric)>{EN.units_metric}</button>
+                    <button aria-pressed=move || (units.get() == UnitSystem::Imperial).to_string()
+                        on:click=move |_| set_units(UnitSystem::Imperial)>{EN.units_imperial}</button>
+                </div>
+                <label class="toggle">
+                    <input type="checkbox" prop:checked=move || snap_grid.get()
+                        on:change=move |e| state.update(|s| s.snap_grid = event_target_checked(&e)) />
+                    <span>{EN.snap_grid}</span>
+                </label>
+                <label class="toggle">
+                    <input type="checkbox" prop:checked=move || snap_objects.get()
+                        on:change=move |e| state.update(|s| s.snap_objects = event_target_checked(&e)) />
+                    <span>{EN.snap_objects}</span>
+                </label>
+            </div>
         </header>
     }
 }

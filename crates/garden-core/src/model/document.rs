@@ -60,6 +60,16 @@ impl Document {
         }
     }
 
+    /// True when the whole document can be saved (no NaN or infinite numbers).
+    pub fn is_finite(&self) -> bool {
+        self.objects.iter().all(|o| o.kind.is_finite())
+            && self
+                .background
+                .as_ref()
+                .is_none_or(BackgroundImage::is_finite)
+            && self.custom_plants.iter().all(PlantDef::is_finite)
+    }
+
     pub fn object(&self, id: ObjectId) -> Option<&Object> {
         self.objects.iter().find(|o| o.id == id)
     }

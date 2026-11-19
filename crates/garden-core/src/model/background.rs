@@ -28,6 +28,14 @@ pub enum CalibrationError {
 }
 
 impl BackgroundImage {
+    pub fn is_finite(&self) -> bool {
+        self.origin.x.is_finite()
+            && self.origin.y.is_finite()
+            && self.mm_per_px.is_finite()
+            && self.rotation.is_finite()
+            && self.opacity.is_finite()
+    }
+
     /// Two image pixel positions `a_px` and `b_px` are `real_distance_mm` apart: set the scale.
     pub fn calibrate(
         &mut self,

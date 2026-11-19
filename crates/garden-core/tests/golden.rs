@@ -175,7 +175,7 @@ fn generate_v1_sample() {
             env!("CARGO_MANIFEST_DIR"),
             "/tests/fixtures/v1_sample.garden.json"
         ),
-        io::to_json(&d),
+        io::to_json(&d).unwrap(),
     )
     .unwrap();
 }

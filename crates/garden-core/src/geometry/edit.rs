@@ -1,6 +1,6 @@
 //! Transforms and exact dimension editing ("draw then dimension").
 
-use std::f64::consts::TAU;
+use std::f64::consts::{FRAC_PI_2, TAU};
 
 use kurbo::{Affine, PathEl, Point, Vec2};
 
@@ -116,7 +116,11 @@ impl Shape {
     }
 
     /// Scale about `anchor`. Non-uniform scaling turns arcs into cubics.
+    /// Non-finite factors leave the shape unchanged.
     pub fn scaled(&self, anchor: Point, sx: f64, sy: f64) -> Shape {
+        if !sx.is_finite() || !sy.is_finite() {
+            return self.clone();
+        }
         let a = Affine::translate(anchor.to_vec2())
             * Affine::scale_non_uniform(sx, sy)
             * Affine::translate(-anchor.to_vec2());
@@ -128,14 +132,29 @@ impl Shape {
         };
         let mut s = base.map_points(a);
         let (ax, ay) = (sx.abs(), sy.abs());
+        // Factors along a rotated primitive's own axes, if it stays that primitive.
+        let local = |rotation: f64| -> Option<(f64, f64)> {
+            if uniform {
+                return Some((ax, ay));
+            }
+            let quarter_turns = rotation / FRAC_PI_2;
+            if (quarter_turns - quarter_turns.round()).abs() > 1e-9 {
+                return None; // a non-uniform scale skews it into a different shape
+            }
+            Some(if (quarter_turns.round() as i64).rem_euclid(2) == 1 {
+                (ay, ax)
+            } else {
+                (ax, ay)
+            })
+        };
         s.hint = match self.hint {
             Some(PrimitiveHint::Rect {
                 width,
                 height,
                 rotation,
-            }) => Some(PrimitiveHint::Rect {
-                width: width * ax,
-                height: height * ay,
+            }) => local(rotation).map(|(fx, fy)| PrimitiveHint::Rect {
+                width: width * fx,
+                height: height * fy,
                 rotation,
             }),
             Some(PrimitiveHint::Circle { radius }) if uniform => Some(PrimitiveHint::Circle {
@@ -146,11 +165,13 @@ impl Shape {
                 ry: radius * ay,
                 rotation: 0.0,
             }),
-            Some(PrimitiveHint::Ellipse { rx, ry, rotation }) => Some(PrimitiveHint::Ellipse {
-                rx: rx * ax,
-                ry: ry * ay,
-                rotation,
-            }),
+            Some(PrimitiveHint::Ellipse { rx, ry, rotation }) => {
+                local(rotation).map(|(fx, fy)| PrimitiveHint::Ellipse {
+                    rx: rx * fx,
+                    ry: ry * fy,
+                    rotation,
+                })
+            }
             None => None,
         };
         s
@@ -261,6 +282,9 @@ impl Shape {
         let (prev, v, _) = self.edge(inc)?;
         let (_, next, _) = self.edge(out)?;
         let (a, b) = (prev - v, next - v);
+        if a.hypot() < 1e-9 || b.hypot() < 1e-9 {
+            return None; // no direction to measure from
+        }
         let theta = a.cross(b).atan2(a.dot(b));
         Some((-self.orientation() * theta).rem_euclid(TAU))
     }
@@ -315,7 +339,12 @@ impl Shape {
         let mut s = self.clone();
         s.set_edge_end(out, v + b);
         s.hint = None;
-        Ok(s)
+        // Some angles cannot be reached this way (e.g. a reflex corner in a
+        // triangle flips the winding); refuse rather than silently differ.
+        match s.corner_angle(vertex) {
+            Some(got) if (got - angle).abs() < 1e-6 => Ok(s),
+            _ => Err(EdgeEditError::InvalidValue),
+        }
     }
 
     /// Change the kind of one segment, keeping its end points.

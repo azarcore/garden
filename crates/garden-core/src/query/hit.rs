@@ -7,6 +7,18 @@ pub(crate) fn segment_distance(a: Point, b: Point, p: Point) -> f64 {
     Line::new(a, b).nearest(p, 1e-6).distance_sq.sqrt()
 }
 
+/// Where a dimension line is drawn: the measured segment shifted by `offset` mm
+/// along the unit normal `(-dy, dx) / len` of `from → to`.
+pub fn dimension_line(from: Point, to: Point, offset: f64) -> (Point, Point) {
+    let d = to - from;
+    let len = d.hypot();
+    if len < 1e-9 {
+        return (from, to);
+    }
+    let normal = kurbo::Vec2::new(-d.y, d.x) / len;
+    (from + normal * offset, to + normal * offset)
+}
+
 /// The shape an object is drawn from, if it has one.
 pub(crate) fn object_shape(kind: &ObjectKind) -> Option<&Shape> {
     match kind {
@@ -34,7 +46,10 @@ fn hits(object: &Object, p: Point, tol: f64) -> bool {
             position, spread, ..
         } => position.distance(p) <= spread / 2.0 + tol,
         ObjectKind::Label { position, size, .. } => position.distance(p) <= size + tol,
-        ObjectKind::Dimension { from, to, .. } => segment_distance(*from, *to, p) <= tol,
+        ObjectKind::Dimension { from, to, offset } => {
+            let (a, b) = dimension_line(*from, *to, *offset);
+            segment_distance(a, b, p) <= tol
+        }
     }
 }
 

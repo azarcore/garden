@@ -40,6 +40,10 @@ pub struct PlantDef {
 }
 
 impl PlantDef {
+    pub fn is_finite(&self) -> bool {
+        self.spread.is_finite() && self.height.is_finite()
+    }
+
     /// Create a placed plant. Values are copied so later catalog changes never resize it.
     pub fn place(&self, position: Point, layer: LayerId) -> Object {
         Object::new(

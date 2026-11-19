@@ -87,7 +87,35 @@ pub(crate) fn arc_geometry(from: Point, to: Point, sweep: f64) -> Option<(Point,
     Some((center, r, start_angle))
 }
 
+fn point_finite(p: Point) -> bool {
+    p.x.is_finite() && p.y.is_finite()
+}
+
 impl Shape {
+    /// True when every coordinate, sweep and hint value is a finite number.
+    pub fn is_finite(&self) -> bool {
+        let segments_ok = self.segments.iter().all(|s| match *s {
+            Segment::Line { to } => point_finite(to),
+            Segment::Arc { to, sweep } => point_finite(to) && sweep.is_finite(),
+            Segment::Cubic { c1, c2, to } => {
+                point_finite(c1) && point_finite(c2) && point_finite(to)
+            }
+        });
+        let hint_ok = match self.hint {
+            Some(PrimitiveHint::Rect {
+                width,
+                height,
+                rotation,
+            }) => width.is_finite() && height.is_finite() && rotation.is_finite(),
+            Some(PrimitiveHint::Circle { radius }) => radius.is_finite(),
+            Some(PrimitiveHint::Ellipse { rx, ry, rotation }) => {
+                rx.is_finite() && ry.is_finite() && rotation.is_finite()
+            }
+            None => true,
+        };
+        point_finite(self.start) && segments_ok && hint_ok
+    }
+
     pub fn polyline(points: &[Point], closed: bool) -> Shape {
         let start = points.first().copied().unwrap_or(Point::ZERO);
         let segments = points

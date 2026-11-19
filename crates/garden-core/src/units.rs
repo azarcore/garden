@@ -100,6 +100,55 @@ impl Unit {
     }
 }
 
+/// A comma followed by exactly three digits reads like a thousands separator.
+fn has_thousands_comma(text: &str) -> bool {
+    let c: Vec<char> = text.chars().collect();
+    (0..c.len()).any(|k| {
+        c[k] == ','
+            && c.get(k + 1..k + 4)
+                .is_some_and(|d| d.iter().all(char::is_ascii_digit))
+            && !c.get(k + 4).is_some_and(char::is_ascii_digit)
+    })
+}
+
+fn read_digits(chars: &[char], mut i: usize, allow_dot: bool) -> (String, usize) {
+    let start = i;
+    while i < chars.len() && (chars[i].is_ascii_digit() || (allow_dot && chars[i] == '.')) {
+        i += 1;
+    }
+    (chars[start..i].iter().collect(), i)
+}
+
+/// Read `12`, `1.5`, `3/4` or a mixed number `1 1/2` starting at `i`.
+fn read_number(chars: &[char], i: usize) -> Option<(f64, usize)> {
+    let (whole, mut i) = read_digits(chars, i, true);
+    let mut value: f64 = whole.parse().ok()?;
+    if chars.get(i) == Some(&'/') {
+        let (den, next) = read_digits(chars, i + 1, false);
+        let den: f64 = den.parse().ok()?;
+        if den == 0.0 || whole.contains('.') {
+            return None;
+        }
+        return Some((value / den, next));
+    }
+    // mixed number: whole part, space, then n/d
+    let mut j = i;
+    while j < chars.len() && chars[j].is_whitespace() {
+        j += 1;
+    }
+    let (num, k) = read_digits(chars, j, false);
+    if j > i && !num.is_empty() && chars.get(k) == Some(&'/') {
+        let (den, next) = read_digits(chars, k + 1, false);
+        let (num, den): (f64, f64) = (num.parse().ok()?, den.parse().ok()?);
+        if den == 0.0 || whole.contains('.') {
+            return None;
+        }
+        value += num / den;
+        i = next;
+    }
+    Some((value, i))
+}
+
 /// Parse user input such as `"1,5 m"`, `"120cm"`, `"5' 3\""`, `"5ft 3in"`.
 /// A bare number is metres (metric) or feet (imperial). Returns millimetres.
 pub fn parse_length(input: &str, system: UnitSystem) -> Result<f64, ParseLengthError> {
@@ -111,6 +160,10 @@ pub fn parse_length(input: &str, system: UnitSystem) -> Result<f64, ParseLengthE
         return Err(ParseLengthError::Negative);
     }
     let invalid = || ParseLengthError::Invalid(text.to_string());
+    if has_thousands_comma(text) {
+        // "1,500" could mean 1.5 or 1500: refuse rather than guess.
+        return Err(invalid());
+    }
     let normalized = text.replace(',', ".");
     let chars: Vec<char> = normalized.chars().collect();
 
@@ -123,12 +176,8 @@ pub fn parse_length(input: &str, system: UnitSystem) -> Result<f64, ParseLengthE
         if i >= chars.len() {
             break;
         }
-        let start = i;
-        while i < chars.len() && (chars[i].is_ascii_digit() || chars[i] == '.') {
-            i += 1;
-        }
-        let num: String = chars[start..i].iter().collect();
-        let value: f64 = num.parse().map_err(|_| invalid())?;
+        let (value, next) = read_number(&chars, i).ok_or_else(invalid)?;
+        i = next;
         while i < chars.len() && chars[i].is_whitespace() {
             i += 1;
         }
@@ -151,6 +200,12 @@ pub fn parse_length(input: &str, system: UnitSystem) -> Result<f64, ParseLengthE
             Some(Unit::parse(&unit_text).ok_or_else(invalid)?)
         };
         pairs.push((value, unit));
+        // allow the US "5'-3\"" style between feet and inches
+        if unit == Some(Unit::Ft) {
+            while i < chars.len() && (chars[i].is_whitespace() || chars[i] == '-') {
+                i += 1;
+            }
+        }
     }
 
     let default_unit = match system {

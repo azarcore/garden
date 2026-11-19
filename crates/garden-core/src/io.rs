@@ -20,10 +20,20 @@ pub enum LoadError {
     Migration(String),
 }
 
+#[derive(Debug, thiserror::Error, PartialEq)]
+pub enum SaveError {
+    #[error("the design contains an invalid (non-finite) number")]
+    NonFinite,
+    #[error("could not serialize: {0}")]
+    Serialize(String),
+}
+
 /// Serialize a document as pretty-printed JSON.
-pub fn to_json(doc: &Document) -> String {
-    // Serializing plain data with string keys cannot fail.
-    serde_json::to_string_pretty(doc).unwrap_or_default()
+pub fn to_json(doc: &Document) -> Result<String, SaveError> {
+    if !doc.is_finite() {
+        return Err(SaveError::NonFinite);
+    }
+    serde_json::to_string_pretty(doc).map_err(|e| SaveError::Serialize(e.to_string()))
 }
 
 /// Load a document from any supported schema version.
@@ -83,7 +93,7 @@ mod tests {
             6,
         )
         .unwrap();
-        assert_eq!(from_json(&to_json(&d)).unwrap(), d);
+        assert_eq!(from_json(&to_json(&d).unwrap()).unwrap(), d);
     }
 
     #[test]
@@ -92,14 +102,14 @@ mod tests {
         assert!(matches!(from_json("{}"), Err(LoadError::MissingVersion)));
         assert!(matches!(from_json("[1,2]"), Err(LoadError::MissingVersion)));
         let mut v: serde_json::Value =
-            serde_json::from_str(&to_json(&Document::new("g", 0))).unwrap();
+            serde_json::from_str(&to_json(&Document::new("g", 0)).unwrap()).unwrap();
         v["schema_version"] = 99.into();
         assert!(matches!(
             from_json(&v.to_string()),
             Err(LoadError::TooNew(99))
         ));
         let mut v: serde_json::Value =
-            serde_json::from_str(&to_json(&Document::new("g", 0))).unwrap();
+            serde_json::from_str(&to_json(&Document::new("g", 0)).unwrap()).unwrap();
         v["objects"] = serde_json::json!("not a list");
         assert!(matches!(
             from_json(&v.to_string()),
@@ -110,7 +120,7 @@ mod tests {
     #[test]
     fn ignores_unknown_fields() {
         let mut v: serde_json::Value =
-            serde_json::from_str(&to_json(&Document::new("g", 0))).unwrap();
+            serde_json::from_str(&to_json(&Document::new("g", 0)).unwrap()).unwrap();
         v["future_thing"] = serde_json::json!({"x": 1});
         assert!(from_json(&v.to_string()).is_ok());
     }

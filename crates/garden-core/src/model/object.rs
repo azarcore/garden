@@ -104,6 +104,36 @@ pub struct Object {
     pub modified: i64,
 }
 
+impl ObjectKind {
+    /// True when every number in the geometry is finite (NaN/inf cannot be saved).
+    pub fn is_finite(&self) -> bool {
+        let pt = |p: &Point| p.x.is_finite() && p.y.is_finite();
+        match self {
+            ObjectKind::PlotBoundary { shape } | ObjectKind::Area { shape, .. } => {
+                shape.is_finite()
+            }
+            ObjectKind::Path { shape, width } => shape.is_finite() && width.is_finite(),
+            ObjectKind::Linear {
+                shape,
+                thickness,
+                height,
+                ..
+            } => shape.is_finite() && thickness.is_finite() && height.is_finite(),
+            ObjectKind::Structure {
+                footprint, height, ..
+            } => footprint.is_finite() && height.is_finite(),
+            ObjectKind::Plant {
+                position,
+                spread,
+                height,
+                ..
+            } => pt(position) && spread.is_finite() && height.is_finite(),
+            ObjectKind::Label { position, size, .. } => pt(position) && size.is_finite(),
+            ObjectKind::Dimension { from, to, offset } => pt(from) && pt(to) && offset.is_finite(),
+        }
+    }
+}
+
 impl Object {
     pub fn new(name: impl Into<String>, kind: ObjectKind, layer: LayerId) -> Object {
         Object {

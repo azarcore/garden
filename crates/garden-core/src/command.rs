@@ -67,6 +67,8 @@ pub enum CommandError {
     LayerInUse,
     #[error("last layer")]
     LastLayer,
+    #[error("a number is not finite")]
+    InvalidValue,
 }
 
 impl Document {
@@ -94,6 +96,17 @@ impl Document {
     }
 
     fn apply_inner(&mut self, cmd: Command, now: i64) -> Result<Command, CommandError> {
+        let finite = match &cmd {
+            Command::Insert { object, .. } | Command::Replace { object } => object.kind.is_finite(),
+            Command::SetBackground {
+                background: Some(b),
+            } => b.is_finite(),
+            Command::UpsertCustomPlant { def } => def.is_finite(),
+            _ => true,
+        };
+        if !finite {
+            return Err(CommandError::InvalidValue);
+        }
         Ok(match cmd {
             Command::Insert { mut object, index } => {
                 if self.index_of(object.id).is_some() {
@@ -102,7 +115,10 @@ impl Document {
                 if self.layer(object.layer).is_none() {
                     return Err(CommandError::UnknownLayer);
                 }
-                object.revision = object.revision.max(self.tombstone_revision(object.id)) + 1;
+                object.revision = object
+                    .revision
+                    .max(self.tombstone_revision(object.id))
+                    .saturating_add(1);
                 object.modified = now;
                 self.tombstones.retain(|t| t.id != object.id);
                 let id = object.id;
@@ -116,7 +132,7 @@ impl Document {
                 self.tombstones.retain(|t| t.id != id);
                 self.tombstones.push(Tombstone {
                     id,
-                    revision: object.revision + 1,
+                    revision: object.revision.saturating_add(1),
                     modified: now,
                 });
                 Command::Insert { object, index }
@@ -127,7 +143,7 @@ impl Document {
                     return Err(CommandError::UnknownLayer);
                 }
                 let old = self.objects[index].clone();
-                object.revision = object.revision.max(old.revision) + 1;
+                object.revision = object.revision.max(old.revision).saturating_add(1);
                 object.modified = now;
                 self.objects[index] = object;
                 Command::Replace { object: old }

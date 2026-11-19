@@ -21,7 +21,21 @@ pub(crate) fn handle(s: &mut EditorState, input: Input, now_ms: i64) {
         ToolKind::Ellipse(target) => drag_shape(s, input, now_ms, &target, true),
         ToolKind::Polygon(target) => poly(s, input, now_ms, PolyTarget::Closed(target)),
         ToolKind::Polyline(target) => poly(s, input, now_ms, PolyTarget::Open(target)),
-        ToolKind::Select | ToolKind::Plant(_) => {}
+        ToolKind::Plant(def) => {
+            if let Input::Move(p, m) = input {
+                snapped(s, p, m);
+            }
+            if let Input::Up(p, m) = input {
+                let at = snapped(s, p, m);
+                let object = def.place(at, s.active_layer());
+                let id = object.id;
+                let index = s.doc().objects.len();
+                if s.execute(Command::Insert { object, index }, now_ms) {
+                    s.selection = vec![id];
+                }
+            }
+        }
+        ToolKind::Select => {}
     }
 }
 
@@ -305,6 +319,7 @@ fn poly(s: &mut EditorState, input: Input, now_ms: i64, target: PolyTarget) {
 
 #[cfg(test)]
 mod tests {
+    use crate::catalog::builtin_plants;
     use crate::test_util::{NO, SHIFT, click, plant_at, state_with};
     use crate::tools::{DrawTarget, Input, Key, LineTarget, ToolKind};
     use garden_core::geometry::{Point, PrimitiveHint};
@@ -470,5 +485,23 @@ mod tests {
         s.handle(Input::Key(Key::Escape, NO), 1);
         assert!(s.preview().shapes.is_empty());
         assert_eq!(s.doc().objects.len(), 2);
+    }
+
+    #[test]
+    fn plant_tool_places_copies_and_stays_active() {
+        let mut s = state_with(vec![]);
+        let def = builtin_plants()
+            .into_iter()
+            .find(|p| p.id == "lavender")
+            .unwrap();
+        s.set_tool(ToolKind::Plant(def));
+        click(&mut s, Point::new(1210., 1290.), NO);
+        click(&mut s, Point::new(3000., 3000.), NO);
+        assert_eq!(s.doc().objects.len(), 2);
+        assert!(matches!(s.tool(), ToolKind::Plant(_)));
+        assert!(
+            matches!(&s.doc().objects[0].kind, ObjectKind::Plant { position, spread, catalog_id, .. }
+            if *position == Point::new(1200., 1300.) && *spread == 600. && catalog_id.as_deref() == Some("lavender"))
+        );
     }
 }

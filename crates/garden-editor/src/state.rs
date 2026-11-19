@@ -518,7 +518,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore = "needs the plant tool (task 7)"]
     fn undo_drops_stale_selection() {
         let mut s = state_with(vec![]);
         s.set_tool(ToolKind::Plant(builtin_plants()[7].clone()));

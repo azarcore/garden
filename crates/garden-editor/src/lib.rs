@@ -108,6 +108,7 @@ pub(crate) mod test_util {
 }
 pub mod catalog;
 mod draw;
+pub mod inspector;
 pub mod objects;
 pub mod state;
 pub mod tools;

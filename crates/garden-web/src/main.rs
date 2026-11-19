@@ -2,6 +2,7 @@
 
 mod app;
 mod canvas;
+mod files;
 mod icons;
 mod inspector;
 mod library;

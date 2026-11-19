@@ -243,6 +243,32 @@ pub fn Canvas() -> impl IntoView {
             s.handle(Input::DoubleClick(w, m), now());
         });
     };
+    // Dropping a .garden.json file on the plan imports it.
+    let lib = expect_context::<crate::library::Library>();
+    let crate::library::ImportMessage(import_message) =
+        expect_context::<crate::library::ImportMessage>();
+    let crate::library::DesignsOpen(designs_open) = expect_context::<crate::library::DesignsOpen>();
+    let on_drag_over = move |e: ev::DragEvent| e.prevent_default();
+    let on_drop = move |e: ev::DragEvent| {
+        e.prevent_default();
+        let Some(file) = e
+            .data_transfer()
+            .and_then(|d| d.files())
+            .and_then(|f| f.get(0))
+        else {
+            return;
+        };
+        leptos::task::spawn_local(async move {
+            let Ok(text) = wasm_bindgen_futures::JsFuture::from(file.text()).await else {
+                return;
+            };
+            let Some(text) = text.as_string() else { return };
+            crate::library::import_text(lib, state, &text, import_message).await;
+            if import_message.get_untracked().is_some() {
+                designs_open.set(true); // show why it failed
+            }
+        });
+    };
     let drawing = Memo::new(move |_| state.with(|s| !matches!(s.tool(), ToolKind::Select)));
 
     // Dot grid at the snapping step (coarser when zoomed out).
@@ -321,7 +347,7 @@ pub fn Canvas() -> impl IntoView {
     view! {
         <svg node_ref=svg_ref class=class on:wheel=on_wheel on:pointerdown=on_down
             on:pointermove=on_move on:pointerup=on_up on:pointercancel=on_cancel on:lostpointercapture=on_lost_capture
-            on:dblclick=on_dblclick on:contextmenu=|e: ev::MouseEvent| e.prevent_default()>
+            on:dblclick=on_dblclick on:dragover=on_drag_over on:drop=on_drop on:contextmenu=|e: ev::MouseEvent| e.prevent_default()>
             {defs()}
             <g transform=transform>
                 {grid}

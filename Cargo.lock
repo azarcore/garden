@@ -486,6 +486,7 @@ dependencies = [
  "leptos",
  "serde",
  "serde-wasm-bindgen",
+ "uuid",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",

@@ -415,6 +415,34 @@ button.title-card {
   color: #fff;
 }
 
+.file-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
+
+.file-actions button {
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: var(--tile);
+  font-size: 13px;
+  font-weight: 550;
+  text-align: left;
+}
+
+.file-actions button:hover {
+  background: var(--hover);
+}
+
+.file-message {
+  margin: 10px 4px 0;
+  color: var(--error);
+  font-size: 13px;
+}
+
 @media (max-width: 768px) {
   .designs {
     top: 118px;

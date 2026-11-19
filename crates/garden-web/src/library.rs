@@ -120,6 +120,7 @@ pub fn provide_library(state: RwSignal<EditorState>) -> Library {
     };
     provide_context(lib);
     provide_context(DesignsOpen(RwSignal::new(false)));
+    provide_context(ImportMessage(RwSignal::new(None)));
     spawn_local(async move {
         let store = match storage::open().await {
             Ok(store) => store,
@@ -146,6 +147,10 @@ pub fn provide_library(state: RwSignal<EditorState>) -> Library {
     let _ = set_interval_with_handle(move || tick(lib, state), Duration::from_millis(250));
     lib
 }
+
+/// Feedback from the last import (shown in the My designs panel).
+#[derive(Clone, Copy)]
+pub struct ImportMessage(pub RwSignal<Option<&'static str>>);
 
 /// Whether the "My designs" panel is open.
 #[derive(Clone, Copy)]
@@ -218,6 +223,92 @@ pub async fn delete_design(lib: Library, state: RwSignal<EditorState>, id: Strin
     refresh_summaries(lib).await;
 }
 
+/// Import a `.garden.json` chosen by the person; never overwrites a stored design.
+pub async fn import_file(
+    lib: Library,
+    state: RwSignal<EditorState>,
+    message: RwSignal<Option<&'static str>>,
+) {
+    let Some(text) = crate::files::pick_file(".json,.garden.json,application/json").await else {
+        return;
+    };
+    import_text(lib, state, &text, message).await;
+}
+
+/// Import a design from file contents (picked or dropped on the plan).
+pub async fn import_text(
+    lib: Library,
+    state: RwSignal<EditorState>,
+    text: &str,
+    message: RwSignal<Option<&'static str>>,
+) {
+    use garden_editor::strings::EN;
+    let doc = match io::from_json(text) {
+        Ok(doc) => doc,
+        Err(io::LoadError::TooNew(_)) => {
+            message.set(Some(EN.too_new));
+            return;
+        }
+        Err(_) => {
+            message.set(Some(EN.import_failed));
+            return;
+        }
+    };
+    message.set(None);
+    let _ = save_now(lib, state).await;
+    let ids: Vec<uuid::Uuid> = lib.summaries.with_untracked(|s| {
+        s.iter()
+            .filter_map(|d| uuid::Uuid::parse_str(&d.id).ok())
+            .collect()
+    });
+    let doc = garden_editor::library::prepare_import(doc, &ids, now());
+    if let Some(store) = lib.store.get_value() {
+        let _ = store.put(&doc).await;
+    }
+    show(lib, state, doc);
+    refresh_summaries(lib).await;
+}
+
+/// Download the open design as a `.garden.json` file.
+pub fn download_design(state: RwSignal<EditorState>) {
+    let doc = state.with_untracked(|s| s.doc().clone());
+    if let Ok(json) = io::to_json(&doc) {
+        let name = garden_editor::library::export_file_name(&doc.name, "garden.json");
+        crate::files::download(
+            &name,
+            "application/json",
+            crate::files::Download::Text(json),
+        );
+    }
+}
+
+/// Export the plan as SVG, or PNG (2400 px wide) when `png` is set.
+pub async fn export_image(state: RwSignal<EditorState>, png: bool) {
+    let (name, bounds) = state.with_untracked(|s| {
+        let b = s
+            .doc()
+            .objects
+            .iter()
+            .map(|o| garden_editor::objects::object_bounds(&o.kind))
+            .reduce(|a, b| a.union(b));
+        (s.doc().name.clone(), b)
+    });
+    let Some(bounds) = bounds else { return };
+    let framed = bounds.inflate(1000.0, 1000.0);
+    let Some((svg, w, h)) = crate::files::plan_svg(framed) else {
+        return;
+    };
+    if png {
+        if let Some(blob) = crate::files::svg_to_png(&svg, 2400.0, h / w).await {
+            let file = garden_editor::library::export_file_name(&name, "png");
+            crate::files::download(&file, "image/png", crate::files::Download::Blob(blob));
+        }
+    } else {
+        let file = garden_editor::library::export_file_name(&name, "svg");
+        crate::files::download(&file, "image/svg+xml", crate::files::Download::Text(svg));
+    }
+}
+
 #[component]
 fn DesignRow(summary: DesignSummary) -> impl IntoView {
     let state = expect_context::<RwSignal<EditorState>>();
@@ -280,6 +371,7 @@ pub fn MyDesigns() -> impl IntoView {
     let lib = expect_context::<Library>();
     let DesignsOpen(open) = expect_context::<DesignsOpen>();
     let name = Memo::new(move |_| state.with(|s| s.doc().name.clone()));
+    let ImportMessage(message) = expect_context::<ImportMessage>();
     let close_on_escape = window_event_listener(leptos::ev::keydown, move |e| {
         if e.key() == "Escape" && open.get_untracked() {
             open.set(false);
@@ -310,6 +402,19 @@ pub fn MyDesigns() -> impl IntoView {
                 }>{crate::icons::icon(crate::icons::Icon::Leaf)}{EN.new_design}</button>
                 <h3>{EN.my_designs}</h3>
                 <ul class="design-list">{rows}</ul>
+                <div class="file-actions">
+                    <button on:click=move |_| spawn_local(async move { import_file(lib, state, message).await })>
+                        {EN.import_file}
+                    </button>
+                    <button on:click=move |_| download_design(state)>{EN.export_file}</button>
+                    <button on:click=move |_| spawn_local(async move { export_image(state, false).await })>
+                        {EN.export_svg}
+                    </button>
+                    <button on:click=move |_| spawn_local(async move { export_image(state, true).await })>
+                        {EN.export_png}
+                    </button>
+                </div>
+                {move || message.get().map(|m| view! { <p class="file-message" role="alert">{m}</p> })}
             </section>
         </Show>
     }

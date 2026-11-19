@@ -306,6 +306,19 @@ pub async fn import_text(
             .collect()
     });
     let doc = garden_editor::library::prepare_import(doc, &ids, now());
+    // store any photos the file carries before opening the design
+    if let Some(store) = lib.store.get_value() {
+        for image in io::extract_images(text) {
+            let parts = js_sys::Array::of1(&js_sys::Uint8Array::from(image.bytes.as_slice()));
+            let options = web_sys::BlobPropertyBag::new();
+            options.set_type(&image.mime);
+            if let Ok(blob) =
+                web_sys::Blob::new_with_u8_array_sequence_and_options(&parts, &options)
+            {
+                let _ = store.put_image(&image.image_ref, &blob).await;
+            }
+        }
+    }
     if let Some(store) = lib.store.get_value()
         && store.put(&doc).await.is_err()
     {
@@ -317,9 +330,21 @@ pub async fn import_text(
 }
 
 /// Download the open design as a `.garden.json` file.
-pub fn download_design(state: RwSignal<EditorState>) {
+pub async fn download_design(lib: Library, state: RwSignal<EditorState>) {
     let doc = state.with_untracked(|s| s.doc().clone());
-    if let Ok(json) = io::to_json(&doc) {
+    // carry the traced photo inside the file, if we have it
+    let mut images = Vec::new();
+    if let (Some(bg), Some(store)) = (doc.background.as_ref(), lib.store.get_value())
+        && let Ok(Some(blob)) = store.get_image(&bg.image_ref).await
+        && let Ok(buffer) = wasm_bindgen_futures::JsFuture::from(blob.array_buffer()).await
+    {
+        images.push(io::EmbeddedImage {
+            image_ref: bg.image_ref.clone(),
+            mime: bg.mime.clone(),
+            bytes: js_sys::Uint8Array::new(&buffer).to_vec(),
+        });
+    }
+    if let Ok(json) = io::to_json_with_images(&doc, &images) {
         let name = garden_editor::library::export_file_name(&doc.name, "garden.json");
         crate::files::download(
             &name,
@@ -459,7 +484,7 @@ pub fn MyDesigns() -> impl IntoView {
                     <button on:click=move |_| spawn_local(async move { import_file(lib, state, message).await })>
                         {EN.import_file}
                     </button>
-                    <button on:click=move |_| download_design(state)>{EN.export_file}</button>
+                    <button on:click=move |_| spawn_local(download_design(lib, state))>{EN.export_file}</button>
                     <button on:click=move |_| spawn_local(async move { export_image(state, false).await })>
                         {EN.export_svg}
                     </button>

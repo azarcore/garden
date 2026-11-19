@@ -1,0 +1,150 @@
+use garden_core::geometry::Point;
+use garden_core::model::{Document, PlantDef};
+use garden_editor::catalog::builtin_plants;
+use garden_editor::state::EditorState;
+use garden_editor::strings::EN;
+use garden_editor::tools::{Input, Key, Modifiers};
+use leptos::ev;
+use leptos::prelude::*;
+use wasm_bindgen::JsCast;
+
+use crate::canvas::Canvas;
+use crate::inspector::Inspector;
+use crate::plant_picker::PlantPicker;
+use crate::status::StatusBar;
+use crate::toolbar::{Toolbar, tool_entries};
+
+/// Milliseconds since the Unix epoch.
+pub fn now() -> i64 {
+    js_sys::Date::now() as i64
+}
+
+/// World position of the pointer, for the status bar.
+#[derive(Clone, Copy)]
+pub struct Cursor(pub RwSignal<Option<Point>>);
+
+/// Whether Space is held (pan mode).
+#[derive(Clone, Copy)]
+pub struct SpaceHeld(pub RwSignal<bool>);
+
+/// The plant the plant tool places.
+#[derive(Clone, Copy)]
+pub struct LastPlant(pub RwSignal<PlantDef>);
+
+/// True when the key went to a text field, so shortcuts must not fire.
+fn typing_in_field(e: &ev::KeyboardEvent) -> bool {
+    let Some(el) = e
+        .target()
+        .and_then(|t| t.dyn_into::<web_sys::HtmlElement>().ok())
+    else {
+        return false;
+    };
+    matches!(el.tag_name().as_str(), "INPUT" | "TEXTAREA" | "SELECT") || el.is_content_editable()
+}
+
+fn on_key_down(
+    e: ev::KeyboardEvent,
+    state: RwSignal<EditorState>,
+    space: RwSignal<bool>,
+    plant: RwSignal<PlantDef>,
+) {
+    if typing_in_field(&e) {
+        return;
+    }
+    let m = Modifiers {
+        shift: e.shift_key(),
+        alt: e.alt_key(),
+        ctrl: e.ctrl_key() || e.meta_key(),
+    };
+    let key = e.key();
+    let input_key = match key.as_str() {
+        "Escape" => Some(Key::Escape),
+        "Enter" => Some(Key::Enter),
+        "Delete" => Some(Key::Delete),
+        "Backspace" => Some(Key::Backspace),
+        _ => None,
+    };
+    if let Some(k) = input_key {
+        e.prevent_default();
+        state.update(|s| s.handle(Input::Key(k, m), now()));
+        return;
+    }
+    let lower = key.to_ascii_lowercase();
+    if m.ctrl {
+        match lower.as_str() {
+            "z" if m.shift => state.update(|s| {
+                s.redo(now());
+            }),
+            "z" => state.update(|s| {
+                s.undo(now());
+            }),
+            "y" => state.update(|s| {
+                s.redo(now());
+            }),
+            "d" => state.update(|s| s.duplicate_selection(now())),
+            _ => return,
+        }
+        e.prevent_default();
+        return;
+    }
+    if key == " " {
+        e.prevent_default();
+        space.set(true);
+        return;
+    }
+    if m.alt {
+        return;
+    }
+    let mut chars = lower.chars();
+    if let (Some(c), None) = (chars.next(), chars.next()) {
+        let c = c.to_ascii_uppercase();
+        if let Some(entry) = tool_entries(plant.get_untracked())
+            .into_iter()
+            .find(|t| t.key == c)
+        {
+            state.update(|s| s.set_tool(entry.tool));
+        }
+    }
+}
+
+#[component]
+pub fn App() -> impl IntoView {
+    let state = RwSignal::new(EditorState::new(
+        Document::new(EN.new_design_name, now()),
+        1000.,
+        700.,
+    ));
+    let space = RwSignal::new(false);
+    let default_plant = builtin_plants()
+        .into_iter()
+        .find(|p| p.id == "lavender")
+        .unwrap_or_else(|| builtin_plants()[0].clone());
+    let plant = RwSignal::new(default_plant);
+    provide_context(state);
+    provide_context(Cursor(RwSignal::new(None)));
+    provide_context(SpaceHeld(space));
+    provide_context(LastPlant(plant));
+
+    let down = window_event_listener(ev::keydown, move |e| on_key_down(e, state, space, plant));
+    let up = window_event_listener(ev::keyup, move |e| {
+        if e.key() == " " {
+            space.set(false);
+        }
+    });
+    on_cleanup(move || {
+        down.remove();
+        up.remove();
+    });
+
+    view! {
+        <div class="app">
+            <Toolbar />
+            <PlantPicker />
+            <main class="canvas-cell">
+                <Canvas />
+            </main>
+            <Inspector />
+            <StatusBar />
+        </div>
+    }
+}

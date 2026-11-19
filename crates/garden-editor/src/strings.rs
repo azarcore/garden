@@ -1,12 +1,13 @@
 //! All user-visible English text, kept in one place so it can be translated later.
 
-use garden_core::model::{AreaType, LinearKind, ObjectKind, StructureKind};
+use garden_core::model::{AreaType, LinearKind, ObjectKind, PlantCategory, StructureKind};
 
 pub struct Strings {
     pub app_title: &'static str,
     pub tool_select: &'static str,
     pub tool_plot: &'static str,
     pub tool_bed: &'static str,
+    pub tool_bed_rect: &'static str,
     pub tool_lawn: &'static str,
     pub tool_paving: &'static str,
     pub tool_gravel: &'static str,
@@ -32,6 +33,9 @@ pub struct Strings {
     pub field_height: &'static str,
     pub field_spread: &'static str,
     pub field_text: &'static str,
+    pub field_type: &'static str,
+    pub field_locked: &'static str,
+    pub plants_heading: &'static str,
     pub err_empty: &'static str,
     pub err_not_a_length: &'static str,
     pub err_must_be_positive: &'static str,
@@ -59,6 +63,15 @@ pub struct Strings {
     pub kind_plant: &'static str,
     pub kind_label: &'static str,
     pub kind_dimension: &'static str,
+    pub cat_tree: &'static str,
+    pub cat_shrub: &'static str,
+    pub cat_perennial: &'static str,
+    pub cat_annual: &'static str,
+    pub cat_grass: &'static str,
+    pub cat_climber: &'static str,
+    pub cat_vegetable: &'static str,
+    pub cat_herb: &'static str,
+    pub cat_other: &'static str,
 }
 
 pub static EN: Strings = Strings {
@@ -66,6 +79,7 @@ pub static EN: Strings = Strings {
     tool_select: "Select",
     tool_plot: "Plot",
     tool_bed: "Bed",
+    tool_bed_rect: "Rect bed",
     tool_lawn: "Lawn",
     tool_paving: "Paving",
     tool_gravel: "Gravel",
@@ -91,6 +105,9 @@ pub static EN: Strings = Strings {
     field_height: "Height",
     field_spread: "Spread",
     field_text: "Text",
+    field_type: "Type",
+    field_locked: "Locked",
+    plants_heading: "Plants",
     err_empty: "Can't be empty",
     err_not_a_length: "Not a length, try e.g. 1.2 m",
     err_must_be_positive: "Must be more than zero",
@@ -117,7 +134,31 @@ pub static EN: Strings = Strings {
     kind_plant: "Plant",
     kind_label: "Label",
     kind_dimension: "Dimension",
+    cat_tree: "Trees",
+    cat_shrub: "Shrubs",
+    cat_perennial: "Perennials",
+    cat_annual: "Annuals",
+    cat_grass: "Grasses",
+    cat_climber: "Climbers",
+    cat_vegetable: "Vegetables",
+    cat_herb: "Herbs",
+    cat_other: "Other",
 };
+
+/// Heading for a group of plants.
+pub fn category_label(s: &Strings, c: PlantCategory) -> &'static str {
+    match c {
+        PlantCategory::Tree => s.cat_tree,
+        PlantCategory::Shrub => s.cat_shrub,
+        PlantCategory::Perennial => s.cat_perennial,
+        PlantCategory::Annual => s.cat_annual,
+        PlantCategory::Grass => s.cat_grass,
+        PlantCategory::Climber => s.cat_climber,
+        PlantCategory::Vegetable => s.cat_vegetable,
+        PlantCategory::Herb => s.cat_herb,
+        PlantCategory::Other => s.cat_other,
+    }
+}
 
 /// Human name for what an object is.
 pub fn kind_label(s: &Strings, kind: &ObjectKind) -> &'static str {

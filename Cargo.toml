@@ -4,3 +4,8 @@ members = ["crates/*"]
 
 [workspace.package]
 edition = "2024"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1

@@ -151,9 +151,11 @@ const GROUND_Y: f64 = -0.01;
 /// How far the ground reaches beyond the design (metres).
 const GROUND_MARGIN_M: f64 = 10.0;
 /// Each later object sits this much higher, so overlapping surfaces don't flicker.
-const LAYER_STEP_M: f64 = 0.0002;
+const LAYER_STEP_M: f64 = 0.001;
+/// Flat surfaces (other than the plot) start this far above the ground.
+const FLAT_BASE_M: f64 = 0.004;
 /// Flat surfaces never rise more than this above their base height.
-const MAX_LIFT_M: f64 = 0.02;
+const MAX_LIFT_M: f64 = 0.03;
 /// Raised beds stand this high.
 const BED_HEIGHT_M: f64 = 0.12;
 /// Plants are never flatter than this (metres).
@@ -165,17 +167,12 @@ const CAMERA_PITCH: f32 = 0.6;
 const GROUND_COLOR: Color = Color(196, 207, 184, 255);
 const PLOT_COLOR: Color = Color(236, 238, 226, 255);
 
-/// Height of a flat surface of this kind (before the per-object step).
+/// Height of a flat surface before the per-object step: the plot at ground
+/// level, everything else just above it. What is drawn later sits higher, as in 2D.
 fn surface_height(kind: SurfaceKind) -> f64 {
     match kind {
         SurfaceKind::Plot => 0.0,
-        SurfaceKind::Water => 0.002,
-        SurfaceKind::Lawn => 0.004,
-        SurfaceKind::Area => 0.005,
-        SurfaceKind::Gravel => 0.006,
-        SurfaceKind::Paving => 0.008,
-        SurfaceKind::Path => 0.012,
-        _ => 0.0,
+        _ => FLAT_BASE_M,
     }
 }
 
@@ -224,10 +221,8 @@ pub fn build(doc: &Document) -> Scene {
         }
         let b = object_bounds(&o.kind);
         bounds = Some(bounds.map_or(b, |a| a.union(b)));
-        let flat = matches!(
-            o.kind,
-            ObjectKind::PlotBoundary { .. } | ObjectKind::Area { .. } | ObjectKind::Path { .. }
-        );
+        // the plot is the ground itself: it stays at the bottom, unstacked
+        let flat = matches!(o.kind, ObjectKind::Area { .. } | ObjectKind::Path { .. });
         let lift = if flat {
             surfaces_so_far += 1;
             (LAYER_STEP_M * (surfaces_so_far - 1) as f64).min(MAX_LIFT_M)
@@ -880,6 +875,60 @@ mod tests {
         let s = build(&d);
         assert_eq!(s.skipped, 2);
         assert!(s.meshes.iter().all(|m| m.kind != SurfaceKind::Lawn));
+    }
+
+    #[test]
+    fn later_surfaces_sit_on_top_like_in_2d() {
+        // a pond drawn on paving, and paving laid over a lawn
+        let s = build(&doc_with(vec![
+            ObjectKind::Area {
+                area_type: AreaType::Paving,
+                shape: Shape::rect(Point::ZERO, 4000., 4000.),
+            },
+            ObjectKind::Area {
+                area_type: AreaType::Water,
+                shape: Shape::circle(Point::new(2000., 2000.), 600.),
+            },
+            lawn_rect(),
+            ObjectKind::Area {
+                area_type: AreaType::Paving,
+                shape: Shape::rect(Point::new(1000., 1000.), 1000., 1000.),
+            },
+        ]));
+        let y = |kind: SurfaceKind, nth: usize| {
+            s.meshes
+                .iter()
+                .filter(|m| m.kind == kind)
+                .nth(nth)
+                .unwrap()
+                .positions[0][1]
+        };
+        assert!(y(SurfaceKind::Water, 0) > y(SurfaceKind::Paving, 0));
+        assert!(y(SurfaceKind::Paving, 1) > y(SurfaceKind::Lawn, 0));
+        // far enough apart not to flicker when seen from a distance
+        assert!(y(SurfaceKind::Water, 0) - y(SurfaceKind::Paving, 0) >= 0.001 - 1e-6);
+    }
+
+    #[test]
+    fn the_plot_stays_underneath_whatever_order_it_was_drawn_in() {
+        let mut kinds: Vec<ObjectKind> = (0..10).map(|_| lawn_rect()).collect();
+        kinds.push(ObjectKind::PlotBoundary {
+            shape: Shape::rect(Point::ZERO, 10_000., 10_000.),
+        });
+        let s = build(&doc_with(kinds));
+        let plot = s
+            .meshes
+            .iter()
+            .find(|m| m.kind == SurfaceKind::Plot)
+            .unwrap()
+            .positions[0][1];
+        let lowest_lawn = s
+            .meshes
+            .iter()
+            .filter(|m| m.kind == SurfaceKind::Lawn)
+            .map(|m| m.positions[0][1])
+            .fold(f32::MAX, f32::min);
+        assert!(plot < lowest_lawn, "plot {plot} vs lawn {lowest_lawn}");
     }
 
     #[test]

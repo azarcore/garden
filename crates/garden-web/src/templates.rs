@@ -30,7 +30,7 @@ fn thumbnail(t: &Template) -> impl IntoView + use<> {
         .map(|it| item_view(it, mm_per_px))
         .collect_view();
     view! {
-        <svg class="template-thumb plan" aria-hidden="true" preserveAspectRatio="xMidYMid meet"
+        <svg class="template-thumb plan-thumb" aria-hidden="true" preserveAspectRatio="xMidYMid meet"
             viewBox=format!("{} {} {} {}", -margin, -margin, w + 2.0 * margin, h + 2.0 * margin)>
             {items}
         </svg>
@@ -59,7 +59,21 @@ pub fn TemplateChooser() -> impl IntoView {
         });
     };
     let message = lib.message;
-    // drawn once, the first time the chooser opens
+    // keyboard focus starts on the first choice, not on the page behind
+    Effect::new(move |_| {
+        if open.get() {
+            request_animation_frame(|| {
+                let first = web_sys::window()
+                    .and_then(|w| w.document())
+                    .and_then(|d| d.query_selector(".chooser .template-tile").ok().flatten())
+                    .and_then(|e| wasm_bindgen::JsCast::dyn_into::<web_sys::HtmlElement>(e).ok());
+                if let Some(el) = first {
+                    let _ = el.focus();
+                }
+            });
+        }
+    });
+    // rebuilt each time the chooser opens (cheap; keeps the units current)
     let tiles = move || {
         let units = state.with_untracked(|s| s.doc().units);
         let blank = view! {
@@ -110,7 +124,11 @@ pub fn EmptyPlanPrompt() -> impl IntoView {
     let ChooserOpen(open) = expect_context::<ChooserOpen>();
     let empty = Memo::new(move |_| {
         state.with(|s| {
-            s.doc().objects.is_empty() && matches!(s.tool(), ToolKind::Select) && !s.is_busy()
+            // not while a traced photo is in, which people draw over next
+            s.doc().objects.is_empty()
+                && s.doc().background.is_none()
+                && matches!(s.tool(), ToolKind::Select)
+                && !s.is_busy()
         })
     });
     view! {

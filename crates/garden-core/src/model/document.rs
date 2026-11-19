@@ -1,0 +1,83 @@
+use serde::{Deserialize, Serialize};
+use uuid::Uuid;
+
+use super::{BackgroundImage, LayerId, Object, ObjectId, PlantDef};
+use crate::io::SCHEMA_VERSION;
+use crate::units::UnitSystem;
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Layer {
+    pub id: LayerId,
+    pub name: String,
+    pub visible: bool,
+    pub locked: bool,
+}
+
+/// Marker left behind when an object is deleted, so future sync can see the delete.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Tombstone {
+    pub id: ObjectId,
+    pub revision: u64,
+    pub modified: i64,
+}
+
+/// A whole garden design.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct Document {
+    pub schema_version: u32,
+    pub id: Uuid,
+    pub name: String,
+    pub created: i64,
+    pub modified: i64,
+    pub units: UnitSystem,
+    pub layers: Vec<Layer>,
+    /// Drawing order: first is bottom.
+    pub objects: Vec<Object>,
+    pub tombstones: Vec<Tombstone>,
+    pub background: Option<BackgroundImage>,
+    pub custom_plants: Vec<PlantDef>,
+}
+
+impl Document {
+    pub fn new(name: impl Into<String>, now_ms: i64) -> Document {
+        Document {
+            schema_version: SCHEMA_VERSION,
+            id: Uuid::new_v4(),
+            name: name.into(),
+            created: now_ms,
+            modified: now_ms,
+            units: UnitSystem::default(),
+            layers: vec![Layer { id: LayerId::new(), name: "Garden".into(), visible: true, locked: false }],
+            objects: Vec::new(),
+            tombstones: Vec::new(),
+            background: None,
+            custom_plants: Vec::new(),
+        }
+    }
+
+    pub fn object(&self, id: ObjectId) -> Option<&Object> {
+        self.objects.iter().find(|o| o.id == id)
+    }
+
+    pub fn index_of(&self, id: ObjectId) -> Option<usize> {
+        self.objects.iter().position(|o| o.id == id)
+    }
+
+    pub fn layer(&self, id: LayerId) -> Option<&Layer> {
+        self.layers.iter().find(|l| l.id == id)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn new_document_has_default_layer() {
+        let d = Document::new("My garden", 1_700_000_000_000);
+        assert_eq!(d.layers.len(), 1);
+        assert_eq!(d.layers[0].name, "Garden");
+        assert_eq!(d.created, 1_700_000_000_000);
+        assert_eq!(d.schema_version, 1);
+    }
+}

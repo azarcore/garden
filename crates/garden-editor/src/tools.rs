@@ -71,3 +71,38 @@ pub struct Preview {
     pub snap: Option<SnapResult>,
     pub marquee: Option<kurbo::Rect>,
 }
+
+/// One line telling the person what to do next with `tool`.
+pub fn hint(tool: &ToolKind, points_placed: usize, s: &crate::strings::Strings) -> &'static str {
+    match tool {
+        ToolKind::Select => s.hint_select,
+        ToolKind::Rect(_) | ToolKind::Ellipse(_) => s.hint_drag,
+        ToolKind::Polygon(_) if points_placed == 0 => s.hint_shape_start,
+        ToolKind::Polygon(_) => s.hint_shape_more,
+        ToolKind::Polyline(_) if points_placed == 0 => s.hint_line_start,
+        ToolKind::Polyline(_) => s.hint_line_more,
+        ToolKind::Plant(_) => s.hint_plant,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::strings::EN;
+    use garden_core::model::AreaType;
+
+    #[test]
+    fn hints_explain_how_to_use_each_tool() {
+        let line = ToolKind::Polyline(LineTarget::Path { width: 900. });
+        assert_eq!(hint(&line, 0, &EN), EN.hint_line_start);
+        assert_eq!(hint(&line, 2, &EN), EN.hint_line_more);
+        let bed = ToolKind::Polygon(DrawTarget::Area(AreaType::Bed));
+        assert_eq!(hint(&bed, 0, &EN), EN.hint_shape_start);
+        assert_eq!(hint(&bed, 3, &EN), EN.hint_shape_more);
+        assert_eq!(
+            hint(&ToolKind::Rect(DrawTarget::Plot), 0, &EN),
+            EN.hint_drag
+        );
+        assert_eq!(hint(&ToolKind::Select, 0, &EN), EN.hint_select);
+    }
+}

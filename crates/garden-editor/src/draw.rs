@@ -537,4 +537,28 @@ mod tests {
         s.handle(Input::Up(Point::new(1060., 1060.), NO), 1);
         assert!(s.doc().objects.is_empty());
     }
+
+    #[test]
+    fn switching_tool_finishes_a_line_in_progress() {
+        let mut s = state_with(vec![]);
+        s.set_tool(ToolKind::Polyline(LineTarget::Path { width: 900. }));
+        click(&mut s, Point::new(0., 0.), NO);
+        click(&mut s, Point::new(5000., 0.), NO);
+        assert_eq!(s.points_placed(), 2);
+        s.switch_tool(ToolKind::Select, 1);
+        assert_eq!(s.doc().objects.len(), 1);
+        assert_eq!(s.tool(), &ToolKind::Select);
+        assert_eq!(s.points_placed(), 0);
+    }
+
+    #[test]
+    fn switching_tool_drops_a_shape_that_cannot_be_finished() {
+        let mut s = state_with(vec![]);
+        s.set_tool(ToolKind::Polygon(DrawTarget::Area(AreaType::Bed)));
+        click(&mut s, Point::new(0., 0.), NO);
+        click(&mut s, Point::new(3000., 0.), NO);
+        s.switch_tool(ToolKind::Select, 1);
+        assert!(s.doc().objects.is_empty());
+        assert_eq!(s.tool(), &ToolKind::Select);
+    }
 }

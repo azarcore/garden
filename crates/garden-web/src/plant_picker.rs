@@ -8,7 +8,7 @@ use garden_editor::strings::{EN, category_label};
 use garden_editor::tools::ToolKind;
 use leptos::prelude::*;
 
-use crate::app::LastPlant;
+use crate::app::{LastPlant, now};
 use crate::plan_art::plant_swatch;
 
 #[component]
@@ -45,7 +45,7 @@ pub fn PlantPicker() -> impl IntoView {
                                 title=title
                                 on:click=move |_| {
                                     last_plant.set(p.clone());
-                                    state.update(|s| s.set_tool(ToolKind::Plant(p.clone())));
+                                    state.update(|s| s.switch_tool(ToolKind::Plant(p.clone()), now()));
                                 }>
                                 {swatch}
                                 <span class="specimen-name">{name.clone()}</span>

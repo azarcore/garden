@@ -519,6 +519,49 @@ button:disabled {
   stroke-dasharray: 6 4;
 }
 
+.preview.open {
+  fill: none;
+}
+
+/* what to do next (above the dock) */
+.hint-bar {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  bottom: 88px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: calc(100vw - 32px);
+  padding: 6px 6px 6px 14px;
+  border-radius: 999px;
+  background: var(--tag);
+  color: var(--tag-ink);
+  font-size: 13px;
+  font-weight: 500;
+  box-shadow: var(--card-shadow);
+}
+
+.hint-text {
+  padding-right: 8px;
+}
+
+.hint-btn {
+  padding: 5px 12px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--tag-ink) 14%, transparent);
+  color: var(--tag-ink);
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.hint-btn.primary {
+  background: var(--accent);
+  color: #fff;
+}
+
 .snap circle,
 .snap path {
   fill: none;
@@ -854,8 +897,9 @@ button:disabled {
   }
 
   .controls {
-    top: 10px;
-    right: 10px;
+    top: 66px;
+    left: 10px;
+    right: auto;
     padding: 4px;
   }
 
@@ -869,8 +913,25 @@ button:disabled {
     right: 10px;
     bottom: 10px;
     transform: none;
-    overflow-x: auto;
-    justify-content: flex-start;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .dock-sep {
+    display: none;
+  }
+
+  .hint-bar.idle {
+    display: none;
+  }
+
+  .hint-bar {
+    bottom: 124px;
+    flex-wrap: wrap;
+    justify-content: center;
+    border-radius: 16px;
+    padding: 8px 10px;
+    text-align: center;
   }
 
   .legend {
@@ -881,7 +942,7 @@ button:disabled {
     top: auto;
     left: 10px;
     right: 10px;
-    bottom: 78px;
+    bottom: 124px;
     width: auto;
     max-height: 40vh;
   }
@@ -890,7 +951,7 @@ button:disabled {
     top: auto;
     right: 10px;
     left: 10px;
-    bottom: 78px;
+    bottom: 124px;
     width: auto;
     max-height: 45vh;
   }

@@ -356,7 +356,11 @@ fn symbol_class(s: PlantSymbol) -> &'static str {
 /// Outline used for selection highlights and drawing previews.
 pub fn highlight_view(shape: &RenderShape, mm_per_px: f64, class: &'static str) -> AnyView {
     match shape.clone() {
-        RenderShape::Path { d, .. } => view! { <path d=d class=class vector-effect="non-scaling-stroke" /> }.into_any(),
+        RenderShape::Path { d, closed } => {
+            // open lines (paths, fences) must not look like filled areas
+            let class = if closed { class.to_string() } else { format!("{class} open") };
+            view! { <path d=d class=class vector-effect="non-scaling-stroke" /> }.into_any()
+        }
         RenderShape::Plant { center, r, .. } => view! {
             <circle cx=center.x cy=center.y r=r + 2.0 * mm_per_px class=class vector-effect="non-scaling-stroke" />
         }

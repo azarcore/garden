@@ -4,7 +4,7 @@ use garden_core::model::{AreaType, LinearKind, ObjectKind, PlantDef, StructureKi
 use garden_core::units::{UnitSystem, format_length};
 use garden_editor::state::EditorState;
 use garden_editor::strings::EN;
-use garden_editor::tools::{DrawTarget, LineTarget, ToolKind};
+use garden_editor::tools::{DrawTarget, Input, Key, LineTarget, Modifiers, ToolKind, hint};
 use leptos::prelude::*;
 
 use crate::app::{LastPlant, now};
@@ -155,7 +155,7 @@ pub fn ToolDock() -> impl IntoView {
                     {divider}
                     <button class="dock-tool" class:plant-tool=is_plant aria-pressed=pressed aria-label=entry.label
                         data-tip=format!("{}  {}", entry.label, entry.key)
-                        on:click=move |_| state.update(|s| s.set_tool(tool.clone()))>
+                        on:click=move |_| state.update(|s| s.switch_tool(tool.clone(), now()))>
                         {icon(entry.icon)}
                     </button>
                 }
@@ -163,6 +163,27 @@ pub fn ToolDock() -> impl IntoView {
             .collect_view()
     };
     view! { <nav class="card dock" aria-label=EN.tools_label>{buttons}</nav> }
+}
+
+/// What to do next with the current tool, plus Finish / Undo point / Cancel
+/// while a line or shape is being drawn (so no keyboard is needed).
+#[component]
+pub fn HintBar() -> impl IntoView {
+    let state = expect_context::<RwSignal<EditorState>>();
+    let info = Memo::new(move |_| {
+        state.with(|s| (hint(s.tool(), s.points_placed(), &EN), s.points_placed()))
+    });
+    let key = move |k: Key| state.update(|s| s.handle(Input::Key(k, Modifiers::default()), now()));
+    view! {
+        <div class="hint-bar" role="status" class:idle=move || state.with(|s| matches!(s.tool(), ToolKind::Select))>
+            <span class="hint-text">{move || info.get().0}</span>
+            <Show when=move || { info.get().1 > 0 }>
+                <button class="hint-btn primary" on:click=move |_| key(Key::Enter)>{EN.finish}</button>
+                <button class="hint-btn" on:click=move |_| state.update(|s| { s.undo(now()); })>{EN.undo_point}</button>
+                <button class="hint-btn" on:click=move |_| key(Key::Escape)>{EN.cancel}</button>
+            </Show>
+        </div>
+    }
 }
 
 /// Top-left: what this design is.

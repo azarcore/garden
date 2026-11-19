@@ -105,6 +105,23 @@ impl EditorState {
         self.cancel_gesture();
     }
 
+    /// Switch tools the way a person expects: a line or shape being drawn is
+    /// finished first (if it has enough points), not thrown away.
+    pub fn switch_tool(&mut self, tool: ToolKind, now_ms: i64) {
+        if self.points_placed() > 0 {
+            self.handle(Input::Key(Key::Enter, Modifiers::default()), now_ms);
+        }
+        self.set_tool(tool);
+    }
+
+    /// How many points the polygon/line being drawn has (0 when not drawing one).
+    pub fn points_placed(&self) -> usize {
+        match &self.gesture {
+            Gesture::Poly { points, .. } => points.len(),
+            _ => 0,
+        }
+    }
+
     pub fn preview(&self) -> &Preview {
         &self.preview
     }

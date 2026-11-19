@@ -11,7 +11,7 @@ use wasm_bindgen::JsCast;
 use crate::canvas::Canvas;
 use crate::inspector::Inspector;
 use crate::plant_picker::PlantPicker;
-use crate::toolbar::{ControlsCard, TitleCard, ToolDock, tool_entries};
+use crate::toolbar::{ControlsCard, HintBar, TitleCard, ToolDock, tool_entries};
 
 /// Milliseconds since the Unix epoch.
 pub fn now() -> i64 {
@@ -101,7 +101,7 @@ fn on_key_down(
             .into_iter()
             .find(|t| t.key == c)
         {
-            state.update(|s| s.set_tool(entry.tool));
+            state.update(|s| s.switch_tool(entry.tool, now()));
         }
     }
 }
@@ -147,6 +147,7 @@ pub fn App() -> impl IntoView {
             <ControlsCard />
             <PlantPicker />
             <Inspector />
+            <HintBar />
             <ToolDock />
         </div>
     }

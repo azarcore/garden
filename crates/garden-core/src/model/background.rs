@@ -29,7 +29,12 @@ pub enum CalibrationError {
 
 impl BackgroundImage {
     /// Two image pixel positions `a_px` and `b_px` are `real_distance_mm` apart: set the scale.
-    pub fn calibrate(&mut self, a_px: Point, b_px: Point, real_distance_mm: f64) -> Result<(), CalibrationError> {
+    pub fn calibrate(
+        &mut self,
+        a_px: Point,
+        b_px: Point,
+        real_distance_mm: f64,
+    ) -> Result<(), CalibrationError> {
         let px = a_px.distance(b_px);
         if !px.is_finite() || px < 1e-9 {
             return Err(CalibrationError::SamePoint);
@@ -65,10 +70,17 @@ mod tests {
             opacity: 0.5,
             locked: false,
         };
-        b.calibrate(Point::new(100., 100.), Point::new(400., 500.), 10_000.).unwrap(); // 500 px apart
+        b.calibrate(Point::new(100., 100.), Point::new(400., 500.), 10_000.)
+            .unwrap(); // 500 px apart
         assert!((b.mm_per_px - 20.).abs() < 1e-9);
         assert_eq!(b.px_to_world(Point::new(10., 0.)), Point::new(200., 0.));
-        assert_eq!(b.calibrate(Point::ZERO, Point::ZERO, 10.), Err(CalibrationError::SamePoint));
-        assert_eq!(b.calibrate(Point::ZERO, Point::new(1., 0.), -5.), Err(CalibrationError::InvalidDistance));
+        assert_eq!(
+            b.calibrate(Point::ZERO, Point::ZERO, 10.),
+            Err(CalibrationError::SamePoint)
+        );
+        assert_eq!(
+            b.calibrate(Point::ZERO, Point::new(1., 0.), -5.),
+            Err(CalibrationError::InvalidDistance)
+        );
     }
 }

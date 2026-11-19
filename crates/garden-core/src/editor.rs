@@ -11,7 +11,11 @@ pub struct Editor {
 
 impl Editor {
     pub fn new(doc: Document) -> Editor {
-        Editor { doc, undo: Vec::new(), redo: Vec::new() }
+        Editor {
+            doc,
+            undo: Vec::new(),
+            redo: Vec::new(),
+        }
     }
 
     pub fn doc(&self) -> &Document {
@@ -36,7 +40,12 @@ impl Editor {
         Self::step(&mut self.doc, &mut self.redo, &mut self.undo, now_ms)
     }
 
-    fn step(doc: &mut Document, from: &mut Vec<Command>, to: &mut Vec<Command>, now_ms: i64) -> bool {
+    fn step(
+        doc: &mut Document,
+        from: &mut Vec<Command>,
+        to: &mut Vec<Command>,
+        now_ms: i64,
+    ) -> bool {
         let Some(cmd) = from.pop() else { return false };
         match doc.apply(cmd.clone(), now_ms) {
             Ok(inverse) => {
@@ -74,8 +83,23 @@ mod tests {
         let doc = Document::new("g", 0);
         let l = doc.layers[0].id;
         let mut e = Editor::new(doc);
-        let o = Object::new("x", ObjectKind::Label { position: Point::ZERO, text: "x".into(), size: 1. }, l);
-        e.execute(Command::Insert { object: o.clone(), index: 0 }, 1).unwrap();
+        let o = Object::new(
+            "x",
+            ObjectKind::Label {
+                position: Point::ZERO,
+                text: "x".into(),
+                size: 1.,
+            },
+            l,
+        );
+        e.execute(
+            Command::Insert {
+                object: o.clone(),
+                index: 0,
+            },
+            1,
+        )
+        .unwrap();
         assert!(e.undo(2));
         assert!(e.doc().objects.is_empty());
         assert!(e.redo(3));
@@ -97,7 +121,15 @@ mod tests {
     #[test]
     fn failed_execute_leaves_history_alone() {
         let mut e = Editor::new(Document::new("g", 0));
-        assert!(e.execute(Command::Delete { id: ObjectId::new() }, 1).is_err());
+        assert!(
+            e.execute(
+                Command::Delete {
+                    id: ObjectId::new()
+                },
+                1
+            )
+            .is_err()
+        );
         assert!(!e.can_undo());
     }
 }

@@ -1,8 +1,8 @@
 #![forbid(unsafe_code)]
-pub mod units;
+pub mod command;
+pub mod editor;
 pub mod geometry;
 pub mod io;
 pub mod model;
-pub mod command;
-pub mod editor;
 pub mod query;
+pub mod units;

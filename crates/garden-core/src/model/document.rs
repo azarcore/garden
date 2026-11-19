@@ -47,7 +47,12 @@ impl Document {
             created: now_ms,
             modified: now_ms,
             units: UnitSystem::default(),
-            layers: vec![Layer { id: LayerId::new(), name: "Garden".into(), visible: true, locked: false }],
+            layers: vec![Layer {
+                id: LayerId::new(),
+                name: "Garden".into(),
+                visible: true,
+                locked: false,
+            }],
             objects: Vec::new(),
             tombstones: Vec::new(),
             background: None,

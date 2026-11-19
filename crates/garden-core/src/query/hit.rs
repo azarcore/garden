@@ -22,12 +22,17 @@ pub(crate) fn object_shape(kind: &ObjectKind) -> Option<&Shape> {
 fn hits(object: &Object, p: Point, tol: f64) -> bool {
     match &object.kind {
         ObjectKind::PlotBoundary { shape } => shape.distance_to(p) <= tol,
-        ObjectKind::Area { shape, .. } | ObjectKind::Structure { footprint: shape, .. } => {
-            shape.contains(p) || shape.distance_to(p) <= tol
-        }
+        ObjectKind::Area { shape, .. }
+        | ObjectKind::Structure {
+            footprint: shape, ..
+        } => shape.contains(p) || shape.distance_to(p) <= tol,
         ObjectKind::Path { shape, width } => shape.distance_to(p) <= width / 2.0 + tol,
-        ObjectKind::Linear { shape, thickness, .. } => shape.distance_to(p) <= thickness / 2.0 + tol,
-        ObjectKind::Plant { position, spread, .. } => position.distance(p) <= spread / 2.0 + tol,
+        ObjectKind::Linear {
+            shape, thickness, ..
+        } => shape.distance_to(p) <= thickness / 2.0 + tol,
+        ObjectKind::Plant {
+            position, spread, ..
+        } => position.distance(p) <= spread / 2.0 + tol,
         ObjectKind::Label { position, size, .. } => position.distance(p) <= size + tol,
         ObjectKind::Dimension { from, to, .. } => segment_distance(*from, *to, p) <= tol,
     }
@@ -55,15 +60,23 @@ mod tests {
 
     #[test]
     fn clicking_inside_plot_does_not_select_boundary() {
-        let d = doc_with(vec![ObjectKind::PlotBoundary { shape: Shape::rect(Point::ZERO, 10_000., 10_000.) }]);
+        let d = doc_with(vec![ObjectKind::PlotBoundary {
+            shape: Shape::rect(Point::ZERO, 10_000., 10_000.),
+        }]);
         assert_eq!(hit_test(&d, Point::new(5000., 5000.), 50.), None);
-        assert_eq!(hit_test(&d, Point::new(20., 5000.), 50.), Some(d.objects[0].id));
+        assert_eq!(
+            hit_test(&d, Point::new(20., 5000.), 50.),
+            Some(d.objects[0].id)
+        );
     }
 
     #[test]
     fn topmost_wins_and_locked_is_skipped() {
         let mut d = doc_with(vec![
-            ObjectKind::Area { area_type: AreaType::Lawn, shape: Shape::rect(Point::ZERO, 5000., 5000.) },
+            ObjectKind::Area {
+                area_type: AreaType::Lawn,
+                shape: Shape::rect(Point::ZERO, 5000., 5000.),
+            },
             ObjectKind::Plant {
                 position: Point::new(1000., 1000.),
                 spread: 600.,

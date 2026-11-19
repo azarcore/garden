@@ -1,0 +1,467 @@
+{
+  "schema_version": 1,
+  "id": "21ca5b9d-d894-4a1b-9c83-dfe6e50f7d5a",
+  "name": "Sample garden",
+  "created": 1763500000000,
+  "modified": 1763500000100,
+  "units": "metric",
+  "layers": [
+    {
+      "id": "d3961457-f2cb-4b22-8b3b-8479bbfb356d",
+      "name": "Garden",
+      "visible": true,
+      "locked": false
+    },
+    {
+      "id": "eda9cdac-32c9-4d9f-a4f7-8a199ce7709a",
+      "name": "Plants",
+      "visible": true,
+      "locked": false
+    }
+  ],
+  "objects": [
+    {
+      "id": "a4bdd6cb-a950-4ab3-9363-0da3c5489b3a",
+      "name": "Plot",
+      "kind": {
+        "type": "plot_boundary",
+        "shape": {
+          "start": {
+            "x": 0.0,
+            "y": 0.0
+          },
+          "segments": [
+            {
+              "type": "line",
+              "to": {
+                "x": 12000.0,
+                "y": 0.0
+              }
+            },
+            {
+              "type": "line",
+              "to": {
+                "x": 12000.0,
+                "y": 20000.0
+              }
+            },
+            {
+              "type": "line",
+              "to": {
+                "x": 0.0,
+                "y": 20000.0
+              }
+            },
+            {
+              "type": "line",
+              "to": {
+                "x": 0.0,
+                "y": 0.0
+              }
+            }
+          ],
+          "closed": true,
+          "hint": {
+            "type": "rect",
+            "width": 12000.0,
+            "height": 20000.0,
+            "rotation": 0.0
+          }
+        }
+      },
+      "style": {
+        "fill": null,
+        "stroke": null,
+        "material": null
+      },
+      "layer": "d3961457-f2cb-4b22-8b3b-8479bbfb356d",
+      "locked": false,
+      "revision": 1,
+      "modified": 1763500000100
+    },
+    {
+      "id": "30cf2f32-9441-49e4-815f-80d896cd73c1",
+      "name": "Lawn",
+      "kind": {
+        "type": "area",
+        "area_type": "lawn",
+        "shape": {
+          "start": {
+            "x": 10000.0,
+            "y": 12000.0
+          },
+          "segments": [
+            {
+              "type": "cubic",
+              "c1": {
+                "x": 10000.0,
+                "y": 13656.8542494
+              },
+              "c2": {
+                "x": 8209.1389992,
+                "y": 15000.0
+              },
+              "to": {
+                "x": 6000.0,
+                "y": 15000.0
+              }
+            },
+            {
+              "type": "cubic",
+              "c1": {
+                "x": 3790.8610008,
+                "y": 15000.0
+              },
+              "c2": {
+                "x": 2000.0,
+                "y": 13656.8542494
+              },
+              "to": {
+                "x": 2000.0,
+                "y": 12000.0
+              }
+            },
+            {
+              "type": "cubic",
+              "c1": {
+                "x": 2000.0,
+                "y": 10343.1457506
+              },
+              "c2": {
+                "x": 3790.8610008,
+                "y": 9000.0
+              },
+              "to": {
+                "x": 6000.0,
+                "y": 9000.0
+              }
+            },
+            {
+              "type": "cubic",
+              "c1": {
+                "x": 8209.1389992,
+                "y": 9000.0
+              },
+              "c2": {
+                "x": 10000.0,
+                "y": 10343.1457506
+              },
+              "to": {
+                "x": 10000.0,
+                "y": 12000.0
+              }
+            }
+          ],
+          "closed": true,
+          "hint": {
+            "type": "ellipse",
+            "rx": 4000.0,
+            "ry": 3000.0,
+            "rotation": 0.0
+          }
+        }
+      },
+      "style": {
+        "fill": null,
+        "stroke": null,
+        "material": null
+      },
+      "layer": "d3961457-f2cb-4b22-8b3b-8479bbfb356d",
+      "locked": false,
+      "revision": 1,
+      "modified": 1763500000100
+    },
+    {
+      "id": "c7bbc933-b3b2-40fd-971b-543ea749578e",
+      "name": "Border",
+      "kind": {
+        "type": "area",
+        "area_type": "bed",
+        "shape": {
+          "start": {
+            "x": 1000.0,
+            "y": 1000.0
+          },
+          "segments": [
+            {
+              "type": "line",
+              "to": {
+                "x": 4000.0,
+                "y": 1000.0
+              }
+            },
+            {
+              "type": "arc",
+              "to": {
+                "x": 4000.0,
+                "y": 3000.0
+              },
+              "sweep": 3.141592653589793
+            },
+            {
+              "type": "cubic",
+              "c1": {
+                "x": 3000.0,
+                "y": 3500.0
+              },
+              "c2": {
+                "x": 2000.0,
+                "y": 2500.0
+              },
+              "to": {
+                "x": 1000.0,
+                "y": 3000.0
+              }
+            }
+          ],
+          "closed": true,
+          "hint": null
+        }
+      },
+      "style": {
+        "fill": null,
+        "stroke": null,
+        "material": null
+      },
+      "layer": "d3961457-f2cb-4b22-8b3b-8479bbfb356d",
+      "locked": false,
+      "revision": 1,
+      "modified": 1763500000100
+    },
+    {
+      "id": "1d1f33eb-57b2-4401-aac1-fdf6143b240a",
+      "name": "Path",
+      "kind": {
+        "type": "path",
+        "shape": {
+          "start": {
+            "x": 6000.0,
+            "y": 0.0
+          },
+          "segments": [
+            {
+              "type": "line",
+              "to": {
+                "x": 6000.0,
+                "y": 9000.0
+              }
+            }
+          ],
+          "closed": false,
+          "hint": null
+        },
+        "width": 900.0
+      },
+      "style": {
+        "fill": null,
+        "stroke": null,
+        "material": null
+      },
+      "layer": "d3961457-f2cb-4b22-8b3b-8479bbfb356d",
+      "locked": false,
+      "revision": 1,
+      "modified": 1763500000100
+    },
+    {
+      "id": "f483a46f-3fa3-4a96-9165-2c08c6193b5f",
+      "name": "Fence",
+      "kind": {
+        "type": "linear",
+        "kind": "fence",
+        "shape": {
+          "start": {
+            "x": 0.0,
+            "y": 0.0
+          },
+          "segments": [
+            {
+              "type": "line",
+              "to": {
+                "x": 12000.0,
+                "y": 0.0
+              }
+            }
+          ],
+          "closed": false,
+          "hint": null
+        },
+        "thickness": 50.0,
+        "height": 1800.0
+      },
+      "style": {
+        "fill": null,
+        "stroke": null,
+        "material": null
+      },
+      "layer": "d3961457-f2cb-4b22-8b3b-8479bbfb356d",
+      "locked": false,
+      "revision": 1,
+      "modified": 1763500000100
+    },
+    {
+      "id": "724d285f-6cc6-471b-8af2-86e2f693ea48",
+      "name": "Shed",
+      "kind": {
+        "type": "structure",
+        "kind": "shed",
+        "footprint": {
+          "start": {
+            "x": 9000.0,
+            "y": 17000.0
+          },
+          "segments": [
+            {
+              "type": "line",
+              "to": {
+                "x": 11400.0,
+                "y": 17000.0
+              }
+            },
+            {
+              "type": "line",
+              "to": {
+                "x": 11400.0,
+                "y": 18800.0
+              }
+            },
+            {
+              "type": "line",
+              "to": {
+                "x": 9000.0,
+                "y": 18800.0
+              }
+            },
+            {
+              "type": "line",
+              "to": {
+                "x": 9000.0,
+                "y": 17000.0
+              }
+            }
+          ],
+          "closed": true,
+          "hint": {
+            "type": "rect",
+            "width": 2400.0,
+            "height": 1800.0,
+            "rotation": 0.0
+          }
+        },
+        "height": 2200.0
+      },
+      "style": {
+        "fill": null,
+        "stroke": null,
+        "material": null
+      },
+      "layer": "d3961457-f2cb-4b22-8b3b-8479bbfb356d",
+      "locked": false,
+      "revision": 1,
+      "modified": 1763500000100
+    },
+    {
+      "id": "778fc400-fb4c-4f01-838d-652dee286553",
+      "name": "Hidcote lavender",
+      "kind": {
+        "type": "plant",
+        "position": {
+          "x": 2000.0,
+          "y": 1500.0
+        },
+        "spread": 600.0,
+        "height": 500.0,
+        "symbol": "spiky",
+        "category": "shrub",
+        "catalog_id": "custom-lavender"
+      },
+      "style": {
+        "fill": null,
+        "stroke": null,
+        "material": null
+      },
+      "layer": "eda9cdac-32c9-4d9f-a4f7-8a199ce7709a",
+      "locked": false,
+      "revision": 1,
+      "modified": 1763500000100
+    },
+    {
+      "id": "67a7d2e4-1f4f-4330-b4c9-537f523db4de",
+      "name": "Dim",
+      "kind": {
+        "type": "dimension",
+        "from": {
+          "x": 0.0,
+          "y": 0.0
+        },
+        "to": {
+          "x": 12000.0,
+          "y": 0.0
+        },
+        "offset": -500.0
+      },
+      "style": {
+        "fill": null,
+        "stroke": null,
+        "material": null
+      },
+      "layer": "d3961457-f2cb-4b22-8b3b-8479bbfb356d",
+      "locked": false,
+      "revision": 1,
+      "modified": 1763500000100
+    },
+    {
+      "id": "1931f3f0-9925-44a6-aa4e-2813c5541c20",
+      "name": "Note",
+      "kind": {
+        "type": "label",
+        "position": {
+          "x": 100.0,
+          "y": 100.0
+        },
+        "text": "Sunny corner",
+        "size": 300.0
+      },
+      "style": {
+        "fill": null,
+        "stroke": null,
+        "material": null
+      },
+      "layer": "d3961457-f2cb-4b22-8b3b-8479bbfb356d",
+      "locked": false,
+      "revision": 1,
+      "modified": 1763500000100
+    }
+  ],
+  "tombstones": [
+    {
+      "id": "c4f11ee7-6bcc-4574-a49c-8362a72010ab",
+      "revision": 2,
+      "modified": 1763500000100
+    }
+  ],
+  "background": {
+    "image_ref": "bg-0001",
+    "mime": "image/jpeg",
+    "width_px": 1200,
+    "height_px": 2000,
+    "origin": {
+      "x": 0.0,
+      "y": 0.0
+    },
+    "mm_per_px": 10.0,
+    "rotation": 0.0,
+    "opacity": 0.5,
+    "locked": true
+  },
+  "custom_plants": [
+    {
+      "id": "custom-lavender",
+      "name": "Hidcote lavender",
+      "category": "shrub",
+      "spread": 600.0,
+      "height": 500.0,
+      "symbol": "spiky",
+      "custom": true
+    }
+  ]
+}

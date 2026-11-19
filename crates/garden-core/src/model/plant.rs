@@ -77,7 +77,9 @@ mod tests {
         let o = def.place(Point::new(1., 2.), layer);
         def.spread = 9999.; // later catalog change
         match o.kind {
-            ObjectKind::Plant { spread, catalog_id, .. } => {
+            ObjectKind::Plant {
+                spread, catalog_id, ..
+            } => {
                 assert_eq!(spread, 600.);
                 assert_eq!(catalog_id.as_deref(), Some("lavender"));
             }

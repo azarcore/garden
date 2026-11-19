@@ -48,11 +48,28 @@ pub enum StructureKind {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum ObjectKind {
-    PlotBoundary { shape: Shape },
-    Area { area_type: AreaType, shape: Shape },
-    Path { shape: Shape, width: f64 },
-    Linear { kind: LinearKind, shape: Shape, thickness: f64, height: f64 },
-    Structure { kind: StructureKind, footprint: Shape, height: f64 },
+    PlotBoundary {
+        shape: Shape,
+    },
+    Area {
+        area_type: AreaType,
+        shape: Shape,
+    },
+    Path {
+        shape: Shape,
+        width: f64,
+    },
+    Linear {
+        kind: LinearKind,
+        shape: Shape,
+        thickness: f64,
+        height: f64,
+    },
+    Structure {
+        kind: StructureKind,
+        footprint: Shape,
+        height: f64,
+    },
     Plant {
         position: Point,
         spread: f64,
@@ -61,8 +78,16 @@ pub enum ObjectKind {
         category: PlantCategory,
         catalog_id: Option<String>,
     },
-    Label { position: Point, text: String, size: f64 },
-    Dimension { from: Point, to: Point, offset: f64 },
+    Label {
+        position: Point,
+        text: String,
+        size: f64,
+    },
+    Dimension {
+        from: Point,
+        to: Point,
+        offset: f64,
+    },
 }
 
 /// Anything placed in the design.
@@ -104,7 +129,10 @@ mod tests {
     fn object_kind_json_is_tagged() {
         let o = Object::new(
             "Bed",
-            ObjectKind::Area { area_type: AreaType::Bed, shape: Shape::rect(Point::ZERO, 1., 1.) },
+            ObjectKind::Area {
+                area_type: AreaType::Bed,
+                shape: Shape::rect(Point::ZERO, 1., 1.),
+            },
             LayerId::new(),
         );
         let v: serde_json::Value = serde_json::to_value(&o).unwrap();

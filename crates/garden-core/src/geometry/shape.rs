@@ -11,11 +11,20 @@ pub(crate) const KAPPA: f64 = 0.552_284_749_8;
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum Segment {
-    Line { to: Point },
+    Line {
+        to: Point,
+    },
     /// Circular arc from the previous point to `to`, turning by `sweep` radians
     /// (positive = increasing angle in y-down coords). |sweep| in (0, 2π).
-    Arc { to: Point, sweep: f64 },
-    Cubic { c1: Point, c2: Point, to: Point },
+    Arc {
+        to: Point,
+        sweep: f64,
+    },
+    Cubic {
+        c1: Point,
+        c2: Point,
+        to: Point,
+    },
 }
 
 impl Segment {
@@ -30,9 +39,19 @@ impl Segment {
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum PrimitiveHint {
-    Rect { width: f64, height: f64, rotation: f64 },
-    Circle { radius: f64 },
-    Ellipse { rx: f64, ry: f64, rotation: f64 },
+    Rect {
+        width: f64,
+        height: f64,
+        rotation: f64,
+    },
+    Circle {
+        radius: f64,
+    },
+    Ellipse {
+        rx: f64,
+        ry: f64,
+        rotation: f64,
+    },
 }
 
 /// An outline (open or closed) built from segments. Units: millimetres.
@@ -57,7 +76,11 @@ pub(crate) fn arc_geometry(from: Point, to: Point, sweep: f64) -> Option<(Point,
     }
     let r = c / (2.0 * half);
     let d = chord / c;
-    let u = if sweep > 0.0 { Vec2::new(d.y, -d.x) } else { Vec2::new(-d.y, d.x) };
+    let u = if sweep > 0.0 {
+        Vec2::new(d.y, -d.x)
+    } else {
+        Vec2::new(-d.y, d.x)
+    };
     let mid_angle = u.y.atan2(u.x);
     let start_angle = mid_angle - sweep / 2.0;
     let center = from - Vec2::new(start_angle.cos(), start_angle.sin()) * r;
@@ -67,8 +90,17 @@ pub(crate) fn arc_geometry(from: Point, to: Point, sweep: f64) -> Option<(Point,
 impl Shape {
     pub fn polyline(points: &[Point], closed: bool) -> Shape {
         let start = points.first().copied().unwrap_or(Point::ZERO);
-        let segments = points.iter().skip(1).map(|&to| Segment::Line { to }).collect();
-        Shape { start, segments, closed, hint: None }
+        let segments = points
+            .iter()
+            .skip(1)
+            .map(|&to| Segment::Line { to })
+            .collect();
+        Shape {
+            start,
+            segments,
+            closed,
+            hint: None,
+        }
     }
 
     pub fn rect(origin: Point, width: f64, height: f64) -> Shape {
@@ -82,7 +114,11 @@ impl Shape {
             start: origin,
             segments: pts.iter().map(|&to| Segment::Line { to }).collect(),
             closed: true,
-            hint: Some(PrimitiveHint::Rect { width, height, rotation: 0.0 }),
+            hint: Some(PrimitiveHint::Rect {
+                width,
+                height,
+                rotation: 0.0,
+            }),
         }
     }
 
@@ -92,7 +128,16 @@ impl Shape {
         let pi = std::f64::consts::PI;
         Shape {
             start,
-            segments: vec![Segment::Arc { to: opposite, sweep: pi }, Segment::Arc { to: start, sweep: pi }],
+            segments: vec![
+                Segment::Arc {
+                    to: opposite,
+                    sweep: pi,
+                },
+                Segment::Arc {
+                    to: start,
+                    sweep: pi,
+                },
+            ],
             closed: true,
             hint: Some(PrimitiveHint::Circle { radius }),
         }
@@ -103,12 +148,37 @@ impl Shape {
         let c = center.to_vec2();
         let p = |x: f64, y: f64| Point::new(x, y) + c;
         let segments = vec![
-            Segment::Cubic { c1: p(rx, ky), c2: p(kx, ry), to: p(0.0, ry) },
-            Segment::Cubic { c1: p(-kx, ry), c2: p(-rx, ky), to: p(-rx, 0.0) },
-            Segment::Cubic { c1: p(-rx, -ky), c2: p(-kx, -ry), to: p(0.0, -ry) },
-            Segment::Cubic { c1: p(kx, -ry), c2: p(rx, -ky), to: p(rx, 0.0) },
+            Segment::Cubic {
+                c1: p(rx, ky),
+                c2: p(kx, ry),
+                to: p(0.0, ry),
+            },
+            Segment::Cubic {
+                c1: p(-kx, ry),
+                c2: p(-rx, ky),
+                to: p(-rx, 0.0),
+            },
+            Segment::Cubic {
+                c1: p(-rx, -ky),
+                c2: p(-kx, -ry),
+                to: p(0.0, -ry),
+            },
+            Segment::Cubic {
+                c1: p(kx, -ry),
+                c2: p(rx, -ky),
+                to: p(rx, 0.0),
+            },
         ];
-        Shape { start: p(rx, 0.0), segments, closed: true, hint: Some(PrimitiveHint::Ellipse { rx, ry, rotation: 0.0 }) }
+        Shape {
+            start: p(rx, 0.0),
+            segments,
+            closed: true,
+            hint: Some(PrimitiveHint::Ellipse {
+                rx,
+                ry,
+                rotation: 0.0,
+            }),
+        }
     }
 
     /// Start point plus every segment end, without a duplicate closing point.
@@ -152,7 +222,12 @@ impl Shape {
 
     /// Outline length, including the implicit closing edge when closed.
     pub fn length(&self) -> f64 {
-        finite(self.to_bez_path().segments().map(|s| s.arclen(ACCURACY)).sum())
+        finite(
+            self.to_bez_path()
+                .segments()
+                .map(|s| s.arclen(ACCURACY))
+                .sum(),
+        )
     }
 
     /// Enclosed area (absolute); 0 for open shapes.
@@ -172,7 +247,9 @@ impl Shape {
 
     /// Whether `p` is inside a closed shape (non-zero winding). Always false when open.
     pub fn contains(&self, p: Point) -> bool {
-        self.closed && !self.segments.is_empty() && kurbo::Shape::winding(&self.to_bez_path(), p) != 0
+        self.closed
+            && !self.segments.is_empty()
+            && kurbo::Shape::winding(&self.to_bez_path(), p) != 0
     }
 
     /// Distance from `p` to the outline.
@@ -196,7 +273,11 @@ impl Shape {
 
     /// Polyline approximation within `tolerance` mm (used by 3D).
     pub fn flatten(&self, tolerance: f64) -> Vec<Point> {
-        let tol = if tolerance.is_finite() && tolerance > 1e-3 { tolerance } else { 1e-3 };
+        let tol = if tolerance.is_finite() && tolerance > 1e-3 {
+            tolerance
+        } else {
+            1e-3
+        };
         let mut out = Vec::new();
         kurbo::flatten(self.to_bez_path(), tol, |el| match el {
             PathEl::MoveTo(p) | PathEl::LineTo(p) => out.push(p),
@@ -241,7 +322,10 @@ mod tests {
     fn arc_direction_follows_sweep_sign() {
         let s = Shape {
             start: Point::new(0., 0.),
-            segments: vec![Segment::Arc { to: Point::new(2., 0.), sweep: std::f64::consts::PI }],
+            segments: vec![Segment::Arc {
+                to: Point::new(2., 0.),
+                sweep: std::f64::consts::PI,
+            }],
             closed: false,
             hint: None,
         };
@@ -251,7 +335,14 @@ mod tests {
 
     #[test]
     fn open_path_has_no_area_and_contains_nothing() {
-        let p = Shape::polyline(&[Point::new(0., 0.), Point::new(1000., 0.), Point::new(1000., 1000.)], false);
+        let p = Shape::polyline(
+            &[
+                Point::new(0., 0.),
+                Point::new(1000., 0.),
+                Point::new(1000., 1000.),
+            ],
+            false,
+        );
         assert_eq!(p.area(), 0.);
         assert!(!p.contains(Point::new(900., 100.)));
         assert!(approx(p.distance_to(Point::new(500., 300.)), 300.));
@@ -259,7 +350,10 @@ mod tests {
 
     #[test]
     fn ellipse_area() {
-        assert!((Shape::ellipse(Point::ZERO, 2000., 1000.).area() - std::f64::consts::PI * 2e6).abs() < 2e3);
+        assert!(
+            (Shape::ellipse(Point::ZERO, 2000., 1000.).area() - std::f64::consts::PI * 2e6).abs()
+                < 2e3
+        );
     }
 
     #[test]
@@ -267,12 +361,21 @@ mod tests {
         let cases = [
             Shape::polyline(&[], true),
             Shape::polyline(&[Point::new(5., 5.)], true),
-            Shape::polyline(&[Point::new(0., 0.), Point::new(0., 0.), Point::new(0., 0.)], true),
+            Shape::polyline(
+                &[Point::new(0., 0.), Point::new(0., 0.), Point::new(0., 0.)],
+                true,
+            ),
             Shape {
                 start: Point::ZERO,
                 segments: vec![
-                    Segment::Arc { to: Point::ZERO, sweep: 1.0 },
-                    Segment::Arc { to: Point::new(1., 0.), sweep: 0.0 },
+                    Segment::Arc {
+                        to: Point::ZERO,
+                        sweep: 1.0,
+                    },
+                    Segment::Arc {
+                        to: Point::new(1., 0.),
+                        sweep: 0.0,
+                    },
                 ],
                 closed: false,
                 hint: None,
@@ -283,7 +386,11 @@ mod tests {
                 assert!(v.is_finite());
             }
             let _ = s.contains(Point::new(1., 1.));
-            assert!(s.flatten(0.5).iter().all(|p| p.x.is_finite() && p.y.is_finite()));
+            assert!(
+                s.flatten(0.5)
+                    .iter()
+                    .all(|p| p.x.is_finite() && p.y.is_finite())
+            );
         }
     }
 

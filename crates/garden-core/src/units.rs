@@ -133,7 +133,11 @@ pub fn parse_length(input: &str, system: UnitSystem) -> Result<f64, ParseLengthE
             i += 1;
         }
         let ustart = i;
-        while i < chars.len() && !chars[i].is_whitespace() && !chars[i].is_ascii_digit() && chars[i] != '.' {
+        while i < chars.len()
+            && !chars[i].is_whitespace()
+            && !chars[i].is_ascii_digit()
+            && chars[i] != '.'
+        {
             i += 1;
             // quote marks are single-char units
             if matches!(chars[i - 1], '\'' | '"' | '′' | '″') {
@@ -194,24 +198,48 @@ mod tests {
 
     #[test]
     fn parses_metric_forms() {
-        for (s, mm) in [("1.2m", 1200.0), ("120 cm", 1200.0), ("1200mm", 1200.0), ("1,5 m", 1500.0), ("  2  ", 2000.0)] {
-            assert!((parse_length(s, UnitSystem::Metric).unwrap() - mm).abs() < 1e-9, "{s}");
+        for (s, mm) in [
+            ("1.2m", 1200.0),
+            ("120 cm", 1200.0),
+            ("1200mm", 1200.0),
+            ("1,5 m", 1500.0),
+            ("  2  ", 2000.0),
+        ] {
+            assert!(
+                (parse_length(s, UnitSystem::Metric).unwrap() - mm).abs() < 1e-9,
+                "{s}"
+            );
         }
     }
 
     #[test]
     fn parses_imperial_forms() {
         for s in ["5' 3\"", "5ft 3in", "5'3", "63in", "63\""] {
-            assert!((parse_length(s, UnitSystem::Imperial).unwrap() - 1600.2).abs() < 1e-6, "{s}");
+            assert!(
+                (parse_length(s, UnitSystem::Imperial).unwrap() - 1600.2).abs() < 1e-6,
+                "{s}"
+            );
         }
         assert!((parse_length("2", UnitSystem::Imperial).unwrap() - 609.6).abs() < 1e-9);
     }
 
     #[test]
     fn rejects_bad_input() {
-        assert_eq!(parse_length("", UnitSystem::Metric), Err(ParseLengthError::Empty));
-        assert_eq!(parse_length("-1m", UnitSystem::Metric), Err(ParseLengthError::Negative));
-        assert!(matches!(parse_length("abc", UnitSystem::Metric), Err(ParseLengthError::Invalid(_))));
-        assert!(matches!(parse_length("1.2.3m", UnitSystem::Metric), Err(ParseLengthError::Invalid(_))));
+        assert_eq!(
+            parse_length("", UnitSystem::Metric),
+            Err(ParseLengthError::Empty)
+        );
+        assert_eq!(
+            parse_length("-1m", UnitSystem::Metric),
+            Err(ParseLengthError::Negative)
+        );
+        assert!(matches!(
+            parse_length("abc", UnitSystem::Metric),
+            Err(ParseLengthError::Invalid(_))
+        ));
+        assert!(matches!(
+            parse_length("1.2.3m", UnitSystem::Metric),
+            Err(ParseLengthError::Invalid(_))
+        ));
     }
 }

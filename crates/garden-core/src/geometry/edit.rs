@@ -4,7 +4,7 @@ use std::f64::consts::TAU;
 
 use kurbo::{Affine, PathEl, Point, Vec2};
 
-use super::shape::{arc_geometry, PrimitiveHint, Segment, Shape};
+use super::shape::{PrimitiveHint, Segment, Shape, arc_geometry};
 
 const ARC_TO_CUBIC_TOLERANCE: f64 = 0.01;
 
@@ -57,10 +57,19 @@ impl Shape {
             .map(|s| match *s {
                 Segment::Line { to } => Segment::Line { to: a * to },
                 Segment::Arc { to, sweep } => Segment::Arc { to: a * to, sweep },
-                Segment::Cubic { c1, c2, to } => Segment::Cubic { c1: a * c1, c2: a * c2, to: a * to },
+                Segment::Cubic { c1, c2, to } => Segment::Cubic {
+                    c1: a * c1,
+                    c2: a * c2,
+                    to: a * to,
+                },
             })
             .collect();
-        Shape { start: a * self.start, segments, closed: self.closed, hint: self.hint }
+        Shape {
+            start: a * self.start,
+            segments,
+            closed: self.closed,
+            hint: self.hint,
+        }
     }
 
     /// Copy of this shape with every arc replaced by cubics.
@@ -74,7 +83,10 @@ impl Shape {
             }
             current = s.to();
         }
-        Shape { segments, ..self.clone() }
+        Shape {
+            segments,
+            ..self.clone()
+        }
     }
 
     pub fn translated(&self, d: Vec2) -> Shape {
@@ -84,12 +96,20 @@ impl Shape {
     pub fn rotated(&self, center: Point, angle: f64) -> Shape {
         let mut s = self.map_points(Affine::rotate_about(angle, center));
         s.hint = match self.hint {
-            Some(PrimitiveHint::Rect { width, height, rotation }) => {
-                Some(PrimitiveHint::Rect { width, height, rotation: rotation + angle })
-            }
-            Some(PrimitiveHint::Ellipse { rx, ry, rotation }) => {
-                Some(PrimitiveHint::Ellipse { rx, ry, rotation: rotation + angle })
-            }
+            Some(PrimitiveHint::Rect {
+                width,
+                height,
+                rotation,
+            }) => Some(PrimitiveHint::Rect {
+                width,
+                height,
+                rotation: rotation + angle,
+            }),
+            Some(PrimitiveHint::Ellipse { rx, ry, rotation }) => Some(PrimitiveHint::Ellipse {
+                rx,
+                ry,
+                rotation: rotation + angle,
+            }),
             other => other,
         };
         s
@@ -101,20 +121,36 @@ impl Shape {
             * Affine::scale_non_uniform(sx, sy)
             * Affine::translate(-anchor.to_vec2());
         let uniform = sx == sy;
-        let base = if uniform { self.clone() } else { self.arcs_as_cubics() };
+        let base = if uniform {
+            self.clone()
+        } else {
+            self.arcs_as_cubics()
+        };
         let mut s = base.map_points(a);
         let (ax, ay) = (sx.abs(), sy.abs());
         s.hint = match self.hint {
-            Some(PrimitiveHint::Rect { width, height, rotation }) => {
-                Some(PrimitiveHint::Rect { width: width * ax, height: height * ay, rotation })
-            }
-            Some(PrimitiveHint::Circle { radius }) if uniform => Some(PrimitiveHint::Circle { radius: radius * ax }),
-            Some(PrimitiveHint::Circle { radius }) => {
-                Some(PrimitiveHint::Ellipse { rx: radius * ax, ry: radius * ay, rotation: 0.0 })
-            }
-            Some(PrimitiveHint::Ellipse { rx, ry, rotation }) => {
-                Some(PrimitiveHint::Ellipse { rx: rx * ax, ry: ry * ay, rotation })
-            }
+            Some(PrimitiveHint::Rect {
+                width,
+                height,
+                rotation,
+            }) => Some(PrimitiveHint::Rect {
+                width: width * ax,
+                height: height * ay,
+                rotation,
+            }),
+            Some(PrimitiveHint::Circle { radius }) if uniform => Some(PrimitiveHint::Circle {
+                radius: radius * ax,
+            }),
+            Some(PrimitiveHint::Circle { radius }) => Some(PrimitiveHint::Ellipse {
+                rx: radius * ax,
+                ry: radius * ay,
+                rotation: 0.0,
+            }),
+            Some(PrimitiveHint::Ellipse { rx, ry, rotation }) => Some(PrimitiveHint::Ellipse {
+                rx: rx * ax,
+                ry: ry * ay,
+                rotation,
+            }),
             None => None,
         };
         s
@@ -131,9 +167,19 @@ impl Shape {
     /// Start and end point of an edge, and whether it is straight.
     fn edge(&self, edge: usize) -> Option<(Point, Point, Option<&Segment>)> {
         let n = self.segments.len();
-        let from = |i: usize| if i == 0 { self.start } else { self.segments[i - 1].to() };
+        let from = |i: usize| {
+            if i == 0 {
+                self.start
+            } else {
+                self.segments[i - 1].to()
+            }
+        };
         if edge < n {
-            Some((from(edge), self.segments[edge].to(), Some(&self.segments[edge])))
+            Some((
+                from(edge),
+                self.segments[edge].to(),
+                Some(&self.segments[edge]),
+            ))
         } else if edge == n && self.has_implicit_closing_edge() {
             Some((self.segments[n - 1].to(), self.start, None))
         } else {
@@ -142,21 +188,31 @@ impl Shape {
     }
 
     fn edge_is_straight(&self, edge: usize) -> Option<bool> {
-        self.edge(edge).map(|(_, _, seg)| matches!(seg, None | Some(Segment::Line { .. })))
+        self.edge(edge)
+            .map(|(_, _, seg)| matches!(seg, None | Some(Segment::Line { .. })))
     }
 
     pub fn edge_length(&self, edge: usize) -> Option<f64> {
         let (a, b, seg) = self.edge(edge)?;
         match seg {
             None | Some(Segment::Line { .. }) => Some(a.distance(b)),
-            Some(s) => Some(Shape { start: a, segments: vec![*s], closed: false, hint: None }.length()),
+            Some(s) => Some(
+                Shape {
+                    start: a,
+                    segments: vec![*s],
+                    closed: false,
+                    hint: None,
+                }
+                .length(),
+            ),
         }
     }
 
     /// Move the end point of `edge` (the vertex shared with the next edge).
     fn set_edge_end(&mut self, edge: usize, p: Point) {
         let n = self.segments.len();
-        let explicit_closing = self.closed && edge + 1 == n && self.segments[edge].to() == self.start;
+        let explicit_closing =
+            self.closed && edge + 1 == n && self.segments[edge].to() == self.start;
         if edge == n || explicit_closing {
             self.start = p;
         }
@@ -171,7 +227,13 @@ impl Shape {
         if vertex >= self.vertices().len() || count == 0 {
             return None;
         }
-        let incoming = if vertex > 0 { vertex - 1 } else if self.closed { count - 1 } else { return None };
+        let incoming = if vertex > 0 {
+            vertex - 1
+        } else if self.closed {
+            count - 1
+        } else {
+            return None;
+        };
         if vertex >= count {
             return None;
         }
@@ -213,7 +275,11 @@ impl Shape {
             return Err(EdgeEditError::InvalidValue);
         }
         let dir = b - a;
-        let dir = if dir.hypot() > 1e-12 { dir.normalize() } else { Vec2::new(1.0, 0.0) };
+        let dir = if dir.hypot() > 1e-12 {
+            dir.normalize()
+        } else {
+            Vec2::new(1.0, 0.0)
+        };
         let mut s = self.clone();
         s.set_edge_end(edge, a + dir * length);
         s.hint = None;
@@ -224,7 +290,9 @@ impl Shape {
     /// (keeping that edge's length); only the outgoing edge's end vertex moves.
     pub fn set_corner_angle(&self, vertex: usize, angle: f64) -> Result<Shape, EdgeEditError> {
         let (inc, out) = self.corner_edges(vertex).ok_or(EdgeEditError::OutOfRange)?;
-        if !self.edge_is_straight(inc).unwrap_or(false) || !self.edge_is_straight(out).unwrap_or(false) {
+        if !self.edge_is_straight(inc).unwrap_or(false)
+            || !self.edge_is_straight(out).unwrap_or(false)
+        {
             return Err(EdgeEditError::NotStraight);
         }
         if !valid_positive(angle) || angle >= TAU {
@@ -234,7 +302,11 @@ impl Shape {
         let (_, next, _) = self.edge(out).ok_or(EdgeEditError::OutOfRange)?;
         let a = prev - v;
         let len = (next - v).hypot();
-        let a_unit = if a.hypot() > 1e-12 { a.normalize() } else { Vec2::new(-1.0, 0.0) };
+        let a_unit = if a.hypot() > 1e-12 {
+            a.normalize()
+        } else {
+            Vec2::new(-1.0, 0.0)
+        };
         let theta = -self.orientation() * angle;
         let b = Vec2::new(
             a_unit.x * theta.cos() - a_unit.y * theta.sin(),
@@ -258,12 +330,20 @@ impl Shape {
         };
         let replacement = match (seg, to) {
             (_, SegmentKind::Line) => vec![Segment::Line { to: end }],
-            (Segment::Arc { .. }, SegmentKind::Arc) | (Segment::Cubic { .. }, SegmentKind::Cubic) => vec![seg],
-            (_, SegmentKind::Arc) => vec![Segment::Arc { to: end, sweep: std::f64::consts::FRAC_PI_2 }],
+            (Segment::Arc { .. }, SegmentKind::Arc)
+            | (Segment::Cubic { .. }, SegmentKind::Cubic) => vec![seg],
+            (_, SegmentKind::Arc) => vec![Segment::Arc {
+                to: end,
+                sweep: std::f64::consts::FRAC_PI_2,
+            }],
             (Segment::Arc { sweep, .. }, SegmentKind::Cubic) => arc_to_cubics(from, end, sweep),
             (_, SegmentKind::Cubic) => {
                 let d = end - from;
-                vec![Segment::Cubic { c1: from + d / 3.0, c2: from + d * (2.0 / 3.0), to: end }]
+                vec![Segment::Cubic {
+                    c1: from + d / 3.0,
+                    c2: from + d * (2.0 / 3.0),
+                    to: end,
+                }]
             }
         };
         s.segments.splice(index..=index, replacement);
@@ -288,7 +368,12 @@ mod tests {
     fn set_edge_lengths_then_angle_makes_exact_rectangle() {
         // a hand-drawn, slightly wrong quad
         let s = Shape::polyline(
-            &[Point::new(0., 0.), Point::new(3900., 40.), Point::new(3950., 2980.), Point::new(-20., 3010.)],
+            &[
+                Point::new(0., 0.),
+                Point::new(3900., 40.),
+                Point::new(3950., 2980.),
+                Point::new(-20., 3010.),
+            ],
             true,
         );
         let s = s.set_edge_length(0, 4000.).unwrap();
@@ -302,12 +387,18 @@ mod tests {
 
     #[test]
     fn closing_edge_counts() {
-        assert_eq!(Shape::polyline(&[Point::ZERO, Point::new(1., 0.), Point::new(1., 1.)], true).edge_count(), 3);
+        assert_eq!(
+            Shape::polyline(&[Point::ZERO, Point::new(1., 0.), Point::new(1., 1.)], true)
+                .edge_count(),
+            3
+        );
     }
 
     #[test]
     fn closing_edge_of_rect_moves_start() {
-        let r = Shape::rect(Point::ZERO, 10., 10.).set_edge_length(3, 20.).unwrap();
+        let r = Shape::rect(Point::ZERO, 10., 10.)
+            .set_edge_length(3, 20.)
+            .unwrap();
         assert_eq!(r.start, Point::new(0., -10.));
         assert_eq!(r.segments[3].to(), r.start);
     }
@@ -319,7 +410,10 @@ mod tests {
         let r = Shape::rect(Point::ZERO, 10., 10.);
         assert_eq!(r.set_edge_length(9, 5.), Err(EdgeEditError::OutOfRange));
         assert_eq!(r.set_edge_length(0, 0.), Err(EdgeEditError::InvalidValue));
-        assert_eq!(r.set_edge_length(0, f64::NAN), Err(EdgeEditError::InvalidValue));
+        assert_eq!(
+            r.set_edge_length(0, f64::NAN),
+            Err(EdgeEditError::InvalidValue)
+        );
         assert_eq!(r.set_corner_angle(1, 7.0), Err(EdgeEditError::InvalidValue));
     }
 
@@ -335,7 +429,9 @@ mod tests {
     fn rotate_preserves_area_and_records_rotation() {
         let r = Shape::rect(Point::ZERO, 4000., 3000.).rotated(Point::ZERO, 0.3);
         assert!((r.area() - 12e6).abs() < 1.0);
-        assert!(matches!(r.hint, Some(PrimitiveHint::Rect { rotation, .. }) if (rotation - 0.3).abs() < 1e-12));
+        assert!(
+            matches!(r.hint, Some(PrimitiveHint::Rect { rotation, .. }) if (rotation - 0.3).abs() < 1e-12)
+        );
     }
 
     #[test]

@@ -51,7 +51,10 @@ pub fn snap(doc: &Document, p: Point, settings: &SnapSettings, exclude: &[Object
             kind => object_shape(kind).map(|s| s.vertices()).unwrap_or_default(),
         });
         if let Some(v) = closest(vertices, p, settings.radius) {
-            return SnapResult { point: v, kind: SnapKind::Vertex };
+            return SnapResult {
+                point: v,
+                kind: SnapKind::Vertex,
+            };
         }
         let edges = objects.iter().filter_map(|o| match &o.kind {
             ObjectKind::Dimension { from, to, .. } => {
@@ -61,14 +64,23 @@ pub fn snap(doc: &Document, p: Point, settings: &SnapSettings, exclude: &[Object
             kind => object_shape(kind).map(|s| s.nearest_point(p)),
         });
         if let Some(e) = closest(edges, p, settings.radius) {
-            return SnapResult { point: e, kind: SnapKind::Edge };
+            return SnapResult {
+                point: e,
+                kind: SnapKind::Edge,
+            };
         }
     }
     if let Some(g) = settings.grid.filter(|g| g.is_finite() && *g > 0.0) {
         let point = Point::new((p.x / g).round() * g, (p.y / g).round() * g);
-        return SnapResult { point, kind: SnapKind::Grid };
+        return SnapResult {
+            point,
+            kind: SnapKind::Grid,
+        };
     }
-    SnapResult { point: p, kind: SnapKind::None }
+    SnapResult {
+        point: p,
+        kind: SnapKind::None,
+    }
 }
 
 /// Keep the distance from `origin` but round the direction to a multiple of `step` radians.
@@ -94,26 +106,49 @@ mod tests {
             area_type: AreaType::Bed,
             shape: Shape::rect(Point::new(1000., 1000.), 2000., 1000.),
         }]);
-        let s = SnapSettings { grid: Some(500.), objects: true, radius: 100. };
+        let s = SnapSettings {
+            grid: Some(500.),
+            objects: true,
+            radius: 100.,
+        };
         assert_eq!(
             snap(&d, Point::new(1040., 1030.), &s, &[]),
-            SnapResult { point: Point::new(1000., 1000.), kind: SnapKind::Vertex }
+            SnapResult {
+                point: Point::new(1000., 1000.),
+                kind: SnapKind::Vertex
+            }
         );
         let e = snap(&d, Point::new(2000., 1060.), &s, &[]);
         assert_eq!(e.kind, SnapKind::Edge);
         assert!((e.point.y - 1000.).abs() < 1e-6);
         assert_eq!(
             snap(&d, Point::new(5240., 5260.), &s, &[]),
-            SnapResult { point: Point::new(5000., 5500.), kind: SnapKind::Grid }
+            SnapResult {
+                point: Point::new(5000., 5500.),
+                kind: SnapKind::Grid
+            }
         );
-        assert_eq!(snap(&d, Point::new(1040., 1030.), &s, &[d.objects[0].id]).kind, SnapKind::Grid);
+        assert_eq!(
+            snap(&d, Point::new(1040., 1030.), &s, &[d.objects[0].id]).kind,
+            SnapKind::Grid
+        );
     }
 
     #[test]
     fn no_snap_returns_point_unchanged() {
         let d = doc_with(vec![]);
-        let s = SnapSettings { grid: None, objects: true, radius: 100. };
-        assert_eq!(snap(&d, Point::new(7., 9.), &s, &[]), SnapResult { point: Point::new(7., 9.), kind: SnapKind::None });
+        let s = SnapSettings {
+            grid: None,
+            objects: true,
+            radius: 100.,
+        };
+        assert_eq!(
+            snap(&d, Point::new(7., 9.), &s, &[]),
+            SnapResult {
+                point: Point::new(7., 9.),
+                kind: SnapKind::None
+            }
+        );
     }
 
     #[test]

@@ -73,6 +73,14 @@ pub struct Handle {
     pub at: Point,
 }
 
+/// Point editing of one object.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) struct NodeEdit {
+    pub id: garden_core::model::ObjectId,
+    /// The point last clicked, which Delete removes.
+    pub vertex: Option<usize>,
+}
+
 /// Scale factor along one axis that takes `corner` to `target`, never
 /// shrinking the size below `min` (dragging past the anchor flips).
 fn axis_factor(target: f64, corner: f64, anchor: f64, min: f64) -> f64 {
@@ -104,11 +112,58 @@ impl EditorState {
         (!o.locked && layer_ok).then_some(o)
     }
 
+    /// True while the points of the selected object are being edited.
+    pub fn node_mode(&self) -> bool {
+        self.node.is_some_and(|n| {
+            self.handle_target()
+                .is_some_and(|o| o.id == n.id && kind_shape(&o.kind).is_some())
+        })
+    }
+
+    /// In node mode, the point last clicked (Delete removes it).
+    pub fn selected_vertex(&self) -> Option<usize> {
+        self.node
+            .filter(|_| self.node_mode())
+            .and_then(|n| n.vertex)
+    }
+
     /// Handles for the single selected, unlocked object.
     pub fn handles(&self) -> Vec<Handle> {
         let Some(o) = self.handle_target() else {
             return Vec::new();
         };
+        if self.node_mode()
+            && let Some(shape) = kind_shape(&o.kind)
+        {
+            let mut h: Vec<Handle> = shape
+                .vertices()
+                .into_iter()
+                .enumerate()
+                .map(|(i, at)| Handle {
+                    kind: HandleKind::Vertex(i),
+                    at,
+                })
+                .collect();
+            for (segment, seg) in shape.segments.iter().enumerate() {
+                if let garden_core::geometry::Segment::Cubic { c1, c2, .. } = *seg {
+                    h.push(Handle {
+                        kind: HandleKind::Control {
+                            segment,
+                            second: false,
+                        },
+                        at: c1,
+                    });
+                    h.push(Handle {
+                        kind: HandleKind::Control {
+                            segment,
+                            second: true,
+                        },
+                        at: c2,
+                    });
+                }
+            }
+            return h;
+        }
         if let ObjectKind::Dimension { from, to, .. } = o.kind {
             return vec![
                 Handle {
@@ -256,6 +311,15 @@ impl EditorState {
         let gesture = std::mem::replace(&mut self.gesture, Gesture::Idle);
         self.preview = Preview::default();
         if let Gesture::Handle {
+            kind: HandleKind::Vertex(i),
+            ..
+        } = gesture
+            && self.node_mode()
+            && let Some(n) = &mut self.node
+        {
+            n.vertex = Some(i);
+        }
+        if let Gesture::Handle {
             result: Some(kind),
             moved: true,
             ..
@@ -273,12 +337,80 @@ impl EditorState {
     }
 }
 
+impl EditorState {
+    /// Double-click with the select tool: on a shape, start editing its
+    /// points; in node mode, on the outline, add a point there.
+    pub(crate) fn node_double_click(&mut self, p: Point, now_ms: i64) {
+        let tol = self.viewport.px_to_mm(self.hit_radius_px);
+        if self.node_mode() {
+            if self.handle_at(p).is_some() {
+                return;
+            }
+            let Some(o) = self.handle_target().cloned() else {
+                return;
+            };
+            let Some(shape) = kind_shape(&o.kind) else {
+                return;
+            };
+            if shape.distance_to(p) > tol {
+                return;
+            }
+            if let Some((new, i)) = shape.insert_vertex(p)
+                && self.execute(
+                    Command::Replace {
+                        object: Object {
+                            kind: with_shape(&o.kind, new),
+                            ..o
+                        },
+                    },
+                    now_ms,
+                )
+                && let Some(n) = &mut self.node
+            {
+                n.vertex = Some(i);
+            }
+            return;
+        }
+        let Some(id) = garden_core::query::hit_test_selectable(self.doc(), p, tol) else {
+            return;
+        };
+        self.selection = vec![id];
+        self.cancel_gesture();
+        self.node = Some(NodeEdit { id, vertex: None });
+        if !self.node_mode() {
+            self.node = None; // locked, or not something with points
+        }
+    }
+
+    /// Delete in node mode: remove the selected point if the shape can spare it.
+    pub(crate) fn delete_selected_vertex(&mut self, now_ms: i64) {
+        let (Some(i), Some(o)) = (self.selected_vertex(), self.handle_target().cloned()) else {
+            return;
+        };
+        let Some(new) = kind_shape(&o.kind).and_then(|s| s.remove_vertex(i)) else {
+            return;
+        };
+        if self.execute(
+            Command::Replace {
+                object: Object {
+                    kind: with_shape(&o.kind, new),
+                    ..o
+                },
+            },
+            now_ms,
+        ) && let Some(n) = &mut self.node
+        {
+            n.vertex = None;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::state::EditorState;
-    use crate::test_util::{NO, SHIFT, plant_at, state_with};
-    use crate::tools::{Input, Modifiers};
+    use crate::test_util::{NO, SHIFT, click, plant_at, state_with};
+    use crate::tools::{Input, Key, Modifiers};
     use garden_core::geometry::{Point, Shape};
     use garden_core::model::{AreaType, ObjectKind};
 
@@ -438,5 +570,102 @@ mod tests {
         s.replace_object(o, 1).unwrap();
         s.selection = vec![s.doc().objects[0].id];
         assert!(s.handles().is_empty());
+    }
+
+    #[test]
+    fn double_click_enters_node_mode_without_side_effects() {
+        let mut s = state_with(vec![bed()]);
+        let id = s.doc().objects[0].id;
+        click(&mut s, Point::new(2000., 1000.), NO);
+        click(&mut s, Point::new(2000., 1000.), NO);
+        s.handle(Input::DoubleClick(Point::new(2000., 1000.), NO), 1);
+        assert!(s.node_mode());
+        assert_eq!(s.handles().len(), 4);
+        assert_eq!(shape(&s).vertices().len(), 4);
+        assert_eq!(s.selection, vec![id]);
+        assert!(!s.can_undo());
+    }
+
+    #[test]
+    fn node_mode_moves_inserts_and_removes_points() {
+        let mut s = state_with(vec![bed()]);
+        s.selection = vec![s.doc().objects[0].id];
+        s.handle(Input::DoubleClick(Point::new(2000., 1000.), NO), 1);
+        drag(&mut s, Point::new(4000., 0.), Point::new(4500., -500.), NO);
+        assert_eq!(shape(&s).vertices()[1], Point::new(4500., -500.));
+        s.handle(Input::DoubleClick(Point::new(2000., 2010.), NO), 2); // on the bottom edge
+        assert_eq!(shape(&s).vertices().len(), 5);
+        click(&mut s, Point::new(0., 0.), NO);
+        assert_eq!(s.selected_vertex(), Some(0));
+        s.handle(Input::Key(Key::Delete, NO), 3);
+        assert_eq!(shape(&s).vertices().len(), 4);
+        assert_eq!(s.doc().objects.len(), 1);
+        assert!(s.node_mode());
+    }
+
+    #[test]
+    fn delete_never_removes_the_object_in_node_mode() {
+        let tri = ObjectKind::Area {
+            area_type: AreaType::Bed,
+            shape: Shape::polyline(
+                &[Point::ZERO, Point::new(3000., 0.), Point::new(0., 3000.)],
+                true,
+            ),
+        };
+        let mut s = state_with(vec![tri]);
+        s.selection = vec![s.doc().objects[0].id];
+        s.handle(Input::DoubleClick(Point::new(800., 800.), NO), 1);
+        click(&mut s, Point::new(0., 0.), NO);
+        s.handle(Input::Key(Key::Delete, NO), 2);
+        assert_eq!(s.doc().objects.len(), 1);
+        assert_eq!(shape(&s).vertices().len(), 3);
+        s.handle(Input::Key(Key::Backspace, NO), 2);
+        assert_eq!(s.doc().objects.len(), 1);
+        s.handle(Input::Key(Key::Escape, NO), 3);
+        assert!(!s.node_mode());
+        assert_eq!(s.selection.len(), 1);
+    }
+
+    #[test]
+    fn curve_controls_are_handles_in_node_mode() {
+        let curved = ObjectKind::Area {
+            area_type: AreaType::Bed,
+            shape: Shape::ellipse(Point::new(3000., 2000.), 2000., 1000.),
+        };
+        let mut s = state_with(vec![curved]);
+        s.selection = vec![s.doc().objects[0].id];
+        s.handle(Input::DoubleClick(Point::new(3000., 2000.), NO), 1);
+        let h = s.handles();
+        assert_eq!(h.len(), 4 + 8);
+        let c = h
+            .iter()
+            .find(|h| {
+                h.kind
+                    == HandleKind::Control {
+                        segment: 0,
+                        second: false,
+                    }
+            })
+            .unwrap()
+            .at;
+        drag(&mut s, c, c + kurbo::Vec2::new(0., 700.), NO);
+        assert!(matches!(shape(&s).segments[0],
+            garden_core::geometry::Segment::Cubic { c1, .. } if c1 == c + kurbo::Vec2::new(0., 700.)));
+    }
+
+    #[test]
+    fn clicking_empty_space_or_changing_selection_leaves_node_mode() {
+        let mut s = state_with(vec![bed(), plant_at(9000., 9000., 600.)]);
+        s.selection = vec![s.doc().objects[0].id];
+        s.handle(Input::DoubleClick(Point::new(2000., 1000.), NO), 1);
+        click(&mut s, Point::new(20000., 20000.), NO);
+        assert!(!s.node_mode());
+        s.selection = vec![s.doc().objects[0].id];
+        s.handle(Input::DoubleClick(Point::new(2000., 1000.), NO), 1);
+        click(&mut s, Point::new(9000., 9000.), NO);
+        assert!(!s.node_mode());
+        s.selection = vec![s.doc().objects[0].id];
+        assert!(!s.node_mode()); // re-selecting doesn't resume it
+        assert_eq!(s.handles().len(), 5);
     }
 }

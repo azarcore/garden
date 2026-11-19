@@ -103,6 +103,8 @@ pub struct EditorState {
     pub(crate) tool: ToolKind,
     pub(crate) gesture: Gesture,
     pub(crate) preview: Preview,
+    /// Point editing of one object, if active.
+    pub(crate) node: Option<crate::handles::NodeEdit>,
     /// Successful document changes so far (for autosave).
     changes: u64,
 }
@@ -121,6 +123,7 @@ impl EditorState {
             tool: ToolKind::Select,
             gesture: Gesture::Idle,
             preview: Preview::default(),
+            node: None,
             changes: 0,
         };
         s.fit_to_content();
@@ -138,6 +141,7 @@ impl EditorState {
     /// Switch tools, abandoning any gesture in progress.
     pub fn set_tool(&mut self, tool: ToolKind) {
         self.tool = tool;
+        self.node = None;
         self.cancel_gesture();
     }
 
@@ -191,6 +195,7 @@ impl EditorState {
     pub fn open_document(&mut self, doc: Document) {
         self.editor = Editor::new(doc);
         self.selection.clear();
+        self.node = None;
         self.cancel_gesture();
         self.fit_to_content();
     }
@@ -223,6 +228,9 @@ impl EditorState {
     fn after_history_change(&mut self) {
         let doc = self.editor.doc();
         self.selection.retain(|id| doc.object(*id).is_some());
+        if let Some(n) = &mut self.node {
+            n.vertex = None;
+        }
         self.cancel_gesture();
     }
 
@@ -454,6 +462,7 @@ impl EditorState {
                         if !m.shift {
                             self.selection.clear();
                         }
+                        self.node = None;
                         self.gesture = Gesture::PressedOnEmpty {
                             start: p,
                             additive: m.shift,
@@ -463,6 +472,9 @@ impl EditorState {
             }
             Input::Move(p, m) => self.select_move(p, m),
             Input::Up(p, m) => {
+                if self.node.is_some_and(|n| self.selection != [n.id]) {
+                    self.node = None;
+                }
                 self.select_move(p, m);
                 match std::mem::replace(&mut self.gesture, Gesture::Idle) {
                     Gesture::Moving { delta, .. } if delta.hypot() > 0.0 => {
@@ -510,16 +522,24 @@ impl EditorState {
                 }
                 self.preview = Preview::default();
             }
-            Input::DoubleClick(..) => {}
+            Input::DoubleClick(p, _) => self.node_double_click(p, now_ms),
             Input::Key(Key::Escape, _) => {
                 if self.gesture == Gesture::Idle {
-                    self.selection.clear();
+                    if self.node_mode() {
+                        self.node = None;
+                    } else {
+                        self.selection.clear();
+                    }
                 }
                 self.cancel_gesture();
             }
             Input::Key(Key::Delete | Key::Backspace, _) => {
                 self.cancel_gesture();
-                self.delete_selection(now_ms);
+                if self.node_mode() {
+                    self.delete_selected_vertex(now_ms);
+                } else {
+                    self.delete_selection(now_ms);
+                }
             }
             Input::Key(Key::Enter, _) => {}
         }

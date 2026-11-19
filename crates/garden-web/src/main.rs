@@ -6,6 +6,7 @@ mod icons;
 mod inspector;
 mod plan_art;
 mod plant_picker;
+mod storage;
 mod toolbar;
 
 fn main() {

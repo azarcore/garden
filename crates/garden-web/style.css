@@ -204,6 +204,49 @@ button:disabled {
   color: var(--muted);
 }
 
+.save-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: 8px;
+  padding: 3px 9px 3px 8px;
+  border-radius: 999px;
+  background: var(--tile);
+  color: var(--muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.save-status::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.save-status[data-status="saving"]::before {
+  background: var(--muted);
+}
+
+.save-status[data-status="unsaved"],
+.save-status[data-status="unavailable"] {
+  color: var(--error);
+}
+
+.save-status[data-status="unsaved"]::before,
+.save-status[data-status="unavailable"]::before {
+  background: var(--error);
+}
+
+@media (max-width: 768px) {
+  .save-status {
+    font-size: 0;
+    gap: 0;
+    padding: 4px;
+  }
+}
+
 /* controls (top-right) */
 .controls {
   top: 16px;

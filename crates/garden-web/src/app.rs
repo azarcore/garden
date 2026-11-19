@@ -123,6 +123,7 @@ pub fn App() -> impl IntoView {
     provide_context(Cursor(RwSignal::new(None)));
     provide_context(SpaceHeld(space));
     provide_context(LastPlant(plant));
+    crate::library::provide_library(state);
 
     let down = window_event_listener(ev::keydown, move |e| on_key_down(e, state, space, plant));
     let up = window_event_listener(ev::keyup, move |e| {

@@ -4,6 +4,7 @@ mod app;
 mod canvas;
 mod icons;
 mod inspector;
+mod library;
 mod plan_art;
 mod plant_picker;
 mod storage;

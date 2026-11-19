@@ -9,6 +9,7 @@ use leptos::prelude::*;
 
 use crate::app::{LastPlant, now};
 use crate::icons::{Icon, icon};
+use crate::library::{Library, SaveStatus};
 
 /// A tool: label, keyboard shortcut, icon, and the group it sits in.
 pub struct ToolEntry {
@@ -207,6 +208,19 @@ pub fn TitleCard() -> impl IntoView {
             })
         })
     });
+    let lib = expect_context::<Library>();
+    let status_key = move || match lib.status.get() {
+        SaveStatus::Saved => "saved",
+        SaveStatus::Saving => "saving",
+        SaveStatus::Unsaved => "unsaved",
+        SaveStatus::Unavailable => "unavailable",
+    };
+    let status_text = move || match lib.status.get() {
+        SaveStatus::Saved => EN.saved,
+        SaveStatus::Saving => EN.saving,
+        SaveStatus::Unsaved => EN.save_failed,
+        SaveStatus::Unavailable => EN.not_saved,
+    };
     view! {
         <header class="card title-card">
             <span class="logo">{icon(Icon::Leaf)}</span>
@@ -214,6 +228,7 @@ pub fn TitleCard() -> impl IntoView {
                 <strong>{move || name.get()}</strong>
                 <span>{move || plot.get().unwrap_or_else(|| EN.no_plot_yet.to_string())}</span>
             </div>
+            <span class="save-status" data-status=status_key title=status_text>{status_text}</span>
         </header>
     }
 }

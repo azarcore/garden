@@ -6,3 +6,4 @@ edition.workspace = true
 [dependencies]
 garden-core = { path = "../garden-core" }
 kurbo = "0.13.1"
+uuid = { version = "1.29.3", features = ["v4", "js"] }

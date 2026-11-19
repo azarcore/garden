@@ -123,6 +123,15 @@ pub fn tool_entries(plant: PlantDef) -> Vec<ToolEntry> {
             ToolKind::Rect(DrawTarget::Structure(StructureKind::Shed)),
         ),
         e(EN.tool_plant, 'G', Icon::Plant, 3, ToolKind::Plant(plant)),
+        e(EN.tool_text, 'T', Icon::Text, 3, ToolKind::Text),
+        e(
+            EN.tool_dimension,
+            'D',
+            Icon::Dimension,
+            3,
+            ToolKind::Dimension,
+        ),
+        e(EN.tool_measure, 'M', Icon::Measure, 3, ToolKind::Measure),
     ]
 }
 
@@ -173,20 +182,28 @@ pub fn HintBar() -> impl IntoView {
     let state = expect_context::<RwSignal<EditorState>>();
     let info = Memo::new(move |_| {
         state.with(|s| {
-            (
+            let text = if s.node_mode() {
+                EN.hint_node
+            } else {
                 hint(
                     s.tool(),
                     s.points_placed(),
                     s.doc().background.is_some(),
                     &EN,
-                ),
-                s.points_placed(),
-            )
+                )
+            };
+            (text, s.points_placed())
         })
+    });
+    // Finish and Undo point only make sense while a line or shape is being drawn.
+    let line_tool = Memo::new(move |_| {
+        state.with(|s| matches!(s.tool(), ToolKind::Polygon(_) | ToolKind::Polyline(_)))
+    });
+    let two_point_tool = Memo::new(move |_| {
+        state.with(|s| matches!(s.tool(), ToolKind::Dimension | ToolKind::Measure))
     });
     let key = move |k: Key| state.update(|s| s.handle(Input::Key(k, Modifiers::default()), now()));
     // Set scale: after two clicks, type the real distance here.
-    let scale_tool = Memo::new(move |_| state.with(|s| matches!(s.tool(), ToolKind::SetScale)));
     let scaling = Memo::new(move |_| state.with(|s| s.pending_scale().is_some()));
     let distance = RwSignal::new(String::new());
     let scale_error = RwSignal::new(None::<&'static str>);
@@ -203,7 +220,8 @@ pub fn HintBar() -> impl IntoView {
         }
     };
     view! {
-        <div class="hint-bar" role="status" class:idle=move || state.with(|s| matches!(s.tool(), ToolKind::Select))>
+        <div class="hint-bar" role="status"
+            class:idle=move || state.with(|s| matches!(s.tool(), ToolKind::Select) && !s.node_mode())>
             <span class="hint-text">{move || info.get().0}</span>
             <Show when=move || scaling.get()>
                 <input class="hint-input" type="text" placeholder=EN.scale_placeholder prop:value=move || distance.get()
@@ -213,7 +231,10 @@ pub fn HintBar() -> impl IntoView {
                 <button class="hint-btn" on:click=move |_| key(Key::Escape)>{EN.cancel}</button>
                 {move || scale_error.get().map(|m| view! { <span class="hint-error">{m}</span> })}
             </Show>
-            <Show when=move || { info.get().1 > 0 && !scale_tool.get() }>
+            <Show when=move || { info.get().1 > 0 && two_point_tool.get() }>
+                <button class="hint-btn" on:click=move |_| key(Key::Escape)>{EN.cancel}</button>
+            </Show>
+            <Show when=move || { info.get().1 > 0 && line_tool.get() }>
                 <button class="hint-btn primary" on:click=move |_| key(Key::Enter)>{EN.finish}</button>
                 <button class="hint-btn" on:click=move |_| state.update(|s| { s.undo(now()); })>{EN.undo_point}</button>
                 <button class="hint-btn" on:click=move |_| key(Key::Escape)>{EN.cancel}</button>

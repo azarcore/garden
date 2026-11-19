@@ -1385,3 +1385,23 @@ button.title-card {
     animation: none !important;
   }
 }
+
+/* ── Handles on the selected object ───────────────────────── */
+.handles .handle {
+  fill: var(--card);
+  stroke: var(--accent);
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+}
+.handles .handle.vertex.selected,
+.handles .handle.control {
+  fill: var(--accent);
+}
+.handles .handle.control {
+  stroke: var(--card);
+}
+.handles .handle-stem {
+  stroke: var(--accent);
+  stroke-width: 1px;
+  vector-effect: non-scaling-stroke;
+}

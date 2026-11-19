@@ -11,6 +11,8 @@ use leptos::prelude::*;
 use wasm_bindgen::JsCast;
 use wasm_bindgen::closure::Closure;
 
+use garden_editor::handles::{Corner, HandleKind};
+
 use crate::app::{Cursor, SpaceHeld, now};
 use crate::plan_art::{defs, item_view, preview_view};
 
@@ -104,6 +106,74 @@ fn PlanLegend() -> impl IntoView {
         }
     };
     view! { <div class="card legend">{bar}<div class="readout">{readout}</div></div> }
+}
+
+/// Resize corners, the rotate handle, and in node mode the points and curve
+/// controls of the selected object, drawn in screen-sized squares and dots.
+fn handles_view(s: &EditorState) -> impl IntoView + use<> {
+    let handles = s.handles();
+    if handles.is_empty() || !s.preview().shapes.is_empty() {
+        return None; // nothing to grab, or the shape is being dragged
+    }
+    let mm = s.viewport.px_to_mm(1.0);
+    let shape = s
+        .selection
+        .first()
+        .and_then(|id| s.doc().object(*id))
+        .and_then(|o| garden_editor::objects::kind_shape(&o.kind).cloned());
+    let selected = s.selected_vertex();
+    let half = 4.5 * mm;
+    let views = handles
+        .into_iter()
+        .map(|h| {
+            let square = |class: String, cursor: &'static str| {
+                view! {
+                    <rect x=h.at.x - half y=h.at.y - half width=2.0 * half height=2.0 * half
+                        class=class style=format!("cursor:{cursor}") />
+                }
+                .into_any()
+            };
+            match h.kind {
+                HandleKind::Resize(c) => {
+                    let cursor = match c {
+                        Corner::NorthWest | Corner::SouthEast => "nwse-resize",
+                        Corner::NorthEast | Corner::SouthWest => "nesw-resize",
+                    };
+                    square("handle".into(), cursor)
+                }
+                HandleKind::Rotate => {
+                    let stem_end = h.at.y + 28.0 * mm;
+                    view! {
+                        <g class="handle-rotate" style="cursor:grab">
+                            <line x1=h.at.x y1=h.at.y x2=h.at.x y2=stem_end class="handle-stem" />
+                            <circle cx=h.at.x cy=h.at.y r=5.0 * mm class="handle" />
+                        </g>
+                    }
+                    .into_any()
+                }
+                HandleKind::Vertex(i) => {
+                    let class = if selected == Some(i) { "handle vertex selected" } else { "handle vertex" };
+                    square(class.into(), "move")
+                }
+                HandleKind::Control { segment, second } => {
+                    // the point this control belongs to
+                    let anchor = shape.as_ref().map(|sh| match (second, segment) {
+                        (true, k) => sh.segments[k].to(),
+                        (false, 0) => sh.start,
+                        (false, k) => sh.segments[k - 1].to(),
+                    });
+                    view! {
+                        <g class="handle-control" style="cursor:move">
+                            {anchor.map(|a| view! { <line x1=a.x y1=a.y x2=h.at.x y2=h.at.y class="handle-stem" /> })}
+                            <circle cx=h.at.x cy=h.at.y r=4.0 * mm class="handle control" />
+                        </g>
+                    }
+                    .into_any()
+                }
+            }
+        })
+        .collect_view();
+    Some(view! { <g class="handles">{views}</g> })
 }
 
 #[component]
@@ -323,6 +393,8 @@ pub fn Canvas() -> impl IntoView {
             }
             let mm = s.viewport.px_to_mm(1.0);
             let b = garden_editor::objects::object_bounds(&o.kind);
+            // sit above the rotate handle when there is one
+            let lift = if s.handles().iter().any(|h| h.kind == HandleKind::Rotate) { 30.0 } else { 0.0 };
             let detail = match &o.kind {
                 garden_core::model::ObjectKind::Plant { spread, .. } => format!(" · {}", format_length(*spread, s.doc().units)),
                 _ => String::new(),
@@ -331,7 +403,7 @@ pub fn Canvas() -> impl IntoView {
             let w = (text.chars().count() as f64 * 7.2 + 22.0) * mm;
             let h = 24.0 * mm;
             let x = b.center().x;
-            let y = b.y0 - 12.0 * mm - h;
+            let y = b.y0 - (12.0 + lift) * mm - h;
             Some(view! {
                 <g class="tag">
                     <rect x=x - w / 2.0 y=y width=w height=h rx=h / 2.0 />
@@ -340,6 +412,7 @@ pub fn Canvas() -> impl IntoView {
             })
         })
     };
+    let handles = move || state.with(handles_view);
     let content = move || {
         state.with(|s| {
             let mm_per_px = s.viewport.px_to_mm(1.0);
@@ -375,6 +448,7 @@ pub fn Canvas() -> impl IntoView {
                 <g class="plan-content">{content}</g>
                 {preview}
                 {tag}
+                {handles}
             </g>
         </svg>
         <PlanLegend />

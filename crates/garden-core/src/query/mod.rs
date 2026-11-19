@@ -3,7 +3,7 @@
 mod hit;
 mod snap;
 
-pub use hit::hit_test;
+pub use hit::{dimension_line, hit_test};
 pub use snap::{SnapKind, SnapResult, SnapSettings, snap, snap_angle};
 
 #[cfg(test)]

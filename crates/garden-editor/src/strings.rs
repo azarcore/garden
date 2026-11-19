@@ -1,0 +1,165 @@
+//! All user-visible English text, kept in one place so it can be translated later.
+
+use garden_core::model::{AreaType, LinearKind, ObjectKind, StructureKind};
+
+pub struct Strings {
+    pub app_title: &'static str,
+    pub tool_select: &'static str,
+    pub tool_plot: &'static str,
+    pub tool_bed: &'static str,
+    pub tool_lawn: &'static str,
+    pub tool_paving: &'static str,
+    pub tool_gravel: &'static str,
+    pub tool_water: &'static str,
+    pub tool_structure: &'static str,
+    pub tool_path: &'static str,
+    pub tool_fence: &'static str,
+    pub tool_wall: &'static str,
+    pub tool_hedge: &'static str,
+    pub tool_plant: &'static str,
+    pub undo: &'static str,
+    pub redo: &'static str,
+    pub fit: &'static str,
+    pub delete: &'static str,
+    pub duplicate: &'static str,
+    pub units_metric: &'static str,
+    pub units_imperial: &'static str,
+    pub snap_grid: &'static str,
+    pub snap_objects: &'static str,
+    pub field_name: &'static str,
+    pub field_width: &'static str,
+    pub field_thickness: &'static str,
+    pub field_height: &'static str,
+    pub field_spread: &'static str,
+    pub field_text: &'static str,
+    pub err_empty: &'static str,
+    pub err_not_a_length: &'static str,
+    pub err_must_be_positive: &'static str,
+    pub nothing_selected: &'static str,
+    pub n_selected: &'static str,
+    pub new_design_name: &'static str,
+    // object kind labels
+    pub kind_plot: &'static str,
+    pub kind_bed: &'static str,
+    pub kind_lawn: &'static str,
+    pub kind_paving: &'static str,
+    pub kind_gravel: &'static str,
+    pub kind_water: &'static str,
+    pub kind_area: &'static str,
+    pub kind_path: &'static str,
+    pub kind_fence: &'static str,
+    pub kind_wall: &'static str,
+    pub kind_hedge: &'static str,
+    pub kind_shed: &'static str,
+    pub kind_greenhouse: &'static str,
+    pub kind_pergola: &'static str,
+    pub kind_raised_bed: &'static str,
+    pub kind_furniture: &'static str,
+    pub kind_structure: &'static str,
+    pub kind_plant: &'static str,
+    pub kind_label: &'static str,
+    pub kind_dimension: &'static str,
+}
+
+pub static EN: Strings = Strings {
+    app_title: "Garden Planner",
+    tool_select: "Select",
+    tool_plot: "Plot",
+    tool_bed: "Bed",
+    tool_lawn: "Lawn",
+    tool_paving: "Paving",
+    tool_gravel: "Gravel",
+    tool_water: "Water",
+    tool_structure: "Structure",
+    tool_path: "Path",
+    tool_fence: "Fence",
+    tool_wall: "Wall",
+    tool_hedge: "Hedge",
+    tool_plant: "Plant",
+    undo: "Undo",
+    redo: "Redo",
+    fit: "Fit",
+    delete: "Delete",
+    duplicate: "Duplicate",
+    units_metric: "Metric",
+    units_imperial: "Imperial",
+    snap_grid: "Grid snap",
+    snap_objects: "Object snap",
+    field_name: "Name",
+    field_width: "Width",
+    field_thickness: "Thickness",
+    field_height: "Height",
+    field_spread: "Spread",
+    field_text: "Text",
+    err_empty: "Can't be empty",
+    err_not_a_length: "Not a length, try e.g. 1.2 m",
+    err_must_be_positive: "Must be more than zero",
+    nothing_selected: "Nothing selected",
+    n_selected: "selected",
+    new_design_name: "My garden",
+    kind_plot: "Plot",
+    kind_bed: "Bed",
+    kind_lawn: "Lawn",
+    kind_paving: "Paving",
+    kind_gravel: "Gravel",
+    kind_water: "Water",
+    kind_area: "Area",
+    kind_path: "Path",
+    kind_fence: "Fence",
+    kind_wall: "Wall",
+    kind_hedge: "Hedge",
+    kind_shed: "Shed",
+    kind_greenhouse: "Greenhouse",
+    kind_pergola: "Pergola",
+    kind_raised_bed: "Raised bed",
+    kind_furniture: "Furniture",
+    kind_structure: "Structure",
+    kind_plant: "Plant",
+    kind_label: "Label",
+    kind_dimension: "Dimension",
+};
+
+/// Human name for what an object is.
+pub fn kind_label(s: &Strings, kind: &ObjectKind) -> &'static str {
+    match kind {
+        ObjectKind::PlotBoundary { .. } => s.kind_plot,
+        ObjectKind::Area { area_type, .. } => match area_type {
+            AreaType::Bed => s.kind_bed,
+            AreaType::Lawn => s.kind_lawn,
+            AreaType::Paving => s.kind_paving,
+            AreaType::Gravel => s.kind_gravel,
+            AreaType::Water => s.kind_water,
+            AreaType::Other => s.kind_area,
+        },
+        ObjectKind::Path { .. } => s.kind_path,
+        ObjectKind::Linear { kind, .. } => match kind {
+            LinearKind::Fence => s.kind_fence,
+            LinearKind::Wall => s.kind_wall,
+            LinearKind::Hedge => s.kind_hedge,
+        },
+        ObjectKind::Structure { kind, .. } => match kind {
+            StructureKind::Shed => s.kind_shed,
+            StructureKind::Greenhouse => s.kind_greenhouse,
+            StructureKind::Pergola => s.kind_pergola,
+            StructureKind::RaisedBed => s.kind_raised_bed,
+            StructureKind::Furniture => s.kind_furniture,
+            StructureKind::Other => s.kind_structure,
+        },
+        ObjectKind::Plant { .. } => s.kind_plant,
+        ObjectKind::Label { .. } => s.kind_label,
+        ObjectKind::Dimension { .. } => s.kind_dimension,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::test_util::all_kinds_sample;
+
+    #[test]
+    fn every_kind_has_a_label() {
+        for k in all_kinds_sample() {
+            assert!(!kind_label(&EN, &k).is_empty());
+        }
+    }
+}

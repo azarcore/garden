@@ -72,7 +72,10 @@ pub fn flat_polygon(shape: &Shape, y: f64) -> Option<(Vec<[f32; 3]>, Vec<u32>)> 
 /// Add the outline's top face at `y`; returns the outline points on success.
 pub(crate) fn add_top(b: &mut MeshBuilder, shape: &Shape, y: f64) -> Option<Vec<[f64; 2]>> {
     let pts = outline_m(shape);
-    let tris = triangulate(&pts, shape.area() / 1e6)?;
+    // compare with the flattened outline actually being filled: flattening
+    // shaves a few percent off small curves, which mustn't count as a failure
+    let outline_area = signed_area2(&pts).abs() / 2.0;
+    let tris = triangulate(&pts, outline_area)?;
     let up = [0.0, 1.0, 0.0];
     for t in tris {
         let [a, c, d] = t.map(|i| [pts[i][0], y, pts[i][1]]);

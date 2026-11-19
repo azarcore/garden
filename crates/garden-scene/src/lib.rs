@@ -854,6 +854,16 @@ mod tests {
     }
 
     #[test]
+    fn small_round_ponds_are_kept() {
+        let s = build(&doc_with(vec![ObjectKind::Area {
+            area_type: AreaType::Water,
+            shape: Shape::circle(Point::ZERO, 600.),
+        }]));
+        assert_eq!(s.skipped, 0);
+        assert!(s.meshes.iter().any(|m| m.kind == SurfaceKind::Water));
+    }
+
+    #[test]
     fn every_template_builds_in_3d() {
         use garden_editor::templates::{instantiate, templates};
         for t in templates() {

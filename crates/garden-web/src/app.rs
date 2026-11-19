@@ -46,8 +46,13 @@ fn on_key_down(
     state: RwSignal<EditorState>,
     space: RwSignal<bool>,
     plant: RwSignal<PlantDef>,
+    designs_open: RwSignal<bool>,
 ) {
     if typing_in_field(&e) {
+        return;
+    }
+    // With My designs open, Escape just closes the panel (it must not cancel a drawing).
+    if e.key() == "Escape" && designs_open.get_untracked() {
         return;
     }
     let m = Modifiers {
@@ -124,8 +129,11 @@ pub fn App() -> impl IntoView {
     provide_context(SpaceHeld(space));
     provide_context(LastPlant(plant));
     crate::library::provide_library(state);
+    let crate::library::DesignsOpen(designs_open) = expect_context::<crate::library::DesignsOpen>();
 
-    let down = window_event_listener(ev::keydown, move |e| on_key_down(e, state, space, plant));
+    let down = window_event_listener(ev::keydown, move |e| {
+        on_key_down(e, state, space, plant, designs_open)
+    });
     let up = window_event_listener(ev::keyup, move |e| {
         if e.key() == " " {
             space.set(false);

@@ -28,6 +28,8 @@ pub struct Library {
     pub store: StoredValue<Option<Store>, LocalStorage>,
     pub status: RwSignal<SaveStatus>,
     pub summaries: RwSignal<Vec<DesignSummary>>,
+    /// Feedback shown in the My designs panel (import errors, refused switches).
+    pub message: RwSignal<Option<&'static str>>,
     autosave: StoredValue<Autosave, LocalStorage>,
 }
 
@@ -68,17 +70,29 @@ pub async fn refresh_summaries(lib: Library) {
     }
 }
 
-/// Save the open design now (used before switching designs).
-pub async fn save_now(lib: Library, state: RwSignal<EditorState>) -> Result<(), StorageError> {
+/// Make sure the open design is safely stored before switching away from it.
+/// Returns false (and says why) when switching would lose work.
+pub async fn leave_current(lib: Library, state: RwSignal<EditorState>) -> bool {
+    use garden_editor::strings::EN;
     let Some(store) = lib.store.get_value() else {
-        return Err(StorageError::Unavailable(String::new()));
+        lib.message.set(Some(EN.storage_needed));
+        return false;
     };
     let (doc, count) = state.with_untracked(|s| (s.doc().clone(), s.change_count()));
+    lib.autosave.update_value(|a| a.observe(count, now()));
+    if !lib.autosave.with_value(Autosave::is_dirty) {
+        return true; // already stored (or a blank design with nothing to lose)
+    }
     lib.autosave.update_value(|a| a.started());
     let result = store.put(&doc).await;
     lib.autosave
-        .update_value(|a| a.finished(count, result.is_ok()));
-    result
+        .update_value(|a| a.finished_at(count, result.is_ok(), now()));
+    if result.is_err() {
+        lib.status.set(SaveStatus::Unsaved);
+        lib.message.set(Some(EN.switch_blocked));
+        return false;
+    }
+    true
 }
 
 fn tick(lib: Library, state: RwSignal<EditorState>) {
@@ -95,18 +109,23 @@ fn tick(lib: Library, state: RwSignal<EditorState>) {
         return;
     }
     lib.autosave.update_value(|a| a.started());
-    lib.status.set(SaveStatus::Saving);
+    if lib.status.get_untracked() != SaveStatus::Unsaved {
+        lib.status.set(SaveStatus::Saving); // keep "will retry" steady while retrying
+    }
     let doc = state.with_untracked(|s| s.doc().clone());
     spawn_local(async move {
         let result = store.put(&doc).await;
+        let ok = result.is_ok();
         lib.autosave
-            .update_value(|a| a.finished(count, result.is_ok()));
+            .update_value(|a| a.finished_at(count, ok, now()));
         lib.status.set(match result {
             Ok(()) => SaveStatus::Saved,
             Err(StorageError::Unavailable(_)) => SaveStatus::Unavailable,
             Err(_) => SaveStatus::Unsaved,
         });
-        refresh_summaries(lib).await;
+        if ok {
+            refresh_summaries(lib).await;
+        }
     });
 }
 
@@ -116,11 +135,12 @@ pub fn provide_library(state: RwSignal<EditorState>) -> Library {
         store: StoredValue::new_local(None),
         status: RwSignal::new(SaveStatus::Saved),
         summaries: RwSignal::new(Vec::new()),
+        message: RwSignal::new(None),
         autosave: StoredValue::new_local(Autosave::new(0)),
     };
     provide_context(lib);
     provide_context(DesignsOpen(RwSignal::new(false)));
-    provide_context(ImportMessage(RwSignal::new(None)));
+    provide_context(ImportMessage(lib.message));
     spawn_local(async move {
         let store = match storage::open().await {
             Ok(store) => store,
@@ -166,9 +186,20 @@ fn show(lib: Library, state: RwSignal<EditorState>, doc: Document) {
     lib.reset_autosave(state.with_untracked(|s| s.change_count()));
 }
 
-/// Start a new, empty design (the current one is saved first).
-pub async fn new_design(lib: Library, state: RwSignal<EditorState>) {
-    let _ = save_now(lib, state).await;
+/// Start a new, empty design (the current one is saved first; nothing
+/// happens if it can't be).
+/// Returns true when the new design is open.
+pub async fn new_design(lib: Library, state: RwSignal<EditorState>) -> bool {
+    if !leave_current(lib, state).await {
+        return false;
+    }
+    create_new(lib, state).await;
+    true
+}
+
+/// Create, store and open an empty design without touching the current one.
+async fn create_new(lib: Library, state: RwSignal<EditorState>) {
+    lib.message.set(None);
     refresh_summaries(lib).await; // names must include a just-saved rename
     let names: Vec<String> = lib
         .summaries
@@ -183,20 +214,27 @@ pub async fn new_design(lib: Library, state: RwSignal<EditorState>) {
 }
 
 /// Switch to a stored design (the current one is saved first).
-pub async fn open_design(lib: Library, state: RwSignal<EditorState>, id: String) {
+/// Returns true when the design is open.
+pub async fn open_design(lib: Library, state: RwSignal<EditorState>, id: String) -> bool {
     if id == current_id(state) {
-        return;
+        return true;
     }
-    let _ = save_now(lib, state).await;
+    if !leave_current(lib, state).await {
+        return false;
+    }
+    lib.message.set(None);
     let Some(store) = lib.store.get_value() else {
-        return;
+        return false;
     };
+    let mut opened = false;
     if let Ok(Some(record)) = store.get(&id).await
         && let Ok(doc) = parse(&record)
     {
         show(lib, state, doc);
+        opened = true;
     }
     refresh_summaries(lib).await;
+    opened
 }
 
 /// Delete a stored design. Deleting the open one switches to the newest other
@@ -205,8 +243,13 @@ pub async fn delete_design(lib: Library, state: RwSignal<EditorState>, id: Strin
     let Some(store) = lib.store.get_value() else {
         return;
     };
+    let deleting_open = id == current_id(state);
+    if deleting_open {
+        // the open design is going away: stop autosave from writing it back
+        lib.reset_autosave(state.with_untracked(|s| s.change_count()));
+    }
     let _ = store.delete(&id).await;
-    if id == current_id(state) {
+    if deleting_open {
         let next = match store.list().await {
             Ok(records) => records.iter().find_map(|r| parse(r).ok()),
             Err(_) => None,
@@ -214,8 +257,7 @@ pub async fn delete_design(lib: Library, state: RwSignal<EditorState>, id: Strin
         match next {
             Some(doc) => show(lib, state, doc),
             None => {
-                refresh_summaries(lib).await;
-                new_design(lib, state).await;
+                create_new(lib, state).await;
                 return;
             }
         }
@@ -255,15 +297,20 @@ pub async fn import_text(
         }
     };
     message.set(None);
-    let _ = save_now(lib, state).await;
+    if !leave_current(lib, state).await {
+        return;
+    }
     let ids: Vec<uuid::Uuid> = lib.summaries.with_untracked(|s| {
         s.iter()
             .filter_map(|d| uuid::Uuid::parse_str(&d.id).ok())
             .collect()
     });
     let doc = garden_editor::library::prepare_import(doc, &ids, now());
-    if let Some(store) = lib.store.get_value() {
-        let _ = store.put(&doc).await;
+    if let Some(store) = lib.store.get_value()
+        && store.put(&doc).await.is_err()
+    {
+        message.set(Some(EN.switch_blocked));
+        return;
     }
     show(lib, state, doc);
     refresh_summaries(lib).await;
@@ -334,8 +381,11 @@ fn DesignRow(summary: DesignSummary) -> impl IntoView {
             <button class="design-open" disabled=!can_open aria-current=move || is_current.get().then_some("true")
                 on:click=move |_| {
                     let id = open_id.clone();
-                    spawn_local(async move { open_design(lib, state, id).await });
-                    open.set(false);
+                    spawn_local(async move {
+                        if open_design(lib, state, id).await {
+                            open.set(false); // stays open to show why if it didn't switch
+                        }
+                    });
                 }>
                 <span class="design-name">{summary.name.clone()}</span>
                 <span class="design-meta">{detail}</span>
@@ -397,8 +447,11 @@ pub fn MyDesigns() -> impl IntoView {
                         } />
                 </div>
                 <button class="new-design" on:click=move |_| {
-                    spawn_local(async move { new_design(lib, state).await });
-                    open.set(false);
+                    spawn_local(async move {
+                        if new_design(lib, state).await {
+                            open.set(false);
+                        }
+                    });
                 }>{crate::icons::icon(crate::icons::Icon::Leaf)}{EN.new_design}</button>
                 <h3>{EN.my_designs}</h3>
                 <ul class="design-list">{rows}</ul>

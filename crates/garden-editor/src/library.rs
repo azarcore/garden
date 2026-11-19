@@ -9,6 +9,8 @@ use crate::strings::EN;
 
 /// Quiet time after the last change before an autosave starts.
 pub const AUTOSAVE_DELAY_MS: i64 = 800;
+/// Wait after a failed save before trying again.
+pub const RETRY_DELAY_MS: i64 = 5_000;
 
 /// Decides when to save, given how many changes the editor has made.
 #[derive(Debug, Default)]
@@ -17,6 +19,8 @@ pub struct Autosave {
     saved: u64,
     changed_at: i64,
     in_flight: bool,
+    /// No save before this time (set after a failure).
+    retry_at: i64,
 }
 
 impl Autosave {
@@ -26,6 +30,7 @@ impl Autosave {
             saved: saved_change_count,
             changed_at: 0,
             in_flight: false,
+            retry_at: 0,
         }
     }
 
@@ -39,18 +44,26 @@ impl Autosave {
 
     /// A save should start now: unsaved changes, quiet long enough, not mid-gesture, none running.
     pub fn due(&self, now_ms: i64, busy: bool) -> bool {
-        self.is_dirty() && !self.in_flight && !busy && now_ms - self.changed_at >= AUTOSAVE_DELAY_MS
+        self.is_dirty()
+            && !self.in_flight
+            && !busy
+            && now_ms - self.changed_at >= AUTOSAVE_DELAY_MS
+            && now_ms >= self.retry_at
     }
 
     pub fn started(&mut self) {
         self.in_flight = true;
     }
 
-    /// The save of `saved_change_count` finished; on failure the design stays dirty.
-    pub fn finished(&mut self, saved_change_count: u64, ok: bool) {
+    /// The save of `saved_change_count` finished at `now_ms`. On failure the
+    /// design stays dirty and the next attempt waits `RETRY_DELAY_MS`.
+    pub fn finished_at(&mut self, saved_change_count: u64, ok: bool, now_ms: i64) {
         self.in_flight = false;
         if ok {
             self.saved = self.saved.max(saved_change_count);
+            self.retry_at = 0;
+        } else {
+            self.retry_at = now_ms + RETRY_DELAY_MS;
         }
     }
 
@@ -195,11 +208,11 @@ mod tests {
         a.started();
         assert!(!a.due(5000, false)); // one in flight
         a.observe(2, 1950); // edited while saving
-        a.finished(1, true);
+        a.finished_at(1, true, 1960);
         assert!(a.is_dirty());
         assert!(a.due(1950 + AUTOSAVE_DELAY_MS, false));
         a.started();
-        a.finished(2, true);
+        a.finished_at(2, true, 3000);
         assert!(!a.is_dirty());
     }
 
@@ -208,9 +221,9 @@ mod tests {
         let mut a = Autosave::new(0);
         a.observe(3, 0);
         a.started();
-        a.finished(3, false);
+        a.finished_at(3, false, 0);
         assert!(a.is_dirty());
-        assert!(a.due(AUTOSAVE_DELAY_MS, false));
+        assert!(a.due(RETRY_DELAY_MS, false));
     }
 
     #[test]
@@ -289,5 +302,22 @@ mod tests {
             "back-garden-2026.garden.json"
         );
         assert_eq!(export_file_name("   ", "svg"), "garden.svg");
+    }
+
+    #[test]
+    fn failed_save_backs_off_before_retrying() {
+        let mut a = Autosave::new(0);
+        a.observe(3, 0);
+        a.started();
+        a.finished_at(3, false, 1000);
+        assert!(a.is_dirty());
+        assert!(!a.due(1250, false)); // no hammering every tick
+        assert!(!a.due(1000 + RETRY_DELAY_MS - 1, false));
+        assert!(a.due(1000 + RETRY_DELAY_MS, false));
+        // a successful save clears the back-off
+        a.started();
+        a.finished_at(3, true, 7000);
+        a.observe(4, 7100);
+        assert!(a.due(7100 + AUTOSAVE_DELAY_MS, false));
     }
 }

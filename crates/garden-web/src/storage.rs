@@ -9,8 +9,10 @@ use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsValue;
 
 const DB_NAME: &str = "garden-planner";
-const DB_VERSION: u32 = 1;
+/// 1: designs. 2: adds the images store (traced photos).
+const DB_VERSION: u32 = 2;
 const STORE: &str = "designs";
+const IMAGES: &str = "images";
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum StorageError {
@@ -50,12 +52,16 @@ pub async fn open() -> Result<Store, StorageError> {
         .open(DB_NAME, Some(DB_VERSION))
         .map_err(|e| StorageError::Unavailable(e.to_string()))?;
     request.on_upgrade_needed(|event| {
-        if let Ok(db) = event.database()
-            && !db.store_names().iter().any(|n| n == STORE)
-        {
+        let Ok(db) = event.database() else { return };
+        let names = db.store_names();
+        if !names.iter().any(|n| n == STORE) {
             let mut params = ObjectStoreParams::new();
             params.key_path(Some(KeyPath::new_single("id")));
             let _ = db.create_object_store(STORE, params);
+        }
+        if !names.iter().any(|n| n == IMAGES) {
+            // keys are given explicitly (the image_ref)
+            let _ = db.create_object_store(IMAGES, ObjectStoreParams::new());
         }
     });
     let db = request
@@ -134,6 +140,59 @@ impl Store {
         let store = tx.object_store(STORE).map_err(classify)?;
         store
             .delete(JsValue::from_str(id))
+            .map_err(classify)?
+            .await
+            .map_err(classify)?;
+        tx.commit().map_err(classify)?.await.map_err(classify)?;
+        Ok(())
+    }
+
+    /// Store the bytes of a traced photo under its reference.
+    #[allow(dead_code)] // used by the trace card (next task)
+    pub async fn put_image(
+        &self,
+        image_ref: &str,
+        blob: &web_sys::Blob,
+    ) -> Result<(), StorageError> {
+        let tx = self
+            .db
+            .transaction(&[IMAGES], TransactionMode::ReadWrite)
+            .map_err(classify)?;
+        let store = tx.object_store(IMAGES).map_err(classify)?;
+        store
+            .put(blob, Some(&JsValue::from_str(image_ref)))
+            .map_err(classify)?
+            .await
+            .map_err(classify)?;
+        tx.commit().map_err(classify)?.await.map_err(classify)?;
+        Ok(())
+    }
+
+    #[allow(dead_code)] // used by the trace card (next task)
+    pub async fn get_image(&self, image_ref: &str) -> Result<Option<web_sys::Blob>, StorageError> {
+        use wasm_bindgen::JsCast;
+        let tx = self
+            .db
+            .transaction(&[IMAGES], TransactionMode::ReadOnly)
+            .map_err(classify)?;
+        let store = tx.object_store(IMAGES).map_err(classify)?;
+        let value: Option<JsValue> = store
+            .get(JsValue::from_str(image_ref))
+            .map_err(classify)?
+            .await
+            .map_err(classify)?;
+        Ok(value.and_then(|v| v.dyn_into::<web_sys::Blob>().ok()))
+    }
+
+    #[allow(dead_code)] // kept for a later clean-up of unused photos
+    pub async fn delete_image(&self, image_ref: &str) -> Result<(), StorageError> {
+        let tx = self
+            .db
+            .transaction(&[IMAGES], TransactionMode::ReadWrite)
+            .map_err(classify)?;
+        let store = tx.object_store(IMAGES).map_err(classify)?;
+        store
+            .delete(JsValue::from_str(image_ref))
             .map_err(classify)?
             .await
             .map_err(classify)?;

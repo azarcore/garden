@@ -172,7 +172,17 @@ pub fn ToolDock() -> impl IntoView {
 pub fn HintBar() -> impl IntoView {
     let state = expect_context::<RwSignal<EditorState>>();
     let info = Memo::new(move |_| {
-        state.with(|s| (hint(s.tool(), s.points_placed(), &EN), s.points_placed()))
+        state.with(|s| {
+            (
+                hint(
+                    s.tool(),
+                    s.points_placed(),
+                    s.doc().background.is_some(),
+                    &EN,
+                ),
+                s.points_placed(),
+            )
+        })
     });
     let key = move |k: Key| state.update(|s| s.handle(Input::Key(k, Modifiers::default()), now()));
     view! {

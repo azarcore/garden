@@ -35,6 +35,8 @@ pub enum ToolKind {
     Polygon(DrawTarget),
     Polyline(LineTarget),
     Plant(PlantDef),
+    /// Two clicks on the traced photo, then a typed real distance.
+    SetScale,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -73,8 +75,19 @@ pub struct Preview {
 }
 
 /// One line telling the person what to do next with `tool`.
-pub fn hint(tool: &ToolKind, points_placed: usize, s: &crate::strings::Strings) -> &'static str {
+pub fn hint(
+    tool: &ToolKind,
+    points_placed: usize,
+    has_background: bool,
+    s: &crate::strings::Strings,
+) -> &'static str {
     match tool {
+        ToolKind::SetScale if !has_background => s.hint_scale_need_photo,
+        ToolKind::SetScale => match points_placed {
+            0 => s.hint_scale_first,
+            1 => s.hint_scale_second,
+            _ => s.hint_scale_type,
+        },
         ToolKind::Select => s.hint_select,
         ToolKind::Rect(_) | ToolKind::Ellipse(_) => s.hint_drag,
         ToolKind::Polygon(_) if points_placed == 0 => s.hint_shape_start,
@@ -94,15 +107,25 @@ mod tests {
     #[test]
     fn hints_explain_how_to_use_each_tool() {
         let line = ToolKind::Polyline(LineTarget::Path { width: 900. });
-        assert_eq!(hint(&line, 0, &EN), EN.hint_line_start);
-        assert_eq!(hint(&line, 2, &EN), EN.hint_line_more);
+        assert_eq!(hint(&line, 0, false, &EN), EN.hint_line_start);
+        assert_eq!(hint(&line, 2, false, &EN), EN.hint_line_more);
         let bed = ToolKind::Polygon(DrawTarget::Area(AreaType::Bed));
-        assert_eq!(hint(&bed, 0, &EN), EN.hint_shape_start);
-        assert_eq!(hint(&bed, 3, &EN), EN.hint_shape_more);
+        assert_eq!(hint(&bed, 0, false, &EN), EN.hint_shape_start);
+        assert_eq!(hint(&bed, 3, false, &EN), EN.hint_shape_more);
         assert_eq!(
-            hint(&ToolKind::Rect(DrawTarget::Plot), 0, &EN),
+            hint(&ToolKind::Rect(DrawTarget::Plot), 0, false, &EN),
             EN.hint_drag
         );
-        assert_eq!(hint(&ToolKind::Select, 0, &EN), EN.hint_select);
+        assert_eq!(hint(&ToolKind::Select, 0, false, &EN), EN.hint_select);
+        assert_eq!(
+            hint(&ToolKind::SetScale, 0, false, &EN),
+            EN.hint_scale_need_photo
+        );
+        assert_eq!(hint(&ToolKind::SetScale, 0, true, &EN), EN.hint_scale_first);
+        assert_eq!(
+            hint(&ToolKind::SetScale, 1, true, &EN),
+            EN.hint_scale_second
+        );
+        assert_eq!(hint(&ToolKind::SetScale, 2, true, &EN), EN.hint_scale_type);
     }
 }

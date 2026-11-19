@@ -111,5 +111,6 @@ mod draw;
 pub mod inspector;
 pub mod library;
 pub mod objects;
+pub mod print;
 pub mod state;
 pub mod tools;

@@ -35,6 +35,7 @@ pub(crate) fn handle(s: &mut EditorState, input: Input, now_ms: i64) {
                 }
             }
         }
+        ToolKind::SetScale => set_scale(s, input),
         ToolKind::Select => {}
     }
 }
@@ -160,6 +161,50 @@ fn drag_shape(s: &mut EditorState, input: Input, now_ms: i64, target: &DrawTarge
         Input::Key(Key::Escape, _) => s.cancel_gesture(),
         Input::DoubleClick(..) | Input::Key(..) => {}
     }
+}
+
+/// Set-scale tool: click two points on the photo (no snapping — you click on
+/// what the photo shows), then type the real distance in the hint bar.
+fn set_scale(s: &mut EditorState, input: Input) {
+    if s.doc().background.is_none() {
+        return;
+    }
+    let mut points = match &s.gesture {
+        Gesture::Scale { points } => points.clone(),
+        _ => Vec::new(),
+    };
+    match input {
+        Input::Up(p, _) if points.len() < 2 => {
+            let min = s.viewport.px_to_mm(1.0);
+            if points.last().is_none_or(|last| last.distance(p) > min) {
+                points.push(p);
+            }
+        }
+        Input::Move(p, _) if points.len() == 1 => {
+            let a = points[0];
+            let units = s.doc().units;
+            s.preview = Preview {
+                shapes: vec![crate::render::RenderShape::Line { from: a, to: p }],
+                dims: vec![(a.midpoint(p), format_length(a.distance(p), units))],
+                ..Preview::default()
+            };
+            return;
+        }
+        Input::Key(Key::Escape, _) => {
+            s.cancel_gesture();
+            return;
+        }
+        _ => return,
+    }
+    if points.len() == 2 {
+        let (a, b) = (points[0], points[1]);
+        s.preview = Preview {
+            shapes: vec![crate::render::RenderShape::Line { from: a, to: b }],
+            dims: vec![(a.midpoint(b), format_length(a.distance(b), s.doc().units))],
+            ..Preview::default()
+        };
+    }
+    s.gesture = Gesture::Scale { points };
 }
 
 enum PolyTarget {
@@ -560,5 +605,61 @@ mod tests {
         s.switch_tool(ToolKind::Select, 1);
         assert!(s.doc().objects.is_empty());
         assert_eq!(s.tool(), &ToolKind::Select);
+    }
+
+    fn photo() -> garden_core::model::BackgroundImage {
+        garden_core::model::BackgroundImage {
+            image_ref: "k".into(),
+            mime: "image/png".into(),
+            width_px: 1000,
+            height_px: 800,
+            origin: Point::ZERO,
+            mm_per_px: 10.,
+            rotation: 0.,
+            opacity: 0.5,
+            locked: true,
+        }
+    }
+
+    #[test]
+    fn set_scale_tool_measures_two_points_and_applies() {
+        let mut s = state_with(vec![]);
+        s.set_background(Some(photo()), 1);
+        s.set_tool(ToolKind::SetScale);
+        click(&mut s, Point::new(1000., 1000.), NO);
+        click(&mut s, Point::new(4000., 5000.), NO); // 5000 mm on screen
+        let (a, b, len) = s.pending_scale().unwrap();
+        assert_eq!((a, b), (Point::new(100., 100.), Point::new(400., 500.)));
+        assert!((len - 5000.).abs() < 1e-9);
+        assert_eq!(
+            s.apply_scale("abc", 2),
+            Err(crate::state::ScaleError::NotALength)
+        );
+        s.apply_scale("10 m", 3).unwrap();
+        let bg = s.doc().background.clone().unwrap();
+        assert!((bg.mm_per_px - 20.).abs() < 1e-9);
+        assert!((bg.px_to_world(Point::new(100., 100.)) - Point::new(1000., 1000.)).hypot() < 1e-6);
+        assert_eq!(s.tool(), &ToolKind::Select);
+        assert!(s.undo(4));
+        assert!((s.doc().background.clone().unwrap().mm_per_px - 10.).abs() < 1e-9);
+    }
+
+    #[test]
+    fn set_scale_needs_a_photo_and_two_distinct_points() {
+        let mut s = state_with(vec![]);
+        s.set_tool(ToolKind::SetScale);
+        click(&mut s, Point::new(0., 0.), NO);
+        click(&mut s, Point::new(1000., 0.), NO);
+        assert!(s.pending_scale().is_none());
+        assert_eq!(
+            s.apply_scale("1 m", 1),
+            Err(crate::state::ScaleError::NoBackground)
+        );
+        s.set_background(Some(photo()), 2);
+        s.set_tool(ToolKind::SetScale);
+        click(&mut s, Point::new(500., 500.), NO);
+        click(&mut s, Point::new(500., 500.), NO); // same spot is ignored
+        assert!(s.pending_scale().is_none());
+        assert_eq!(s.points_placed(), 1);
     }
 }

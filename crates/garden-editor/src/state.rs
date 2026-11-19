@@ -3,9 +3,9 @@
 use garden_core::command::{Command, CommandError};
 use garden_core::editor::Editor;
 use garden_core::geometry::Point;
-use garden_core::model::{Document, LayerId, Object, ObjectId};
+use garden_core::model::{BackgroundImage, CalibrationError, Document, LayerId, Object, ObjectId};
 use garden_core::query::{SnapKind, SnapResult, SnapSettings, hit_test_selectable, snap};
-use garden_core::units::UnitSystem;
+use garden_core::units::{UnitSystem, parse_length};
 use kurbo::{Rect, Vec2};
 
 use crate::objects::{object_bounds, object_vertices, translate_kind};
@@ -17,6 +17,26 @@ use crate::viewport::Viewport;
 const DRAG_THRESHOLD_PX: f64 = 3.0;
 /// Offset of duplicated objects.
 const DUPLICATE_OFFSET: Vec2 = Vec2::new(500.0, 500.0);
+
+/// Why a typed scale distance couldn't be applied.
+#[derive(Debug, PartialEq, Eq, Clone, Copy)]
+pub enum ScaleError {
+    NoBackground,
+    NotALength,
+    MustBePositive,
+    SamePoint,
+}
+
+impl ScaleError {
+    pub fn message(&self, s: &crate::strings::Strings) -> &'static str {
+        match self {
+            ScaleError::NoBackground => s.hint_scale_need_photo,
+            ScaleError::NotALength => s.err_not_a_length,
+            ScaleError::MustBePositive => s.err_must_be_positive,
+            ScaleError::SamePoint => s.scale_same_point,
+        }
+    }
+}
 
 /// What the pointer is doing right now.
 #[derive(Clone, Debug, PartialEq)]
@@ -54,6 +74,10 @@ pub(crate) enum Gesture {
     Poly {
         points: Vec<Point>,
         pressed: Option<Point>,
+    },
+    /// Set-scale tool: up to two points clicked on the traced photo (world mm).
+    Scale {
+        points: Vec<Point>,
     },
 }
 
@@ -120,7 +144,7 @@ impl EditorState {
     /// How many points the polygon/line being drawn has (0 when not drawing one).
     pub fn points_placed(&self) -> usize {
         match &self.gesture {
-            Gesture::Poly { points, .. } => points.len(),
+            Gesture::Poly { points, .. } | Gesture::Scale { points } => points.len(),
             _ => 0,
         }
     }
@@ -261,6 +285,48 @@ impl EditorState {
     /// Replace one object (inspector edits, lock toggles).
     pub fn replace_object(&mut self, object: Object, now_ms: i64) -> Result<(), CommandError> {
         self.try_execute(Command::Replace { object }, now_ms)
+    }
+
+    /// Add, change or remove the traced photo (undoable).
+    pub fn set_background(&mut self, bg: Option<BackgroundImage>, now_ms: i64) {
+        if self.doc().background != bg {
+            self.execute(Command::SetBackground { background: bg }, now_ms);
+        }
+    }
+
+    /// After two clicks with the set-scale tool: the two points in photo pixels
+    /// and their current distance on the plan (mm).
+    pub fn pending_scale(&self) -> Option<(Point, Point, f64)> {
+        let bg = self.doc().background.as_ref()?;
+        match &self.gesture {
+            Gesture::Scale { points } if points.len() == 2 => Some((
+                bg.world_to_px(points[0]),
+                bg.world_to_px(points[1]),
+                points[0].distance(points[1]),
+            )),
+            _ => None,
+        }
+    }
+
+    /// Rescale the photo so the two clicked points are `input` apart (e.g. "6 m").
+    pub fn apply_scale(&mut self, input: &str, now_ms: i64) -> Result<(), ScaleError> {
+        let Some(mut bg) = self.doc().background.clone() else {
+            return Err(ScaleError::NoBackground);
+        };
+        let Some((a, b, _)) = self.pending_scale() else {
+            return Err(ScaleError::SamePoint);
+        };
+        let real = parse_length(input, self.doc().units).map_err(|_| ScaleError::NotALength)?;
+        if real <= 0.0 {
+            return Err(ScaleError::MustBePositive);
+        }
+        bg.calibrate_about(a, b, real).map_err(|e| match e {
+            CalibrationError::SamePoint => ScaleError::SamePoint,
+            CalibrationError::InvalidDistance => ScaleError::MustBePositive,
+        })?;
+        self.set_background(Some(bg), now_ms);
+        self.set_tool(ToolKind::Select);
+        Ok(())
     }
 
     /// Rename the design (undoable). Blank names are ignored.

@@ -123,7 +123,7 @@ impl Store {
             .into_iter()
             .filter_map(|v| serde_wasm_bindgen::from_value(v).ok())
             .collect();
-        designs.sort_by(|a, b| b.modified.cmp(&a.modified));
+        designs.sort_by_key(|d| std::cmp::Reverse(d.modified));
         Ok(designs)
     }
 

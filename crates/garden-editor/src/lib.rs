@@ -115,4 +115,5 @@ pub mod library;
 pub mod objects;
 pub mod print;
 pub mod state;
+pub mod templates;
 pub mod tools;

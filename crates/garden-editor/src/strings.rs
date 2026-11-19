@@ -192,6 +192,18 @@ pub struct Strings {
     pub err_no_webgl: &'static str,
     pub err_3d_failed: &'static str,
     pub err_3d_crashed: &'static str,
+    pub tpl_blank: &'static str,
+    pub tpl_blank_blurb: &'static str,
+    pub tpl_small_back: &'static str,
+    pub tpl_small_back_blurb: &'static str,
+    pub tpl_front: &'static str,
+    pub tpl_front_blurb: &'static str,
+    pub tpl_cottage: &'static str,
+    pub tpl_cottage_blurb: &'static str,
+    pub tpl_vegetable: &'static str,
+    pub tpl_vegetable_blurb: &'static str,
+    pub tpl_courtyard: &'static str,
+    pub tpl_courtyard_blurb: &'static str,
 }
 
 pub static EN: Strings = Strings {
@@ -383,6 +395,18 @@ pub static EN: Strings = Strings {
     err_no_webgl: "3D needs a browser with WebGL2",
     err_3d_failed: "Couldn't load the 3D view. Check your connection and try again.",
     err_3d_crashed: "The 3D view stopped working. Reload the page to try again.",
+    tpl_blank: "Blank",
+    tpl_blank_blurb: "Start from an empty plan",
+    tpl_small_back: "Small back garden",
+    tpl_small_back_blurb: "Lawn, patio, two borders and a shed",
+    tpl_front: "Front garden",
+    tpl_front_blurb: "Path to the door, hedge, beds and a small tree",
+    tpl_cottage: "Cottage garden",
+    tpl_cottage_blurb: "Curving beds full of flowers and a bench",
+    tpl_vegetable: "Vegetable plot",
+    tpl_vegetable_blurb: "Raised beds, gravel paths, compost and a greenhouse",
+    tpl_courtyard: "Courtyard",
+    tpl_courtyard_blurb: "Paving, a water feature, a maple and wall planting",
 };
 
 /// Heading for a group of plants.

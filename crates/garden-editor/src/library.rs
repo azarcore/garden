@@ -154,7 +154,11 @@ fn civil_from_days(z: i64) -> (i64, u32, u32) {
 
 /// A name for a new design that doesn't clash with existing ones.
 pub fn next_design_name(existing: &[&str]) -> String {
-    let base = EN.new_design_name;
+    next_name(EN.new_design_name, existing)
+}
+
+/// `base`, or `base 2`, `base 3`, … — the first that isn't taken.
+pub fn next_name(base: &str, existing: &[&str]) -> String {
     if !existing.contains(&base) {
         return base.to_string();
     }
@@ -319,5 +323,12 @@ mod tests {
         a.finished_at(3, true, 7000);
         a.observe(4, 7100);
         assert!(a.due(7100 + AUTOSAVE_DELAY_MS, false));
+    }
+
+    #[test]
+    fn template_names_do_not_clash() {
+        assert_eq!(next_name("Courtyard", &["Courtyard"]), "Courtyard 2");
+        assert_eq!(next_name("Courtyard", &[]), "Courtyard");
+        assert_eq!(next_design_name(&[]), EN.new_design_name);
     }
 }

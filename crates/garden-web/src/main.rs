@@ -8,6 +8,7 @@ mod inspector;
 mod library;
 mod plan_art;
 mod plant_picker;
+mod print;
 mod storage;
 mod toolbar;
 mod trace;

@@ -130,6 +130,7 @@ pub fn App() -> impl IntoView {
     provide_context(LastPlant(plant));
     crate::library::provide_library(state);
     crate::trace::provide_trace();
+    provide_context(crate::print::PrintOpen(RwSignal::new(false)));
     let crate::library::DesignsOpen(designs_open) = expect_context::<crate::library::DesignsOpen>();
 
     let down = window_event_listener(ev::keydown, move |e| {
@@ -156,6 +157,7 @@ pub fn App() -> impl IntoView {
             <TitleCard />
             <crate::library::MyDesigns />
             <crate::trace::TraceCard />
+            <crate::print::PrintCard />
             <ControlsCard />
             <PlantPicker />
             <Inspector />

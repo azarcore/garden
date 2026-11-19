@@ -114,7 +114,8 @@ fn page_css(doc: &web_sys::Document) -> String {
 
 /// A standalone SVG of the plan: no grid, previews or selection, light colours,
 /// framed on `world` (mm) at 1 px = 20 mm.
-pub fn plan_svg(world: kurbo::Rect) -> Option<(String, f64, f64)> {
+/// With `size_mm`, the SVG is sized in millimetres (for printing at scale).
+pub fn plan_svg(world: kurbo::Rect, size_mm: Option<(f64, f64)>) -> Option<(String, f64, f64)> {
     let doc = document()?;
     let live = doc.query_selector("svg.plan").ok()??;
     let svg: Element = live.clone_node_with_deep(true).ok()?.unchecked_into();
@@ -126,6 +127,7 @@ pub fn plan_svg(world: kurbo::Rect) -> Option<(String, f64, f64)> {
         ".snap",
         ".marquee",
         ".selection",
+        ".trace-photo",
     ] {
         if let Ok(nodes) = svg.query_selector_all(selector) {
             for i in 0..nodes.length() {
@@ -150,8 +152,12 @@ pub fn plan_svg(world: kurbo::Rect) -> Option<(String, f64, f64)> {
             world.height()
         ),
     );
-    let _ = svg.set_attribute("width", &format!("{w:.0}"));
-    let _ = svg.set_attribute("height", &format!("{h:.0}"));
+    let (width, height) = match size_mm {
+        Some((mw, mh)) => (format!("{mw:.2}mm"), format!("{mh:.2}mm")),
+        None => (format!("{w:.0}"), format!("{h:.0}")),
+    };
+    let _ = svg.set_attribute("width", &width);
+    let _ = svg.set_attribute("height", &height);
     let _ = svg.set_attribute("data-theme", "light");
     let _ = svg.set_attribute("style", "background:#ffffff");
     let style = doc.create_element_ns(Some(SVG_NS), "style").ok()?;

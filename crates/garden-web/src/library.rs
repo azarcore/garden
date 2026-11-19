@@ -367,7 +367,7 @@ pub async fn export_image(state: RwSignal<EditorState>, png: bool) {
     });
     let Some(bounds) = bounds else { return };
     let framed = bounds.inflate(1000.0, 1000.0);
-    let Some((svg, w, h)) = crate::files::plan_svg(framed) else {
+    let Some((svg, w, h)) = crate::files::plan_svg(framed, None) else {
         return;
     };
     if png {

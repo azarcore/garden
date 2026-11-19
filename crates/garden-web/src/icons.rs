@@ -28,7 +28,6 @@ pub enum Icon {
     Magnet,
     Close,
     Photo,
-    #[allow(dead_code)] // used by the print card (task 7)
     Printer,
 }
 

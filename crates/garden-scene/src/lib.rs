@@ -3,11 +3,12 @@
 //! plant instances and a starting camera. No graphics library here, so it is
 //! tested natively; `garden-3d` draws it.
 
+mod lines;
 mod surfaces;
 
 use garden_core::geometry::Point;
 use garden_core::model::{
-    AreaType, Color, Document, Object, ObjectKind, PlantCategory, PlantSymbol,
+    AreaType, Color, Document, LinearKind, Object, ObjectKind, PlantCategory, PlantSymbol,
 };
 use garden_editor::objects::object_bounds;
 use garden_editor::render::default_style;
@@ -153,6 +154,12 @@ const GROUND_MARGIN_M: f64 = 10.0;
 const LAYER_STEP_M: f64 = 0.0002;
 /// Raised beds stand this high.
 const BED_HEIGHT_M: f64 = 0.12;
+/// Plants are never flatter than this (metres).
+const MIN_PLANT_HEIGHT_M: f64 = 0.05;
+const MIN_CAMERA_RADIUS_M: f64 = 8.0;
+const EMPTY_CAMERA_RADIUS_M: f64 = 20.0;
+/// Camera tilt above the horizon (radians).
+const CAMERA_PITCH: f32 = 0.6;
 const GROUND_COLOR: Color = Color(196, 207, 184, 255);
 const PLOT_COLOR: Color = Color(236, 238, 226, 255);
 
@@ -226,7 +233,61 @@ pub fn build(doc: &Document) -> Scene {
                         .map(|_| (kind, color))
                 }
             }
-            _ => continue,
+            ObjectKind::Path { shape, width } => {
+                let y = surface_height(SurfaceKind::Path) + lift;
+                lines::add_strip(&mut mb, &lines::line_m(shape), width / 1000.0, y);
+                Some((SurfaceKind::Path, fill_color(o, PLOT_COLOR)))
+            }
+            ObjectKind::Linear {
+                kind,
+                shape,
+                thickness,
+                height,
+            } => {
+                let surface = match kind {
+                    LinearKind::Fence => SurfaceKind::Fence,
+                    LinearKind::Wall => SurfaceKind::Wall,
+                    LinearKind::Hedge => SurfaceKind::Hedge,
+                };
+                let joints = *kind != LinearKind::Fence;
+                let pts = lines::line_m(shape);
+                lines::add_boxes(
+                    &mut mb,
+                    &pts,
+                    thickness / 1000.0,
+                    height.max(1.0) / 1000.0,
+                    joints,
+                );
+                if mb.is_empty() {
+                    continue; // a line without length: nothing to stand up
+                }
+                Some((surface, fill_color(o, PLOT_COLOR)))
+            }
+            ObjectKind::Structure {
+                footprint, height, ..
+            } => surfaces::add_prism(&mut mb, footprint, 0.0, height.max(1.0) / 1000.0 + lift)
+                .map(|_| (SurfaceKind::Structure, fill_color(o, PLOT_COLOR))),
+            ObjectKind::Plant {
+                position,
+                spread,
+                height,
+                category,
+                symbol,
+                ..
+            } => {
+                let mut color = fill_color(o, PLOT_COLOR);
+                color[3] = 1.0;
+                scene.plants.push(PlantInstance {
+                    position: mm_to_world(*position, 0.0),
+                    spread: (spread.max(1.0) / 1000.0) as f32,
+                    height: (height / 1000.0).max(MIN_PLANT_HEIGHT_M) as f32,
+                    category: *category,
+                    symbol: *symbol,
+                    color,
+                });
+                continue;
+            }
+            ObjectKind::Label { .. } | ObjectKind::Dimension { .. } => continue,
         };
         match built {
             Some((kind, color)) if !mb.is_empty() => scene.meshes.push(mb.finish(kind, color)),
@@ -234,7 +295,31 @@ pub fn build(doc: &Document) -> Scene {
         }
     }
     scene.meshes.insert(0, ground(bounds));
+    scene.camera = Some(camera(bounds));
     scene
+}
+
+/// Looking at the middle of the design from the bottom of the plan, far enough
+/// back to see all of it.
+fn camera(bounds: Option<Rect>) -> CameraStart {
+    let framed = bounds.filter(|b| [b.x0, b.y0, b.x1, b.y1].iter().all(|v| v.is_finite()));
+    let (target, radius) = match framed {
+        Some(b) => {
+            let c = b.center();
+            let diagonal = (b.width().hypot(b.height())) / 1000.0;
+            (
+                [(c.x / 1000.0) as f32, 0.0, (c.y / 1000.0) as f32],
+                (1.2 * diagonal).max(MIN_CAMERA_RADIUS_M),
+            )
+        }
+        None => ([0.0; 3], EMPTY_CAMERA_RADIUS_M),
+    };
+    CameraStart {
+        target,
+        radius: radius as f32,
+        yaw: 0.0,
+        pitch: CAMERA_PITCH,
+    }
 }
 
 /// A square of ground reaching `GROUND_MARGIN_M` beyond the design (20 × 20 m when empty).
@@ -277,7 +362,6 @@ pub(crate) mod test_util {
         d
     }
 
-    #[allow(dead_code)] // used from Task 2 on
     pub fn plant_at(x: f64, y: f64, spread: f64) -> ObjectKind {
         ObjectKind::Plant {
             position: Point::new(x, y),
@@ -297,7 +381,6 @@ pub(crate) mod test_util {
     }
 
     /// One of every object kind (copy of garden_editor's test sample).
-    #[allow(dead_code)] // used from Task 2 on
     pub fn all_kinds_sample() -> Vec<ObjectKind> {
         let line = Shape::polyline(&[Point::ZERO, Point::new(1000., 0.)], false);
         vec![
@@ -340,7 +423,7 @@ mod tests {
     use super::*;
     use crate::test_util::*;
     use garden_core::geometry::{Point, Shape};
-    use garden_core::model::{AreaType, ObjectKind};
+    use garden_core::model::{AreaType, LinearKind, ObjectKind, StructureKind};
 
     pub(crate) fn tri_area(m: &MeshData) -> f64 {
         m.indices
@@ -529,5 +612,157 @@ mod tests {
             .map(|p| p[0])
             .fold(f32::MAX, f32::min);
         assert!(min_x <= -10.0 + 1e-3); // 10 m beyond the plot
+    }
+
+    #[test]
+    fn paths_are_strips_of_their_width() {
+        let s = build(&doc_with(vec![ObjectKind::Path {
+            shape: Shape::polyline(&[Point::ZERO, Point::new(5000., 0.)], false),
+            width: 1000.,
+        }]));
+        let p = s
+            .meshes
+            .iter()
+            .find(|m| m.kind == SurfaceKind::Path)
+            .unwrap();
+        let zs: Vec<f32> = p.positions.iter().map(|v| v[2]).collect();
+        assert!((zs.iter().cloned().fold(f32::MIN, f32::max) - 0.5).abs() < 1e-3);
+        assert!((zs.iter().cloned().fold(f32::MAX, f32::min) + 0.5).abs() < 1e-3);
+        assert!(p.normals.iter().all(|n| *n == [0.0, 1.0, 0.0]));
+    }
+
+    #[test]
+    fn walls_stand_to_their_height() {
+        let s = build(&doc_with(vec![ObjectKind::Linear {
+            kind: LinearKind::Wall,
+            shape: Shape::polyline(
+                &[Point::ZERO, Point::new(3000., 0.), Point::new(3000., 2000.)],
+                false,
+            ),
+            thickness: 200.,
+            height: 1800.,
+        }]));
+        let w = s
+            .meshes
+            .iter()
+            .find(|m| m.kind == SurfaceKind::Wall)
+            .unwrap();
+        let top = w.positions.iter().map(|p| p[1]).fold(f32::MIN, f32::max);
+        assert!((top - 1.8).abs() < 1e-4);
+        assert!(w.positions.iter().all(|p| p[1] >= -1e-6));
+        assert_eq!(w.indices.len() % 3, 0);
+        // the wall is 0.2 m thick around the line
+        let max_z_first_leg = w
+            .positions
+            .iter()
+            .filter(|p| p[0] < 2.5)
+            .map(|p| p[2])
+            .fold(f32::MIN, f32::max);
+        assert!((max_z_first_leg - 0.1).abs() < 1e-3);
+    }
+
+    #[test]
+    fn sheds_are_solid_to_their_height() {
+        let s = build(&doc_with(vec![ObjectKind::Structure {
+            kind: StructureKind::Shed,
+            footprint: Shape::rect(Point::ZERO, 2000., 1500.),
+            height: 2200.,
+        }]));
+        let shed = s
+            .meshes
+            .iter()
+            .find(|m| m.kind == SurfaceKind::Structure)
+            .unwrap();
+        assert!(shed.positions.iter().any(|p| (p[1] - 2.2).abs() < 1e-4));
+        assert!(shed.normals.iter().any(|n| n[0].abs() > 0.99)); // has side walls
+    }
+
+    #[test]
+    fn side_walls_face_outwards() {
+        let s = build(&doc_with(vec![ObjectKind::Structure {
+            kind: StructureKind::Shed,
+            footprint: Shape::rect(Point::ZERO, 2000., 2000.),
+            height: 2000.,
+        }]));
+        let shed = s
+            .meshes
+            .iter()
+            .find(|m| m.kind == SurfaceKind::Structure)
+            .unwrap();
+        for (p, n) in shed.positions.iter().zip(&shed.normals) {
+            if n[1] == 0.0 {
+                // centre is (1, 1): an outward normal points away from it
+                assert!((p[0] - 1.0) * n[0] + (p[2] - 1.0) * n[2] > 0.0);
+            }
+        }
+    }
+
+    #[test]
+    fn plants_keep_their_mature_size() {
+        let s = build(&doc_with(vec![plant_at(2000., 1000., 600.)]));
+        assert_eq!(s.plants.len(), 1);
+        assert_eq!(s.plants[0].position, [2.0, 0.0, 1.0]);
+        assert!((s.plants[0].spread - 0.6).abs() < 1e-6);
+        assert!((s.plants[0].height - 0.5).abs() < 1e-6);
+        assert_eq!(s.plants[0].color[3], 1.0);
+    }
+
+    #[test]
+    fn camera_frames_the_garden_and_an_empty_design() {
+        let s = build(&doc_with(vec![lawn_rect()])); // 4 × 3 m at the origin
+        let c = s.camera.unwrap();
+        assert_eq!(c.target, [2.0, 0.0, 1.5]);
+        assert!(c.radius >= 8.0 && c.radius.is_finite());
+        let empty = build(&doc_with(vec![]));
+        let c = empty.camera.unwrap();
+        assert!(c.radius.is_finite() && c.target.iter().all(|v| v.is_finite()));
+        assert!(empty.meshes.iter().any(|m| m.kind == SurfaceKind::Ground));
+    }
+
+    #[test]
+    fn every_mesh_is_well_formed() {
+        let s = build(&doc_with(all_kinds_sample()));
+        assert_eq!(s.skipped, 0);
+        for kind in [
+            SurfaceKind::Plot,
+            SurfaceKind::Lawn,
+            SurfaceKind::Path,
+            SurfaceKind::Hedge,
+            SurfaceKind::Structure,
+        ] {
+            assert!(s.meshes.iter().any(|m| m.kind == kind), "{kind:?}");
+        }
+        for m in &s.meshes {
+            assert_eq!(m.positions.len(), m.normals.len());
+            assert!(m.indices.iter().all(|i| (*i as usize) < m.positions.len()));
+            assert!(m.positions.iter().flatten().all(|v| v.is_finite()));
+        }
+    }
+
+    #[test]
+    fn degenerate_lines_dont_break_anything() {
+        let one_point = Shape::polyline(&[Point::new(1000., 1000.)], false);
+        let s = build(&doc_with(vec![
+            ObjectKind::Path {
+                shape: one_point.clone(),
+                width: 900.,
+            },
+            ObjectKind::Linear {
+                kind: LinearKind::Fence,
+                shape: one_point,
+                thickness: 50.,
+                height: 1800.,
+            },
+            ObjectKind::Linear {
+                kind: LinearKind::Hedge,
+                shape: Shape::polyline(&[Point::ZERO, Point::ZERO, Point::new(1000., 0.)], false),
+                thickness: 600.,
+                height: 1500.,
+            },
+        ]));
+        for m in &s.meshes {
+            assert!(m.positions.iter().flatten().all(|v| v.is_finite()));
+        }
+        assert!(s.meshes.iter().any(|m| m.kind == SurfaceKind::Hedge));
     }
 }

@@ -771,6 +771,18 @@ mod tests {
     }
 
     #[test]
+    fn undo_mid_dimension_drops_the_point_not_the_last_change() {
+        let mut s = state_with(vec![]);
+        s.set_tool(ToolKind::Plant(builtin_plants()[7].clone()));
+        click(&mut s, Point::new(5000., 5000.), NO);
+        s.set_tool(ToolKind::Dimension);
+        click(&mut s, Point::new(0., 0.), NO);
+        assert!(s.undo(1));
+        assert_eq!(s.doc().objects.len(), 1); // the plant is still there
+        assert_eq!(s.points_placed(), 0);
+    }
+
+    #[test]
     fn measure_tool_stores_nothing() {
         let mut s = state_with(vec![]);
         s.set_background(Some(photo()), 0);

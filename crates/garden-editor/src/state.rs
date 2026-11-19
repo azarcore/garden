@@ -223,6 +223,13 @@ impl EditorState {
             self.preview.dims.clear();
             return true;
         }
+        // half-placed dimension or measurement: undo drops that point
+        if let Gesture::TwoPoints { points } = &self.gesture
+            && points.len() == 1
+        {
+            self.cancel_gesture();
+            return true;
+        }
         let done = self.editor.undo(now_ms);
         if done {
             self.changes += 1;

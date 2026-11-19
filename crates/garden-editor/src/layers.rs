@@ -101,12 +101,9 @@ impl EditorState {
             .layer(layer.id)
             .is_some_and(|existing| *existing != layer)
         {
-            let (id, usable) = (layer.id, layer.visible && !layer.locked);
-            if self.execute(Command::UpsertLayer { layer }, now_ms) && !usable {
-                // what can't be seen or touched can't stay selected
-                let doc = self.editor.doc();
-                self.selection
-                    .retain(|o| doc.object(*o).is_some_and(|o| o.layer != id));
+            let id = layer.id;
+            if self.execute(Command::UpsertLayer { layer }, now_ms) {
+                self.deselect_unusable_layer(id);
             }
         }
     }
@@ -137,9 +134,20 @@ impl EditorState {
                 },
             })
             .collect();
-        if !commands.is_empty() {
-            self.execute(Command::Batch { commands }, now_ms);
+        if !commands.is_empty() && self.execute(Command::Batch { commands }, now_ms) {
+            self.deselect_unusable_layer(id);
         }
+    }
+
+    /// Objects on a hidden or locked layer can't be seen or touched, so they
+    /// can't stay selected.
+    fn deselect_unusable_layer(&mut self, id: LayerId) {
+        let doc = self.editor.doc();
+        if doc.layer(id).is_some_and(|l| l.visible && !l.locked) {
+            return;
+        }
+        self.selection
+            .retain(|o| doc.object(*o).is_some_and(|o| o.layer != id));
     }
 
     /// Move the selected (unlocked) objects in the stacking order, keeping
@@ -241,6 +249,19 @@ mod tests {
         let mut layer = s.doc().layers[0].clone();
         layer.visible = false;
         s.update_layer(layer, 1);
+        assert!(s.selection.is_empty());
+    }
+
+    #[test]
+    fn moving_to_a_hidden_or_locked_layer_deselects() {
+        let mut s = state_with(vec![plant_at(0., 0., 600.)]);
+        let l2 = s.add_layer(1);
+        let mut layer = s.doc().layers[1].clone();
+        layer.locked = true;
+        s.update_layer(layer, 2);
+        s.selection = vec![s.doc().objects[0].id];
+        s.move_selection_to_layer(l2, 3);
+        assert_eq!(s.doc().objects[0].layer, l2);
         assert!(s.selection.is_empty());
     }
 

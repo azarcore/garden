@@ -1,0 +1,6 @@
+# The 3D preview is a separate bundle, built after the app and served from
+# garden3d/ (downloaded only when someone opens 3D).
+[[hooks]]
+stage = "post_build"
+command = "sh"
+command_arguments = ["-c", "sh \"$TRUNK_SOURCE_DIR/../../scripts/build-3d.sh\""]

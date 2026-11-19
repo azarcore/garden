@@ -9,3 +9,19 @@ edition = "2024"
 opt-level = "z"
 lto = true
 codegen-units = 1
+
+# The 3D bundle (Bevy): the size-first release profile above takes many
+# minutes to build Bevy, so the 3D build uses these instead.
+[profile.dev-3d]
+inherits = "dev"
+opt-level = 1
+debug = false
+
+[profile.dev-3d.package."*"]
+opt-level = 2
+
+[profile.release-3d]
+inherits = "release"
+opt-level = 2
+lto = "thin"
+codegen-units = 16

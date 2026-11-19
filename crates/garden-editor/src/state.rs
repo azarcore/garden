@@ -79,6 +79,10 @@ pub(crate) enum Gesture {
     Scale {
         points: Vec<Point>,
     },
+    /// Dimension and measure tools: the points clicked so far (at most two).
+    TwoPoints {
+        points: Vec<Point>,
+    },
     /// Dragging a handle of the selected object. `at` is where the handle was,
     /// `press` where the pointer went down; `result` is the reshaped object so far.
     Handle {
@@ -160,7 +164,9 @@ impl EditorState {
     /// How many points the polygon/line being drawn has (0 when not drawing one).
     pub fn points_placed(&self) -> usize {
         match &self.gesture {
-            Gesture::Poly { points, .. } | Gesture::Scale { points } => points.len(),
+            Gesture::Poly { points, .. }
+            | Gesture::Scale { points }
+            | Gesture::TwoPoints { points } => points.len(),
             _ => 0,
         }
     }
@@ -189,7 +195,12 @@ impl EditorState {
 
     /// True while a pointer gesture or a half-drawn polygon/line is in progress.
     pub fn is_busy(&self) -> bool {
-        self.gesture != Gesture::Idle
+        match &self.gesture {
+            Gesture::Idle => false,
+            // a finished measurement just stays on screen
+            Gesture::TwoPoints { points } => points.len() < 2,
+            _ => true,
+        }
     }
 
     /// Replace the document (opening another design). Clears history, selection

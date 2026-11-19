@@ -12,6 +12,11 @@ use crate::render::outline;
 use crate::state::{EditorState, Gesture};
 use crate::tools::{DrawTarget, Input, Key, LineTarget, Modifiers, Preview, ToolKind};
 
+/// Text height of new labels (mm).
+const DEFAULT_LABEL_SIZE: f64 = 300.0;
+/// How far a new dimension line sits from what it measures (mm).
+const DEFAULT_DIMENSION_OFFSET: f64 = 600.0;
+
 /// Height given to new structures (mm).
 const DEFAULT_STRUCTURE_HEIGHT: f64 = 2200.0;
 
@@ -36,6 +41,22 @@ pub(crate) fn handle(s: &mut EditorState, input: Input, now_ms: i64) {
             }
         }
         ToolKind::SetScale => set_scale(s, input),
+        ToolKind::Text => {
+            if let Input::Move(p, m) = input {
+                snapped(s, p, m);
+            }
+            if let Input::Up(p, m) = input {
+                let position = snapped(s, p, m);
+                let label = ObjectKind::Label {
+                    position,
+                    text: crate::strings::EN.new_label.to_string(),
+                    size: DEFAULT_LABEL_SIZE,
+                };
+                insert_new(s, label, now_ms, true);
+            }
+        }
+        ToolKind::Dimension => two_points(s, input, now_ms, true),
+        ToolKind::Measure => two_points(s, input, now_ms, false),
         ToolKind::Select => {}
     }
 }
@@ -205,6 +226,61 @@ fn set_scale(s: &mut EditorState, input: Input) {
         };
     }
     s.gesture = Gesture::Scale { points };
+}
+
+/// Dimension tool (`store`) and measure tool: two snapped clicks. A dimension
+/// is added after the second; a measurement stays on screen until the next click.
+fn two_points(s: &mut EditorState, input: Input, now_ms: i64, store: bool) {
+    let mut points = match &s.gesture {
+        Gesture::TwoPoints { points } => points.clone(),
+        _ => Vec::new(),
+    };
+    let line_preview = |s: &mut EditorState, a: Point, b: Point| {
+        let snap = s.preview.snap;
+        s.preview = Preview {
+            shapes: vec![crate::render::RenderShape::Line { from: a, to: b }],
+            dims: vec![(a.midpoint(b), format_length(a.distance(b), s.doc().units))],
+            snap,
+            marquee: None,
+        };
+    };
+    match input {
+        Input::Move(p, m) => {
+            if points.len() == 2 {
+                return; // keep showing the finished measurement
+            }
+            let at = snapped(s, p, m);
+            if let [a] = points[..] {
+                line_preview(s, a, at);
+            }
+        }
+        Input::Up(p, m) => {
+            if points.len() == 2 {
+                points.clear();
+                s.preview = Preview::default();
+            }
+            let at = snapped(s, p, m);
+            let min = s.viewport.px_to_mm(1.0);
+            if points.last().is_some_and(|last| last.distance(at) <= min) {
+                return;
+            }
+            points.push(at);
+            if let [a, b] = points[..] {
+                if store {
+                    let dim = ObjectKind::Dimension {
+                        from: a,
+                        to: b,
+                        offset: DEFAULT_DIMENSION_OFFSET,
+                    };
+                    return insert_new(s, dim, now_ms, true);
+                }
+                line_preview(s, a, b);
+            }
+            s.gesture = Gesture::TwoPoints { points };
+        }
+        Input::Key(Key::Escape, _) => s.cancel_gesture(),
+        _ => {}
+    }
 }
 
 enum PolyTarget {
@@ -661,5 +737,56 @@ mod tests {
         click(&mut s, Point::new(500., 500.), NO); // same spot is ignored
         assert!(s.pending_scale().is_none());
         assert_eq!(s.points_placed(), 1);
+    }
+
+    #[test]
+    fn text_tool_places_a_label() {
+        let mut s = state_with(vec![]);
+        s.set_tool(ToolKind::Text);
+        click(&mut s, Point::new(1000., 1000.), NO);
+        assert!(
+            matches!(&s.doc().objects[0].kind, ObjectKind::Label { text, size, .. } if text == crate::strings::EN.new_label && *size == 300.)
+        );
+        assert_eq!(s.tool(), &ToolKind::Select);
+        assert_eq!(s.selection.len(), 1);
+    }
+
+    #[test]
+    fn dimension_tool_needs_two_points() {
+        let mut s = state_with(vec![]);
+        s.set_tool(ToolKind::Dimension);
+        click(&mut s, Point::new(0., 0.), NO);
+        assert!(s.doc().objects.is_empty());
+        assert_eq!(s.points_placed(), 1);
+        s.handle(Input::Move(Point::new(4000., 0.), NO), 1);
+        assert_eq!(s.preview().dims[0].1, "4.00 m");
+        click(&mut s, Point::new(0., 0.), NO); // same point again is ignored
+        assert!(s.doc().objects.is_empty());
+        click(&mut s, Point::new(4000., 0.), NO);
+        assert!(
+            matches!(s.doc().objects[0].kind, ObjectKind::Dimension { to, offset, .. } if to == Point::new(4000., 0.) && offset == 600.)
+        );
+        assert_eq!(s.tool(), &ToolKind::Select);
+        assert!(s.pending_scale().is_none());
+    }
+
+    #[test]
+    fn measure_tool_stores_nothing() {
+        let mut s = state_with(vec![]);
+        s.set_background(Some(photo()), 0);
+        s.set_tool(ToolKind::Measure);
+        let c0 = s.change_count();
+        click(&mut s, Point::new(0., 0.), NO);
+        click(&mut s, Point::new(3000., 4000.), NO);
+        assert_eq!(s.preview().dims[0].1, "5.00 m");
+        assert!(s.doc().objects.is_empty());
+        assert_eq!(s.change_count(), c0);
+        assert!(s.pending_scale().is_none()); // not mistaken for setting the scale
+        assert!(!s.is_busy()); // a finished measurement doesn't hold up saving
+        click(&mut s, Point::new(1000., 0.), NO); // starts a new measurement
+        assert_eq!(s.points_placed(), 1);
+        s.handle(Input::Key(Key::Escape, NO), 1);
+        assert!(s.preview().dims.is_empty());
+        assert_eq!(s.tool(), &ToolKind::Measure);
     }
 }

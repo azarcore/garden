@@ -3,6 +3,9 @@
 
 use garden_core::command::{Command, CommandError};
 use garden_core::model::{Layer, LayerId, Object, ObjectId};
+use kurbo::Vec2;
+
+use crate::objects::{object_bounds, translate_kind};
 
 use crate::state::EditorState;
 use crate::strings::EN;
@@ -14,6 +17,17 @@ pub enum ZOrder {
     Back,
     Forward,
     Backward,
+}
+
+/// Which edge or centre line of the selection to line objects up on.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Align {
+    Left,
+    CenterX,
+    Right,
+    Top,
+    CenterY,
+    Bottom,
 }
 
 /// Commands that turn the order `current` into `target` (same ids), applied
@@ -160,5 +174,106 @@ impl EditorState {
         if !commands.is_empty() {
             self.execute(Command::Batch { commands }, now_ms);
         }
+    }
+}
+
+impl EditorState {
+    /// Line up two or more selected (unlocked) objects by their bounds, as one undo step.
+    pub fn align_selection(&mut self, how: Align, now_ms: i64) {
+        let objects: Vec<&Object> = self
+            .doc()
+            .objects
+            .iter()
+            .filter(|o| !o.locked && self.selection.contains(&o.id))
+            .collect();
+        if objects.len() < 2 {
+            return;
+        }
+        let Some(all) = objects
+            .iter()
+            .map(|o| object_bounds(&o.kind))
+            .reduce(|a, b| a.union(b))
+        else {
+            return;
+        };
+        let commands: Vec<Command> = objects
+            .iter()
+            .filter_map(|o| {
+                let b = object_bounds(&o.kind);
+                let d = match how {
+                    Align::Left => Vec2::new(all.x0 - b.x0, 0.0),
+                    Align::CenterX => Vec2::new(all.center().x - b.center().x, 0.0),
+                    Align::Right => Vec2::new(all.x1 - b.x1, 0.0),
+                    Align::Top => Vec2::new(0.0, all.y0 - b.y0),
+                    Align::CenterY => Vec2::new(0.0, all.center().y - b.center().y),
+                    Align::Bottom => Vec2::new(0.0, all.y1 - b.y1),
+                };
+                (d.hypot() > 1e-9).then(|| Command::Replace {
+                    object: Object {
+                        kind: translate_kind(&o.kind, d),
+                        ..(*o).clone()
+                    },
+                })
+            })
+            .collect();
+        if !commands.is_empty() {
+            self.execute(Command::Batch { commands }, now_ms);
+        }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::objects::object_bounds;
+    use crate::test_util::{plant_at, state_with};
+
+    #[test]
+    fn align_left_lines_up_bounds() {
+        let mut s = state_with(vec![
+            plant_at(1000., 0., 600.),
+            plant_at(3000., 2000., 1000.),
+        ]);
+        s.selection = s.doc().objects.iter().map(|o| o.id).collect();
+        s.align_selection(Align::Left, 1);
+        let lefts: Vec<f64> = s
+            .doc()
+            .objects
+            .iter()
+            .map(|o| object_bounds(&o.kind).x0)
+            .collect();
+        assert!((lefts[0] - 700.).abs() < 1e-9 && (lefts[1] - 700.).abs() < 1e-9);
+        assert!(s.undo(2));
+        assert!(!s.can_undo());
+    }
+
+    #[test]
+    fn align_centres_and_bottoms() {
+        let mut s = state_with(vec![
+            plant_at(1000., 0., 600.),
+            plant_at(3000., 2000., 1000.),
+        ]);
+        s.selection = s.doc().objects.iter().map(|o| o.id).collect();
+        s.align_selection(Align::CenterY, 1);
+        let mids: Vec<f64> = s
+            .doc()
+            .objects
+            .iter()
+            .map(|o| object_bounds(&o.kind).center().y)
+            .collect();
+        assert!((mids[0] - mids[1]).abs() < 1e-9);
+        s.align_selection(Align::Bottom, 2);
+        let bottoms: Vec<f64> = s
+            .doc()
+            .objects
+            .iter()
+            .map(|o| object_bounds(&o.kind).y1)
+            .collect();
+        assert!((bottoms[0] - bottoms[1]).abs() < 1e-9);
+        // one object: nothing to align with
+        s.selection.truncate(1);
+        let before = s.change_count();
+        s.align_selection(Align::Right, 3);
+        assert_eq!(s.change_count(), before);
     }
 }

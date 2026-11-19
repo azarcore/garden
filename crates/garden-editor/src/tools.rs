@@ -37,6 +37,12 @@ pub enum ToolKind {
     Plant(PlantDef),
     /// Two clicks on the traced photo, then a typed real distance.
     SetScale,
+    /// A click places a text label.
+    Text,
+    /// Two clicks place a dimension line.
+    Dimension,
+    /// Two clicks show a distance; nothing is stored.
+    Measure,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
@@ -95,6 +101,10 @@ pub fn hint(
         ToolKind::Polyline(_) if points_placed == 0 => s.hint_line_start,
         ToolKind::Polyline(_) => s.hint_line_more,
         ToolKind::Plant(_) => s.hint_plant,
+        ToolKind::Text => s.hint_text,
+        ToolKind::Dimension if points_placed == 0 => s.hint_dim_first,
+        ToolKind::Dimension => s.hint_dim_second,
+        ToolKind::Measure => s.hint_measure,
     }
 }
 
@@ -127,5 +137,12 @@ mod tests {
             EN.hint_scale_second
         );
         assert_eq!(hint(&ToolKind::SetScale, 2, true, &EN), EN.hint_scale_type);
+        assert_eq!(hint(&ToolKind::Text, 0, false, &EN), EN.hint_text);
+        assert_eq!(hint(&ToolKind::Dimension, 0, false, &EN), EN.hint_dim_first);
+        assert_eq!(
+            hint(&ToolKind::Dimension, 1, false, &EN),
+            EN.hint_dim_second
+        );
+        assert_eq!(hint(&ToolKind::Measure, 2, false, &EN), EN.hint_measure);
     }
 }

@@ -381,6 +381,216 @@ impl Shape {
     }
 }
 
+/// Node edits: move, insert and remove points; move curve handles.
+impl Shape {
+    /// Copy whose closing edge (if any) is an explicit segment back to `start`.
+    fn with_explicit_closing(&self) -> Shape {
+        let mut s = self.clone();
+        if s.has_implicit_closing_edge() {
+            s.segments.push(Segment::Line { to: s.start });
+        }
+        s
+    }
+
+    /// Move vertex `i` (index as in `vertices()`); curve handles attached to it
+    /// move with it.
+    pub fn move_vertex(&self, i: usize, to: Point) -> Option<Shape> {
+        let old = *self.vertices().get(i)?;
+        let d = to - old;
+        let mut s = self.clone();
+        let n = s.segments.len();
+        // the segment arriving at this vertex
+        let incoming = if i > 0 {
+            Some(i - 1)
+        } else if s.closed && n > 0 && s.segments[n - 1].to() == s.start {
+            Some(n - 1)
+        } else {
+            None
+        };
+        if let Some(k) = incoming {
+            if let Segment::Cubic { c2, .. } = &mut s.segments[k] {
+                *c2 += d;
+            }
+            set_segment_end(&mut s.segments[k], to);
+        }
+        if i == 0 {
+            s.start = to;
+        }
+        // the segment leaving this vertex
+        if let Some(Segment::Cubic { c1, .. }) = s.segments.get_mut(i) {
+            *c1 += d;
+        }
+        s.hint = None;
+        Some(s)
+    }
+
+    /// Move a cubic segment's first (`second == false`) or second control point.
+    pub fn move_control(&self, segment: usize, second: bool, to: Point) -> Option<Shape> {
+        let mut s = self.clone();
+        match s.segments.get_mut(segment)? {
+            Segment::Cubic { c1, c2, .. } => {
+                if second {
+                    *c2 = to;
+                } else {
+                    *c1 = to;
+                }
+            }
+            _ => return None,
+        }
+        s.hint = None;
+        Some(s)
+    }
+
+    /// Split the edge nearest `at` at its nearest point. Returns the new
+    /// vertex index. None if that point is already a vertex.
+    pub fn insert_vertex(&self, at: Point) -> Option<(Shape, usize)> {
+        if !point_ok(at) {
+            return None;
+        }
+        let mut s = self.with_explicit_closing();
+        let mut best: Option<(f64, usize, f64)> = None; // (distance², segment, t)
+        let mut current = s.start;
+        for (k, seg) in s.segments.iter().enumerate() {
+            let (t, p) = nearest_on_segment(current, seg, at);
+            let d = p.distance_squared(at);
+            if d.is_finite() && best.is_none_or(|b| d < b.0) {
+                best = Some((d, k, t));
+            }
+            current = seg.to();
+        }
+        let (_, k, t) = best?;
+        let from = if k == 0 {
+            s.start
+        } else {
+            s.segments[k - 1].to()
+        };
+        let (first, second) = split_segment(from, &s.segments[k], t)?;
+        if first.to().distance(from) < 1e-6 || first.to().distance(s.segments[k].to()) < 1e-6 {
+            return None;
+        }
+        s.segments.splice(k..=k, [first, second]);
+        s.hint = None;
+        Some((s, k + 1))
+    }
+
+    /// Remove vertex `i`, joining its neighbours with a straight edge. None if
+    /// too few points would remain (closed shapes keep 3, open lines 2).
+    pub fn remove_vertex(&self, i: usize) -> Option<Shape> {
+        let count = self.vertices().len();
+        let min = if self.closed { 3 } else { 2 };
+        if i >= count || count <= min {
+            return None;
+        }
+        let mut s = if self.closed {
+            self.with_explicit_closing()
+        } else {
+            self.clone()
+        };
+        let n = s.segments.len();
+        if i == 0 {
+            let new_start = s.segments[0].to();
+            s.segments.remove(0);
+            s.start = new_start;
+            if s.closed {
+                let last = s.segments.len() - 1;
+                s.segments[last] = Segment::Line { to: new_start };
+            }
+        } else if i == n {
+            // last point of an open line
+            s.segments.pop();
+        } else {
+            let to = s.segments[i].to();
+            s.segments.splice(i - 1..=i, [Segment::Line { to }]);
+        }
+        s.hint = None;
+        Some(s)
+    }
+}
+
+fn point_ok(p: Point) -> bool {
+    p.x.is_finite() && p.y.is_finite()
+}
+
+/// Parameter (0..1) and point on `seg` (starting at `from`) nearest `p`.
+fn nearest_on_segment(from: Point, seg: &Segment, p: Point) -> (f64, Point) {
+    use kurbo::{CubicBez, Line, ParamCurve, ParamCurveNearest};
+    match *seg {
+        Segment::Line { to } => {
+            let l = Line::new(from, to);
+            let t = l.nearest(p, 1e-6).t;
+            (t, l.eval(t))
+        }
+        Segment::Cubic { c1, c2, to } => {
+            let c = CubicBez::new(from, c1, c2, to);
+            let t = c.nearest(p, 1e-6).t;
+            (t, c.eval(t))
+        }
+        Segment::Arc { to, sweep } => match arc_geometry(from, to, sweep) {
+            Some((center, r, start_angle)) => {
+                let angle = (p.y - center.y).atan2(p.x - center.x);
+                let along = ((angle - start_angle) * sweep.signum()).rem_euclid(TAU);
+                let t = if along <= sweep.abs() {
+                    along / sweep.abs()
+                } else if along - sweep.abs() < TAU - along {
+                    1.0
+                } else {
+                    0.0
+                };
+                let a = start_angle + sweep * t;
+                (t, center + Vec2::new(a.cos(), a.sin()) * r)
+            }
+            None => nearest_on_segment(from, &Segment::Line { to }, p),
+        },
+    }
+}
+
+/// Split `seg` (starting at `from`) at parameter `t` into two pieces.
+fn split_segment(from: Point, seg: &Segment, t: f64) -> Option<(Segment, Segment)> {
+    use kurbo::{CubicBez, ParamCurve};
+    if !(t > 0.0 && t < 1.0) {
+        return None;
+    }
+    Some(match *seg {
+        Segment::Line { to } => (
+            Segment::Line {
+                to: from.lerp(to, t),
+            },
+            Segment::Line { to },
+        ),
+        Segment::Cubic { c1, c2, to } => {
+            let c = CubicBez::new(from, c1, c2, to);
+            let (a, b) = (c.subsegment(0.0..t), c.subsegment(t..1.0));
+            (
+                Segment::Cubic {
+                    c1: a.p1,
+                    c2: a.p2,
+                    to: a.p3,
+                },
+                Segment::Cubic {
+                    c1: b.p1,
+                    c2: b.p2,
+                    to,
+                },
+            )
+        }
+        Segment::Arc { to, sweep } => {
+            let (center, r, start_angle) = arc_geometry(from, to, sweep)?;
+            let a = start_angle + sweep * t;
+            let mid = center + Vec2::new(a.cos(), a.sin()) * r;
+            (
+                Segment::Arc {
+                    to: mid,
+                    sweep: sweep * t,
+                },
+                Segment::Arc {
+                    to,
+                    sweep: sweep * (1.0 - t),
+                },
+            )
+        }
+    })
+}
+
 fn set_segment_end(seg: &mut Segment, p: Point) {
     match seg {
         Segment::Line { to } | Segment::Arc { to, .. } | Segment::Cubic { to, .. } => *to = p,
@@ -476,5 +686,94 @@ mod tests {
     fn translate_moves_every_point() {
         let s = Shape::circle(Point::ZERO, 5.).translated(kurbo::Vec2::new(10., 0.));
         assert_eq!(s.start, Point::new(15., 0.));
+    }
+
+    #[test]
+    fn move_vertex_keeps_closing_point_together() {
+        let r = Shape::rect(Point::ZERO, 1000., 1000.)
+            .move_vertex(0, Point::new(-100., -100.))
+            .unwrap();
+        assert_eq!(r.start, Point::new(-100., -100.));
+        assert_eq!(r.segments[3].to(), r.start);
+        assert!(r.hint.is_none());
+        assert!(
+            Shape::rect(Point::ZERO, 1., 1.)
+                .move_vertex(9, Point::ZERO)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn controls_follow_their_vertex_and_move_alone() {
+        let s = Shape {
+            start: Point::ZERO,
+            segments: vec![Segment::Cubic {
+                c1: Point::new(100., 0.),
+                c2: Point::new(900., 100.),
+                to: Point::new(1000., 0.),
+            }],
+            closed: false,
+            hint: None,
+        };
+        let m = s.move_vertex(1, Point::new(1000., 500.)).unwrap();
+        assert!(matches!(m.segments[0], Segment::Cubic { c2, .. } if c2 == Point::new(900., 600.)));
+        let c = s.move_control(0, false, Point::new(200., 300.)).unwrap();
+        assert!(matches!(c.segments[0], Segment::Cubic { c1, .. } if c1 == Point::new(200., 300.)));
+        assert!(
+            Shape::rect(Point::ZERO, 1., 1.)
+                .move_control(0, false, Point::ZERO)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn insert_and_remove_points() {
+        let r = Shape::rect(Point::ZERO, 1000., 1000.);
+        let (s, i) = r.insert_vertex(Point::new(500., 10.)).unwrap();
+        assert_eq!(i, 1);
+        assert_eq!(s.vertices()[1], Point::new(500., 0.));
+        assert!((s.area() - 1e6).abs() < 1e-6);
+        let back = s.remove_vertex(1).unwrap();
+        assert_eq!(back.vertices().len(), 4);
+        assert!((back.area() - 1e6).abs() < 1e-6);
+        let tri = Shape::polyline(&[Point::ZERO, Point::new(1., 0.), Point::new(0., 1.)], true);
+        assert!(tri.remove_vertex(0).is_none());
+        let line = Shape::polyline(&[Point::ZERO, Point::new(1., 0.)], false);
+        assert!(line.remove_vertex(1).is_none());
+    }
+
+    #[test]
+    fn removing_first_point_of_closed_shape_rejoins_it() {
+        let r = Shape::rect(Point::ZERO, 1000., 1000.);
+        let s = r.remove_vertex(0).unwrap();
+        assert_eq!(s.vertices().len(), 3);
+        assert!((s.area() - 5e5).abs() < 1e-6);
+        let open = Shape::polyline(
+            &[Point::ZERO, Point::new(1., 0.), Point::new(2., 0.)],
+            false,
+        );
+        assert_eq!(open.remove_vertex(0).unwrap().start, Point::new(1., 0.));
+        assert_eq!(open.remove_vertex(2).unwrap().vertices().len(), 2);
+    }
+
+    #[test]
+    fn inserting_on_a_curve_keeps_its_shape() {
+        let c = Shape::circle(Point::ZERO, 1000.);
+        let (s, _) = c.insert_vertex(Point::new(0., 1000.)).unwrap();
+        assert_eq!(s.segments.len(), 3);
+        assert!((s.area() - c.area()).abs() < 1.0);
+        let e = Shape::ellipse(Point::ZERO, 2000., 1000.);
+        let (s, _) = e.insert_vertex(Point::new(1500., 700.)).unwrap();
+        assert_eq!(s.segments.len(), 5);
+        assert!((s.area() - e.area()).abs() < 1.0);
+    }
+
+    #[test]
+    fn inserting_on_an_existing_point_does_nothing() {
+        assert!(
+            Shape::rect(Point::ZERO, 1000., 1000.)
+                .insert_vertex(Point::new(1000., 0.))
+                .is_none()
+        );
     }
 }

@@ -71,6 +71,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "garden-editor"
+version = "0.1.0"
+dependencies = [
+ "garden-core",
+ "kurbo",
+]
+
+[[package]]
 name = "getrandom"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"

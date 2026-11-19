@@ -1,0 +1,18 @@
+[package]
+name = "garden-3d"
+version = "0.1.0"
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# The Bevy viewer. Off by default so native workspace builds and tests never
+# compile Bevy; `scripts/build-3d.sh` turns it on for the browser bundle.
+viewer = ["dep:bevy", "dep:wasm-bindgen"]
+
+[dependencies]
+garden-core = { path = "../garden-core" }
+garden-scene = { path = "../garden-scene" }
+bevy = { version = "0.20.1", default-features = false, features = ["3d", "webgl2", "tonemapping_luts"], optional = true }
+wasm-bindgen = { version = "=0.2.130", optional = true }

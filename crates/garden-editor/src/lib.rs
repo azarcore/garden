@@ -82,3 +82,5 @@ pub(crate) mod test_util {
         ]
     }
 }
+pub mod catalog;
+pub mod objects;

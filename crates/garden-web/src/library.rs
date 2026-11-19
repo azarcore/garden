@@ -312,10 +312,13 @@ pub async fn import_text(
             let parts = js_sys::Array::of1(&js_sys::Uint8Array::from(image.bytes.as_slice()));
             let options = web_sys::BlobPropertyBag::new();
             options.set_type(&image.mime);
-            if let Ok(blob) =
-                web_sys::Blob::new_with_u8_array_sequence_and_options(&parts, &options)
-            {
-                let _ = store.put_image(&image.image_ref, &blob).await;
+            let stored =
+                match web_sys::Blob::new_with_u8_array_sequence_and_options(&parts, &options) {
+                    Ok(blob) => store.put_image(&image.image_ref, &blob).await.is_ok(),
+                    Err(_) => false,
+                };
+            if !stored {
+                message.set(Some(EN.photo_not_saved));
             }
         }
     }

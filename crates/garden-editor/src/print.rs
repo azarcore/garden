@@ -18,6 +18,8 @@ impl Paper {
 
 /// Blank border kept around the printed plan.
 pub const PRINT_MARGIN_MM: f64 = 12.0;
+/// Height kept free for the title line above and the scale bar below the plan.
+pub const PRINT_FURNITURE_MM: f64 = 20.0;
 
 /// Scales offered (1:n), most detailed first.
 pub const STANDARD_SCALES: [u32; 8] = [20, 25, 50, 100, 200, 250, 500, 1000];
@@ -31,11 +33,14 @@ pub struct Layout {
     pub height_mm: f64,
 }
 
-/// Printable area (width, height) for an orientation.
+/// Area left for the plan itself (width, height) for an orientation.
 fn printable(paper: Paper, landscape: bool) -> (f64, f64) {
     let (w, h) = paper.size_mm();
     let (w, h) = if landscape { (h, w) } else { (w, h) };
-    (w - 2.0 * PRINT_MARGIN_MM, h - 2.0 * PRINT_MARGIN_MM)
+    (
+        w - 2.0 * PRINT_MARGIN_MM,
+        h - 2.0 * PRINT_MARGIN_MM - PRINT_FURNITURE_MM,
+    )
 }
 
 /// Lay out `world` (mm) at 1:`scale` on `paper` inside the margins, picking the
@@ -124,11 +129,25 @@ mod tests {
         let l = fit_to_page(r(20_000., 14_000.), Paper::A4);
         assert!(l.landscape);
         let fills_width = (l.width_mm - (297. - 2. * PRINT_MARGIN_MM)).abs() < 1e-6;
-        let fills_height = (l.height_mm - (210. - 2. * PRINT_MARGIN_MM)).abs() < 1e-6;
+        let fills_height =
+            (l.height_mm - (210. - 2. * PRINT_MARGIN_MM - PRINT_FURNITURE_MM)).abs() < 1e-6;
         assert!(fills_width || fills_height);
         assert!(
             l.width_mm <= 297. - 2. * PRINT_MARGIN_MM + 1e-6
                 && l.height_mm <= 210. - 2. * PRINT_MARGIN_MM + 1e-6
         );
+    }
+
+    #[test]
+    fn leaves_room_for_title_and_scale_bar() {
+        // 17 × 25.5 m at 1:100 is 170 × 255 mm: inside the bare margins, but not
+        // once the title line and scale bar are on the page too.
+        assert!(layout_at(r(17_000., 25_500.), Paper::A4, 100).is_none());
+        assert_eq!(
+            best_standard_scale(r(17_000., 25_500.), Paper::A4),
+            Some(200)
+        );
+        let l = fit_to_page(r(12_000., 20_000.), Paper::A4);
+        assert!(l.height_mm <= 297. - 2. * PRINT_MARGIN_MM - PRINT_FURNITURE_MM + 1e-6);
     }
 }

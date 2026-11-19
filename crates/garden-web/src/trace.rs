@@ -29,6 +29,9 @@ pub struct ImageCache(pub RwSignal<HashMap<String, String>>);
 pub struct Trace {
     pub open: RwSignal<bool>,
     pub message: RwSignal<Option<&'static str>>,
+    /// Image refs already looked up (found or missing), so each is fetched and
+    /// reported at most once.
+    looked_up: StoredValue<std::collections::HashSet<String>, LocalStorage>,
 }
 
 pub fn provide_trace() {
@@ -36,6 +39,7 @@ pub fn provide_trace() {
     provide_context(Trace {
         open: RwSignal::new(false),
         message: RwSignal::new(None),
+        looked_up: StoredValue::new_local(std::collections::HashSet::new()),
     });
 }
 
@@ -75,9 +79,21 @@ pub async fn add_photo(
         return;
     };
     let image_ref = format!("bg-{}", uuid::Uuid::new_v4());
-    if let Some(store) = lib.store.get_value() {
-        let _ = store.put_image(&image_ref, &blob).await;
+    match lib.store.get_value() {
+        Some(store) => {
+            if store.put_image(&image_ref, &blob).await.is_err() {
+                // don't show a photo that would vanish on reload
+                trace.message.set(Some(EN.photo_not_saved));
+                trace.open.set(true);
+                return;
+            }
+        }
+        // no storage at all: the photo works for this session only
+        None => trace.message.set(Some(EN.photo_not_saved)),
     }
+    trace.looked_up.update_value(|s| {
+        s.insert(image_ref.clone());
+    });
     if let Ok(url) = Url::create_object_url_with_blob(&blob) {
         cache.0.update(|c| {
             c.insert(image_ref.clone(), url);
@@ -103,7 +119,9 @@ pub async fn add_photo(
         opacity: 0.6,
         locked: true,
     };
-    trace.message.set(None);
+    if lib.store.with_value(Option::is_some) {
+        trace.message.set(None);
+    }
     state.update(|s| {
         s.set_background(Some(bg), now());
         s.switch_tool(ToolKind::SetScale, now());
@@ -113,7 +131,12 @@ pub async fn add_photo(
 
 /// Make sure the current background's image is loaded into the cache.
 pub async fn ensure_image(lib: Library, cache: ImageCache, trace: Trace, image_ref: String) {
-    if cache.0.with_untracked(|c| c.contains_key(&image_ref)) {
+    // each image is fetched (and a missing one reported) only once
+    let first_time = trace
+        .looked_up
+        .try_update_value(|s| s.insert(image_ref.clone()))
+        .unwrap_or(false);
+    if !first_time || cache.0.with_untracked(|c| c.contains_key(&image_ref)) {
         return;
     }
     let Some(store) = lib.store.get_value() else {

@@ -251,10 +251,12 @@ pub fn Canvas() -> impl IntoView {
     let cache = expect_context::<crate::trace::ImageCache>();
     let trace = expect_context::<crate::trace::Trace>();
     // load the traced photo whenever the design's background changes
+    // (tracks only the image reference, not every editor change)
+    let photo_ref = Memo::new(move |_| {
+        state.with(|s| s.doc().background.as_ref().map(|b| b.image_ref.clone()))
+    });
     Effect::new(move |_| {
-        if let Some(image_ref) =
-            state.with(|s| s.doc().background.as_ref().map(|b| b.image_ref.clone()))
-        {
+        if let Some(image_ref) = photo_ref.get() {
             leptos::task::spawn_local(crate::trace::ensure_image(lib, cache, trace, image_ref));
         }
     });

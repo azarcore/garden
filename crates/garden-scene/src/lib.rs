@@ -852,4 +852,14 @@ mod tests {
         assert!((s.plants[0].position[1] - bed_top).abs() < 1e-6);
         assert_eq!(s.plants[1].position[1], 0.0);
     }
+
+    #[test]
+    fn every_template_builds_in_3d() {
+        use garden_editor::templates::{instantiate, templates};
+        for t in templates() {
+            let s = build(&instantiate(t.id, t.name, 0));
+            assert_eq!(s.skipped, 0, "{}", t.name);
+            assert!(!s.plants.is_empty(), "{}", t.name);
+        }
+    }
 }

@@ -80,6 +80,17 @@ pub fn templates() -> Vec<Template> {
     ]
 }
 
+/// "10 × 6 m" for whole metres, otherwise both lengths in full.
+pub fn size_label((w, h): (f64, f64), units: garden_core::units::UnitSystem) -> String {
+    use garden_core::units::{UnitSystem, format_length};
+    let whole_m = |v: f64| (v / 1000.0).fract() == 0.0;
+    if units == UnitSystem::Metric && whole_m(w) && whole_m(h) {
+        format!("{} × {} m", w / 1000.0, h / 1000.0)
+    } else {
+        format!("{} × {}", format_length(w, units), format_length(h, units))
+    }
+}
+
 /// A new document built from the template, with fresh ids, named `name`.
 pub fn instantiate(id: TemplateId, name: &str, now_ms: i64) -> Document {
     let mut b = Builder::new(name, now_ms);
@@ -415,6 +426,20 @@ mod tests {
             .collect();
         assert_eq!(plots.len(), 1, "{}: one plot", d.name);
         plots[0]
+    }
+
+    #[test]
+    fn plot_sizes_read_naturally() {
+        use garden_core::units::UnitSystem;
+        assert_eq!(
+            size_label((10_000.0, 6_000.0), UnitSystem::Metric),
+            "10 × 6 m"
+        );
+        assert_eq!(
+            size_label((10_500.0, 6_000.0), UnitSystem::Metric),
+            "10.50 m × 6.00 m"
+        );
+        assert!(size_label((10_000.0, 6_000.0), UnitSystem::Imperial).contains('\''));
     }
 
     #[test]

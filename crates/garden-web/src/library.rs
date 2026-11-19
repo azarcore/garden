@@ -186,26 +186,44 @@ fn show(lib: Library, state: RwSignal<EditorState>, doc: Document) {
     lib.reset_autosave(state.with_untracked(|s| s.change_count()));
 }
 
-/// Start a new, empty design (the current one is saved first; nothing
-/// happens if it can't be).
+/// Start a new design, blank or from a template (the current one is saved
+/// first; nothing happens if it can't be).
 /// Returns true when the new design is open.
-pub async fn new_design(lib: Library, state: RwSignal<EditorState>) -> bool {
+pub async fn new_design_from(
+    lib: Library,
+    state: RwSignal<EditorState>,
+    template: Option<garden_editor::templates::TemplateId>,
+) -> bool {
     if !leave_current(lib, state).await {
         return false;
     }
-    create_new(lib, state).await;
+    create_new(lib, state, template).await;
     true
 }
 
-/// Create, store and open an empty design without touching the current one.
-async fn create_new(lib: Library, state: RwSignal<EditorState>) {
+/// Create, store and open a new design without touching the current one.
+async fn create_new(
+    lib: Library,
+    state: RwSignal<EditorState>,
+    template: Option<garden_editor::templates::TemplateId>,
+) {
     lib.message.set(None);
     refresh_summaries(lib).await; // names must include a just-saved rename
     let names: Vec<String> = lib
         .summaries
         .with_untracked(|s| s.iter().map(|d| d.name.clone()).collect());
     let refs: Vec<&str> = names.iter().map(String::as_str).collect();
-    let doc = Document::new(garden_editor::library::next_design_name(&refs), now());
+    let doc = match template {
+        None => Document::new(garden_editor::library::next_design_name(&refs), now()),
+        Some(id) => {
+            let base = garden_editor::templates::templates()
+                .into_iter()
+                .find(|t| t.id == id)
+                .map_or(garden_editor::strings::EN.new_design_name, |t| t.name);
+            let name = garden_editor::library::next_name(base, &refs);
+            garden_editor::templates::instantiate(id, &name, now())
+        }
+    };
     if let Some(store) = lib.store.get_value() {
         let _ = store.put(&doc).await;
     }
@@ -257,7 +275,7 @@ pub async fn delete_design(lib: Library, state: RwSignal<EditorState>, id: Strin
         match next {
             Some(doc) => show(lib, state, doc),
             None => {
-                create_new(lib, state).await;
+                create_new(lib, state, None).await;
                 return;
             }
         }
@@ -448,6 +466,7 @@ pub fn MyDesigns() -> impl IntoView {
     let state = expect_context::<RwSignal<EditorState>>();
     let lib = expect_context::<Library>();
     let DesignsOpen(open) = expect_context::<DesignsOpen>();
+    let crate::templates::ChooserOpen(chooser) = expect_context::<crate::templates::ChooserOpen>();
     let name = Memo::new(move |_| state.with(|s| s.doc().name.clone()));
     let ImportMessage(message) = expect_context::<ImportMessage>();
     let close_on_escape = window_event_listener(leptos::ev::keydown, move |e| {
@@ -475,11 +494,8 @@ pub fn MyDesigns() -> impl IntoView {
                         } />
                 </div>
                 <button class="new-design" on:click=move |_| {
-                    spawn_local(async move {
-                        if new_design(lib, state).await {
-                            open.set(false);
-                        }
-                    });
+                    open.set(false);
+                    chooser.set(true);
                 }>{crate::icons::icon(crate::icons::Icon::Leaf)}{EN.new_design}</button>
                 <h3>{EN.my_designs}</h3>
                 <ul class="design-list">{rows}</ul>

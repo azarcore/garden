@@ -204,6 +204,10 @@ pub struct Strings {
     pub tpl_vegetable_blurb: &'static str,
     pub tpl_courtyard: &'static str,
     pub tpl_courtyard_blurb: &'static str,
+    pub start_new: &'static str,
+    pub start_from_template: &'static str,
+    pub empty_plan: &'static str,
+    pub or_draw_plot: &'static str,
 }
 
 pub static EN: Strings = Strings {
@@ -407,6 +411,10 @@ pub static EN: Strings = Strings {
     tpl_vegetable_blurb: "Raised beds, gravel paths, compost and a greenhouse",
     tpl_courtyard: "Courtyard",
     tpl_courtyard_blurb: "Paving, a water feature, a maple and wall planting",
+    start_new: "Start a new design",
+    start_from_template: "Start from a template",
+    empty_plan: "Your plan is empty",
+    or_draw_plot: "or pick the Plot tool to draw your own",
 };
 
 /// Heading for a group of plants.

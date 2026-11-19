@@ -11,6 +11,7 @@ mod plan_art;
 mod plant_picker;
 mod print;
 mod storage;
+mod templates;
 mod toolbar;
 mod trace;
 mod view3d;

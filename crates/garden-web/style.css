@@ -1670,3 +1670,106 @@ button.title-card {
 .editor {
   display: contents;
 }
+
+/* ── Starting a new design ─────────────────────────────────── */
+.chooser-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  background: rgba(28, 36, 30, 0.28);
+}
+.chooser {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 21;
+  width: min(760px, calc(100vw - 32px));
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  padding: 16px 18px 18px;
+}
+.chooser.busy {
+  cursor: progress;
+}
+.template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+  gap: 10px;
+  margin-top: 6px;
+}
+.template-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  padding: 8px 8px 10px;
+  border-radius: 14px;
+  background: var(--tile);
+  text-align: left;
+  border: 1.5px solid transparent;
+}
+.template-tile:hover,
+.template-tile:focus-visible {
+  border-color: var(--accent);
+  outline: none;
+}
+.template-tile strong {
+  margin: 4px 4px 0;
+  font-size: 14.5px;
+  font-weight: 650;
+}
+.template-tile span {
+  margin: 0 4px;
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.35;
+}
+.template-tile em {
+  margin: 2px 4px 0;
+  font-style: normal;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent-strong);
+  font-variant-numeric: tabular-nums;
+}
+.template-thumb {
+  width: 100%;
+  aspect-ratio: 16 / 10;
+  border-radius: 10px;
+  background: var(--desk);
+  pointer-events: none;
+}
+.template-thumb.blank {
+  background-image: radial-gradient(var(--dot) 1.2px, transparent 1.3px);
+  background-size: 14px 14px;
+}
+.empty-prompt {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+  z-index: 2;
+}
+.empty-card {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  padding: 18px 22px;
+  text-align: center;
+}
+.empty-card strong {
+  font-size: 16px;
+  font-weight: 650;
+}
+.empty-card .trace-primary {
+  width: auto;
+  padding: 9px 18px;
+}
+.empty-card span {
+  color: var(--muted);
+  font-size: 13px;
+}

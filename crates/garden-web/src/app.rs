@@ -48,7 +48,15 @@ fn on_key_down(
     plant: RwSignal<PlantDef>,
     designs_open: RwSignal<bool>,
     view3d: crate::view3d::View3d,
+    chooser: RwSignal<bool>,
 ) {
+    // The chooser is a dialog: Escape closes it, other shortcuts wait.
+    if chooser.get_untracked() {
+        if e.key() == "Escape" {
+            chooser.set(false);
+        }
+        return;
+    }
     // The 3D view covers the editor: only Escape (close it) does anything, so
     // shortcuts can't change the design hidden behind it.
     if view3d.open.get_untracked() {
@@ -145,13 +153,15 @@ pub fn App() -> impl IntoView {
     crate::library::provide_library(state);
     crate::trace::provide_trace();
     crate::view3d::provide_view3d();
+    let chooser = RwSignal::new(false);
+    provide_context(crate::templates::ChooserOpen(chooser));
     let view3d = expect_context::<crate::view3d::View3d>();
     provide_context(crate::print::PrintOpen(RwSignal::new(false)));
     provide_context(crate::layers::LayersOpen(RwSignal::new(false)));
     let crate::library::DesignsOpen(designs_open) = expect_context::<crate::library::DesignsOpen>();
 
     let down = window_event_listener(ev::keydown, move |e| {
-        on_key_down(e, state, space, plant, designs_open, view3d)
+        on_key_down(e, state, space, plant, designs_open, view3d, chooser)
     });
     let up = window_event_listener(ev::keyup, move |e| {
         if e.key() == " " {
@@ -183,6 +193,8 @@ pub fn App() -> impl IntoView {
             <Inspector />
             <HintBar />
             <ToolDock />
+            <crate::templates::EmptyPlanPrompt />
+            <crate::templates::TemplateChooser />
             </div>
             <crate::view3d::View3dOverlay />
         </div>

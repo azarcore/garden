@@ -93,6 +93,41 @@ pub fn color_css(c: Color) -> String {
     )
 }
 
+/// Outline of an object as drawn in move previews.
+pub fn outline(kind: &ObjectKind) -> RenderShape {
+    match kind {
+        ObjectKind::PlotBoundary { shape }
+        | ObjectKind::Area { shape, .. }
+        | ObjectKind::Path { shape, .. }
+        | ObjectKind::Linear { shape, .. }
+        | ObjectKind::Structure {
+            footprint: shape, ..
+        } => RenderShape::Path {
+            d: shape.to_bez_path().to_svg(),
+            closed: shape.closed,
+        },
+        ObjectKind::Plant {
+            position, spread, ..
+        } => RenderShape::Circle {
+            center: *position,
+            r: spread / 2.0,
+        },
+        ObjectKind::Label {
+            position,
+            text,
+            size,
+        } => RenderShape::Text {
+            at: *position,
+            text: text.clone(),
+            size: *size,
+        },
+        ObjectKind::Dimension { from, to, offset } => {
+            let (a, b) = dimension_line(*from, *to, *offset);
+            RenderShape::Line { from: a, to: b }
+        }
+    }
+}
+
 /// Everything visible, bottom to top.
 pub fn scene(doc: &Document, selection: &[ObjectId]) -> Vec<RenderItem> {
     let mut items = Vec::with_capacity(doc.objects.len());

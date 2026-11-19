@@ -116,7 +116,8 @@ pub struct EditorState {
 }
 
 impl EditorState {
-    pub fn new(doc: Document, width_px: f64, height_px: f64) -> EditorState {
+    pub fn new(mut doc: Document, width_px: f64, height_px: f64) -> EditorState {
+        doc.repair();
         let mut s = EditorState {
             viewport: Viewport::new(width_px, height_px),
             selection: Vec::new(),
@@ -205,8 +206,9 @@ impl EditorState {
 
     /// Replace the document (opening another design). Clears history, selection
     /// and any gesture, keeps the viewport size and fits to the new content.
-    /// Leaves `change_count` unchanged.
-    pub fn open_document(&mut self, doc: Document) {
+    /// Leaves `change_count` unchanged. A document without layers gets one.
+    pub fn open_document(&mut self, mut doc: Document) {
+        doc.repair();
         self.editor = Editor::new(doc);
         self.selection.clear();
         self.node = None;

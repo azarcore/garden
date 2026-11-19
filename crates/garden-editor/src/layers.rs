@@ -47,7 +47,9 @@ fn reorder_commands(mut current: Vec<ObjectId>, target: &[ObjectId]) -> Vec<Comm
 
 impl EditorState {
     /// The layer new objects go on: the chosen one while it is visible and
-    /// unlocked, otherwise the first layer that is.
+    /// unlocked, otherwise the first layer that is, otherwise the first layer.
+    /// Documents are repaired to have a layer when opened; should one still
+    /// have none, this gives the nil id instead of panicking.
     pub fn active_layer_id(&self) -> LayerId {
         let layers = &self.doc().layers;
         let usable = |l: &&Layer| l.visible && !l.locked;
@@ -55,8 +57,8 @@ impl EditorState {
             .and_then(|id| layers.iter().find(|l| l.id == id))
             .filter(usable)
             .or_else(|| layers.iter().find(usable))
-            .unwrap_or(&layers[0])
-            .id
+            .or_else(|| layers.first())
+            .map_or(LayerId::NIL, |l| l.id)
     }
 
     /// Choose the layer new objects go on (ignored if it doesn't exist).
@@ -312,5 +314,45 @@ mod tests {
         let before = s.change_count();
         s.align_selection(Align::Right, 3);
         assert_eq!(s.change_count(), before);
+    }
+
+    fn place_lavender(s: &mut EditorState) {
+        let def = crate::catalog::builtin_plants()
+            .into_iter()
+            .find(|p| p.id == "lavender")
+            .unwrap();
+        s.set_tool(crate::tools::ToolKind::Plant(def));
+        crate::test_util::click(
+            s,
+            garden_core::geometry::Point::new(300., 200.),
+            crate::test_util::NO,
+        );
+    }
+
+    #[test]
+    fn a_file_without_layers_opens_and_takes_plants() {
+        let doc = garden_core::io::from_json(include_str!(
+            "../../garden-core/tests/fixtures/no_layers.garden.json"
+        ))
+        .unwrap();
+        let mut s = EditorState::new(doc, 1000., 500.);
+        place_lavender(&mut s);
+        assert_eq!(s.doc().objects.len(), 2);
+        let layer = s.doc().layers[0].id;
+        assert!(s.doc().objects.iter().all(|o| o.layer == layer));
+    }
+
+    #[test]
+    fn a_document_without_layers_is_repaired_when_opened() {
+        let mut empty = garden_core::model::Document::new("g", 0);
+        empty.layers.clear();
+        let mut s = EditorState::new(empty.clone(), 1000., 500.);
+        assert_eq!(s.doc().layers.len(), 1);
+        assert_eq!(s.active_layer_id(), s.doc().layers[0].id);
+        s.open_document(empty);
+        assert_eq!(s.doc().layers.len(), 1);
+        place_lavender(&mut s);
+        assert_eq!(s.doc().objects.len(), 1);
+        assert_eq!(s.doc().objects[0].layer, s.doc().layers[0].id);
     }
 }

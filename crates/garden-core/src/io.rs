@@ -93,7 +93,8 @@ pub fn extract_images(text: &str) -> Vec<EmbeddedImage> {
         .collect()
 }
 
-/// Load a document from any supported schema version.
+/// Load a document from any supported schema version, repairing missing
+/// layers (see [`Document::repair`]).
 pub fn from_json(s: &str) -> Result<Document, LoadError> {
     let value: Value = serde_json::from_str(s).map_err(|e| LoadError::Parse(e.to_string()))?;
     let version = value
@@ -106,7 +107,10 @@ pub fn from_json(s: &str) -> Result<Document, LoadError> {
     }
     let mut value = migrate(value, version)?;
     value["schema_version"] = SCHEMA_VERSION.into();
-    serde_json::from_value(value).map_err(|e| LoadError::Parse(e.to_string()))
+    let mut doc: Document =
+        serde_json::from_value(value).map_err(|e| LoadError::Parse(e.to_string()))?;
+    doc.repair();
+    Ok(doc)
 }
 
 /// One step per old version: `MIGRATIONS[n - 1]` upgrades version n to n + 1.

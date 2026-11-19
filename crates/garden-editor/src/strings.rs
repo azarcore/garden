@@ -143,6 +143,15 @@ pub struct Strings {
     pub cat_vegetable: &'static str,
     pub cat_herb: &'static str,
     pub cat_other: &'static str,
+    pub edges: &'static str,
+    pub edge: &'static str,
+    pub corner: &'static str,
+    pub straight: &'static str,
+    pub arc: &'static str,
+    pub curve: &'static str,
+    pub err_not_straight: &'static str,
+    pub err_not_an_angle: &'static str,
+    pub err_angle_not_possible: &'static str,
 }
 
 pub static EN: Strings = Strings {
@@ -285,6 +294,15 @@ pub static EN: Strings = Strings {
     cat_vegetable: "Vegetables",
     cat_herb: "Herbs",
     cat_other: "Other",
+    edges: "Edges",
+    edge: "Edge",
+    corner: "Corner",
+    straight: "Straight",
+    arc: "Arc",
+    curve: "Curve",
+    err_not_straight: "Only straight edges can be set exactly",
+    err_not_an_angle: "Enter an angle in degrees, e.g. 90",
+    err_angle_not_possible: "That angle can't be made here",
 };
 
 /// Heading for a group of plants.

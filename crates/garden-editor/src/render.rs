@@ -71,43 +71,50 @@ pub fn style_class(kind: &ObjectKind) -> &'static str {
     }
 }
 
-const INK: Color = Color(36, 55, 43, 255);
+const INK: Color = Color(43, 58, 48, 255);
 
 /// Default (fill, stroke) colours for each kind of object.
 pub fn default_style(kind: &ObjectKind) -> (Option<Color>, Option<Color>) {
     match kind {
         ObjectKind::PlotBoundary { .. } => (None, Some(INK)),
         ObjectKind::Area { area_type, .. } => {
-            let fill = match area_type {
-                AreaType::Lawn => Color(169, 196, 138, 255),
-                AreaType::Bed => Color(176, 138, 104, 255),
-                AreaType::Paving => Color(211, 208, 198, 255),
-                AreaType::Gravel => Color(226, 218, 198, 255),
-                AreaType::Water => Color(156, 195, 217, 255),
-                AreaType::Other => Color(205, 205, 192, 255),
+            let (fill, edge) = match area_type {
+                AreaType::Lawn => (Color(169, 203, 126, 255), Color(111, 154, 72, 255)),
+                AreaType::Bed => (Color(156, 116, 88, 255), Color(110, 78, 56, 255)),
+                AreaType::Paving => (Color(217, 211, 199, 255), Color(160, 152, 136, 255)),
+                AreaType::Gravel => (Color(230, 223, 207, 255), Color(168, 157, 132, 255)),
+                AreaType::Water => (Color(134, 190, 219, 255), Color(91, 147, 181, 255)),
+                AreaType::Other => (Color(210, 210, 196, 255), Color(150, 150, 136, 255)),
             };
-            (Some(fill), Some(Color(36, 55, 43, 140)))
+            (Some(fill), Some(edge))
         }
         ObjectKind::Structure { .. } => (
-            Some(Color(201, 180, 155, 255)),
-            Some(Color(110, 84, 64, 255)),
+            Some(Color(196, 154, 108, 255)),
+            Some(Color(110, 78, 51, 255)),
         ),
-        ObjectKind::Path { .. } => (None, Some(Color(222, 210, 182, 255))),
+        ObjectKind::Path { .. } => (None, Some(Color(230, 217, 188, 255))),
         ObjectKind::Linear { kind, .. } => {
             let c = match kind {
-                LinearKind::Fence => Color(138, 104, 76, 255),
-                LinearKind::Wall => Color(176, 172, 162, 255),
-                LinearKind::Hedge => Color(92, 128, 84, 255),
+                LinearKind::Fence => Color(138, 100, 64, 255),
+                LinearKind::Wall => Color(169, 163, 151, 255),
+                LinearKind::Hedge => Color(78, 122, 69, 255),
             };
             (None, Some(c))
         }
         ObjectKind::Plant { category, .. } => {
-            let fill = match category {
-                PlantCategory::Tree => Color(118, 156, 104, 120),
-                PlantCategory::Shrub => Color(132, 170, 110, 160),
-                _ => Color(168, 194, 124, 170),
+            // (fill, outline): a botanical-plate palette, one hue family per kind of plant
+            let (fill, edge) = match category {
+                PlantCategory::Tree => (Color(95, 145, 80, 140), Color(47, 82, 48, 255)),
+                PlantCategory::Shrub => (Color(127, 174, 94, 220), Color(60, 102, 48, 255)),
+                PlantCategory::Perennial => (Color(180, 154, 208, 225), Color(110, 85, 150, 255)),
+                PlantCategory::Annual => (Color(238, 142, 122, 225), Color(176, 80, 63, 255)),
+                PlantCategory::Grass => (Color(210, 195, 118, 225), Color(142, 127, 53, 255)),
+                PlantCategory::Climber => (Color(157, 184, 106, 225), Color(91, 122, 51, 255)),
+                PlantCategory::Vegetable => (Color(140, 192, 99, 225), Color(74, 122, 46, 255)),
+                PlantCategory::Herb => (Color(167, 185, 160, 225), Color(94, 113, 88, 255)),
+                PlantCategory::Other => (Color(158, 187, 138, 225), Color(84, 110, 70, 255)),
             };
-            (Some(fill), Some(Color(52, 84, 58, 255)))
+            (Some(fill), Some(edge))
         }
         ObjectKind::Label { .. } | ObjectKind::Dimension { .. } => (None, Some(INK)),
     }
@@ -344,5 +351,40 @@ mod tests {
                 "dimension"
             ]
         );
+    }
+
+    #[test]
+    fn plants_are_coloured_by_category() {
+        let plant = |category| ObjectKind::Plant {
+            position: Point::ZERO,
+            spread: 600.,
+            height: 500.,
+            symbol: PlantSymbol::Round,
+            category,
+            catalog_id: None,
+        };
+        let cats = [
+            PlantCategory::Tree,
+            PlantCategory::Shrub,
+            PlantCategory::Perennial,
+            PlantCategory::Annual,
+            PlantCategory::Grass,
+            PlantCategory::Herb,
+        ];
+        let fills: Vec<_> = cats
+            .iter()
+            .map(|c| default_style(&plant(*c)).0.unwrap())
+            .collect();
+        for (i, a) in fills.iter().enumerate() {
+            for b in &fills[i + 1..] {
+                assert_ne!(
+                    (a.0, a.1, a.2),
+                    (b.0, b.1, b.2),
+                    "categories need distinct colours"
+                );
+            }
+        }
+        // tree canopies stay see-through so underplanting shows
+        assert!(fills[0].3 < 200);
     }
 }

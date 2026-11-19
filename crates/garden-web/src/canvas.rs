@@ -303,7 +303,7 @@ pub fn Canvas() -> impl IntoView {
             {defs()}
             <g transform=transform>
                 {grid}
-                {content}
+                <g class="plan-content">{content}</g>
                 {preview}
             </g>
         </svg>

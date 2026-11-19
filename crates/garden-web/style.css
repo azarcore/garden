@@ -1,46 +1,65 @@
 /* Garden Planner — a planting plan on drafting vellum.
    Chrome stays quiet; the plan carries the character. */
 
+/* Two jobs, two colours: evergreen marks interface state (active tool,
+   switches); marigold marks selection on the plan, and nothing else. */
 :root {
-  --vellum: #eef1e7; /* plan paper, green-tinted */
-  --ink: #24372b; /* moss ink: text and plan linework */
-  --panel: #f7f9f3; /* fern panel */
-  --line: #cbd5c4; /* lichen rules */
-  --marigold: #e0a526; /* selection, active tool */
-  --marigold-tint: #f6e8c4;
-  --bark: #6e5440;
-  --muted: #5e6e61;
-  --hover: rgba(36, 55, 43, 0.06);
-  --error: #b0302a;
-  --bg: #e6ebdf;
+  --chrome: #fcfcf8; /* panels: crisp warm white */
+  --field: #f2f4ec;
+  --line: #dde2d5;
+  --text: #1f2b23;
+  --muted: #66746a;
+  --hover: rgba(31, 43, 35, 0.06);
+  --ui-accent: #2e6b4f; /* evergreen */
+  --ui-accent-ink: #ffffff;
+  --ui-accent-tint: #e3efe7;
+  --select: #e3a21a; /* marigold */
+  --error: #b3261e;
+  --paper: #e9efdf; /* the plan: green vellum on the desk */
+  --grid: rgba(43, 58, 48, 0.08);
+  --plan-ink: #2b3a30;
+  --plan-filter: none;
   --ui-font: "Schibsted Grotesk", system-ui, -apple-system, "Segoe UI", sans-serif;
   --plan-font: "IBM Plex Sans Condensed", "Arial Narrow", sans-serif-condensed, sans-serif;
   color-scheme: light;
 }
 
+/* Night vellum: dark paper with light linework; fills dimmed a touch. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --ink-ui: #e3eadf;
-    --panel: #1f2721;
-    --line: #34423a;
-    --muted: #9fae9f;
-    --hover: rgba(227, 234, 223, 0.07);
-    --marigold-tint: #4a3c17;
-    --error: #ff8a7a;
-    --bg: #171d19;
+    --chrome: #161d19;
+    --field: #1f2823;
+    --line: #2c3832;
+    --text: #e4ebe1;
+    --muted: #93a398;
+    --hover: rgba(228, 235, 225, 0.07);
+    --ui-accent: #5fae86;
+    --ui-accent-ink: #0f1a14;
+    --ui-accent-tint: #1f3a2c;
+    --error: #ff8a80;
+    --paper: #232d27;
+    --grid: rgba(228, 235, 225, 0.06);
+    --plan-ink: #d8e2d3;
+    --plan-filter: brightness(0.86) saturate(0.92);
     color-scheme: dark;
   }
 }
 
 :root[data-theme="dark"] {
-  --ink-ui: #e3eadf;
-  --panel: #1f2721;
-  --line: #34423a;
-  --muted: #9fae9f;
-  --hover: rgba(227, 234, 223, 0.07);
-  --marigold-tint: #4a3c17;
-  --error: #ff8a7a;
-  --bg: #171d19;
+  --chrome: #161d19;
+  --field: #1f2823;
+  --line: #2c3832;
+  --text: #e4ebe1;
+  --muted: #93a398;
+  --hover: rgba(228, 235, 225, 0.07);
+  --ui-accent: #5fae86;
+  --ui-accent-ink: #0f1a14;
+  --ui-accent-tint: #1f3a2c;
+  --error: #ff8a80;
+  --paper: #232d27;
+  --grid: rgba(228, 235, 225, 0.06);
+  --plan-ink: #d8e2d3;
+  --plan-filter: brightness(0.86) saturate(0.92);
   color-scheme: dark;
 }
 
@@ -53,8 +72,8 @@ body {
   margin: 0;
   height: 100%;
   overflow: hidden;
-  background: var(--bg);
-  color: var(--ink-ui, var(--ink));
+  background: var(--chrome);
+  color: var(--text);
   font: 14px/1.45 var(--ui-font);
   -webkit-font-smoothing: antialiased;
 }
@@ -73,7 +92,7 @@ button:disabled {
 }
 
 :focus-visible {
-  outline: 2px solid var(--marigold);
+  outline: 2px solid var(--ui-accent);
   outline-offset: 2px;
 }
 
@@ -97,7 +116,7 @@ button:disabled {
   align-items: center;
   gap: 16px;
   padding: 0 16px;
-  background: var(--panel);
+  background: var(--chrome);
   border-bottom: 1px solid var(--line);
 }
 
@@ -114,8 +133,8 @@ button:disabled {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background: var(--ink);
-  color: var(--vellum);
+  background: var(--ui-accent);
+  color: var(--ui-accent-ink);
 }
 
 .brand-mark .icon {
@@ -185,8 +204,8 @@ button:disabled {
 }
 
 .segmented button[aria-pressed="true"] {
-  background: var(--ink);
-  color: var(--vellum);
+  background: var(--ui-accent);
+  color: var(--ui-accent-ink);
 }
 
 .toggle {
@@ -200,7 +219,7 @@ button:disabled {
 }
 
 .toggle input {
-  accent-color: var(--ink);
+  accent-color: var(--ui-accent);
   margin: 0;
 }
 
@@ -213,7 +232,7 @@ button:disabled {
   align-items: stretch;
   gap: 1px;
   padding: 8px 8px;
-  background: var(--panel);
+  background: var(--chrome);
   border-right: 1px solid var(--line);
   overflow-y: auto;
 }
@@ -238,7 +257,8 @@ button:disabled {
 }
 
 .rail-tool[aria-pressed="true"] {
-  background: var(--marigold-tint);
+  background: var(--ui-accent);
+  color: var(--ui-accent-ink);
 }
 
 .rail-tool[aria-pressed="true"]::before {
@@ -249,7 +269,8 @@ button:disabled {
   bottom: 8px;
   width: 3px;
   border-radius: 0 3px 3px 0;
-  background: var(--marigold);
+  background: var(--ui-accent);
+  display: none;
 }
 
 .rail-label {
@@ -273,14 +294,14 @@ button:disabled {
   position: relative;
   min-width: 0;
   min-height: 0;
-  background: var(--vellum);
+  background: var(--paper);
 }
 
 .plan {
   display: block;
   width: 100%;
   height: 100%;
-  background: var(--vellum);
+  background: var(--paper);
   touch-action: none;
   user-select: none;
   -webkit-user-select: none;
@@ -299,12 +320,13 @@ button:disabled {
 }
 
 .grid-line {
-  stroke: rgba(36, 55, 43, 0.09);
+  stroke: var(--grid);
   stroke-width: 1;
 }
 
 /* plot boundary: a property line */
 .obj.plot path {
+  stroke: var(--plan-ink);
   stroke-width: 2px;
   stroke-dasharray: 16 5 3 5;
 }
@@ -316,22 +338,22 @@ button:disabled {
 }
 
 .lawn-blade {
-  stroke: rgba(62, 98, 52, 0.55);
+  stroke: rgba(92, 138, 58, 0.6);
   stroke-width: 28;
 }
 
 .bed-mulch {
-  stroke: rgba(92, 64, 42, 0.5);
+  stroke: rgba(84, 58, 40, 0.55);
   stroke-width: 34;
 }
 
 .paving-joint {
-  stroke: rgba(122, 116, 104, 0.6);
+  stroke: rgba(150, 141, 124, 0.7);
   stroke-width: 22;
 }
 
 .gravel-stone {
-  fill: rgba(128, 116, 90, 0.7);
+  fill: rgba(150, 138, 110, 0.75);
 }
 
 .water-ripple {
@@ -340,57 +362,57 @@ button:disabled {
 }
 
 .roof-hatch {
-  stroke: rgba(110, 84, 64, 0.35);
+  stroke: rgba(122, 86, 52, 0.4);
   stroke-width: 26;
 }
 
 /* linear things: a darker edge under a lighter body */
 .obj .edge {
-  stroke: rgba(110, 84, 64, 0.45);
+  stroke: rgba(160, 138, 96, 0.8);
 }
 
 .obj.fence .edge,
 .obj.wall .edge {
-  stroke: var(--ink);
+  stroke: #4b3826;
 }
 
 .obj.hedge .edge {
-  stroke: #3f5e3c;
+  stroke: #2f5230;
 }
 
 .lettering,
 .plan .dim {
   font-family: var(--plan-font);
   paint-order: stroke;
-  stroke: var(--vellum);
+  stroke: var(--paper);
   stroke-width: 4px;
   stroke-linejoin: round;
   vector-effect: non-scaling-stroke;
 }
 
 .lettering {
-  fill: var(--ink);
+  fill: var(--plan-ink);
 }
 
 .plan .dim {
-  fill: var(--ink);
+  fill: var(--plan-ink);
   font-weight: 600;
 }
 
 .obj.dimension line {
-  stroke: var(--ink);
+  stroke: var(--plan-ink);
 }
 
 .selection {
   fill: none;
-  stroke: var(--marigold);
+  stroke: var(--select);
   stroke-width: 2.5;
-  filter: drop-shadow(0 0 1.5px rgba(224, 165, 38, 0.8));
+  filter: drop-shadow(0 0 1.5px rgba(227, 162, 26, 0.8));
 }
 
 .preview {
-  fill: rgba(224, 165, 38, 0.1);
-  stroke: var(--marigold);
+  fill: rgba(227, 162, 26, 0.1);
+  stroke: var(--select);
   stroke-width: 1.75;
   stroke-dasharray: 6 4;
 }
@@ -398,13 +420,13 @@ button:disabled {
 .snap circle,
 .snap path {
   fill: none;
-  stroke: var(--marigold);
+  stroke: var(--select);
   stroke-width: 1.5;
 }
 
 .marquee {
-  fill: rgba(224, 165, 38, 0.08);
-  stroke: var(--marigold);
+  fill: rgba(227, 162, 26, 0.08);
+  stroke: var(--select);
   stroke-width: 1;
   stroke-dasharray: 4 3;
 }
@@ -416,9 +438,9 @@ button:disabled {
   bottom: 14px;
   padding: 7px 10px 6px;
   border-radius: 8px;
-  background: rgba(238, 241, 231, 0.88);
+  background: color-mix(in srgb, var(--paper) 88%, transparent);
   backdrop-filter: blur(2px);
-  color: var(--ink);
+  color: var(--plan-ink);
   font-family: var(--plan-font);
   font-size: 12px;
   pointer-events: none;
@@ -444,16 +466,16 @@ button:disabled {
 }
 
 .bar-dark {
-  fill: var(--ink);
+  fill: var(--plan-ink);
 }
 
 .bar-light {
-  fill: var(--vellum);
+  fill: var(--paper);
 }
 
 .bar-frame {
   fill: none;
-  stroke: var(--ink);
+  stroke: var(--plan-ink);
   stroke-width: 1;
 }
 
@@ -474,9 +496,9 @@ button:disabled {
   width: 272px;
   overflow-y: auto;
   padding: 14px 14px 20px;
-  background: var(--panel);
+  background: var(--chrome);
   border-right: 1px solid var(--line);
-  box-shadow: 6px 0 18px rgba(36, 55, 43, 0.08);
+  box-shadow: 6px 0 18px rgba(20, 30, 24, 0.1);
   z-index: 2;
 }
 
@@ -516,8 +538,8 @@ button:disabled {
 }
 
 .specimen[aria-pressed="true"] {
-  border-color: var(--marigold);
-  background: var(--marigold-tint);
+  border-color: var(--ui-accent);
+  background: var(--ui-accent-tint);
 }
 
 .specimen .swatch {
@@ -538,30 +560,51 @@ button:disabled {
   color: var(--muted);
 }
 
+.swatch {
+  --sw-fill: rgba(158, 187, 138, 0.9);
+  --sw-edge: #546e46;
+}
+
+.swatch.cat-tree { --sw-fill: rgba(95, 145, 80, 0.6); --sw-edge: #2f5230; }
+.swatch.cat-shrub { --sw-fill: rgba(127, 174, 94, 0.9); --sw-edge: #3c6630; }
+.swatch.cat-perennial { --sw-fill: rgba(180, 154, 208, 0.9); --sw-edge: #6e5596; }
+.swatch.cat-annual { --sw-fill: rgba(238, 142, 122, 0.9); --sw-edge: #b0503f; }
+.swatch.cat-grass { --sw-fill: rgba(210, 195, 118, 0.9); --sw-edge: #8e7f35; }
+.swatch.cat-climber { --sw-fill: rgba(157, 184, 106, 0.9); --sw-edge: #5b7a33; }
+.swatch.cat-vegetable { --sw-fill: rgba(140, 192, 99, 0.9); --sw-edge: #4a7a2e; }
+.swatch.cat-herb { --sw-fill: rgba(167, 185, 160, 0.9); --sw-edge: #5e7158; }
+
 .swatch-fill {
-  fill: rgba(156, 186, 120, 0.55);
-  stroke: #34543a;
+  fill: var(--sw-fill);
+  stroke: var(--sw-edge);
   stroke-width: 2.5;
   stroke-linejoin: round;
 }
 
-.swatch.cat-tree .swatch-fill {
-  fill: rgba(118, 156, 104, 0.45);
-}
-
-.swatch.cat-shrub .swatch-fill {
-  fill: rgba(132, 170, 110, 0.6);
-}
-
 .swatch-marks {
   fill: none;
-  stroke: #34543a;
+  stroke: var(--sw-edge);
   stroke-width: 1.5;
   opacity: 0.6;
 }
 
 .swatch-dot {
-  fill: #34543a;
+  fill: var(--sw-edge);
+}
+
+.plan-content {
+  filter: var(--plan-filter);
+}
+
+/* dark green linework would vanish on night vellum */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .obj.hedge .edge {
+    stroke: #8fbf7c;
+  }
+}
+
+:root[data-theme="dark"] .obj.hedge .edge {
+  stroke: #8fbf7c;
 }
 
 /* ---------- inspector ---------- */
@@ -569,7 +612,7 @@ button:disabled {
 .inspector {
   grid-area: inspector;
   padding: 18px 18px 24px;
-  background: var(--panel);
+  background: var(--chrome);
   border-left: 1px solid var(--line);
   overflow-y: auto;
 }
@@ -602,8 +645,8 @@ button:disabled {
 .field input[type="text"],
 .field select {
   font: 15px var(--plan-font);
-  color: var(--ink);
-  background: var(--vellum);
+  color: var(--text);
+  background: var(--field);
   border: 1px solid var(--line);
   border-radius: 7px;
   padding: 7px 9px;
@@ -611,7 +654,7 @@ button:disabled {
 
 .field input[type="text"]:focus,
 .field select:focus {
-  outline: 2px solid var(--marigold);
+  outline: 2px solid var(--ui-accent);
   outline-offset: 0;
   border-color: transparent;
 }
@@ -634,7 +677,7 @@ button:disabled {
 }
 
 .field.check input {
-  accent-color: var(--ink);
+  accent-color: var(--ui-accent);
   margin: 0;
 }
 

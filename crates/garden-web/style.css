@@ -1577,3 +1577,91 @@ button.title-card {
   width: 18px;
   height: 18px;
 }
+
+/* ── 3D view ───────────────────────────────────────────────── */
+.view3d {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: none;
+  background: #dfe9e2;
+}
+.view3d.shown {
+  display: block;
+}
+.view3d canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  outline: none;
+  touch-action: none;
+}
+.view3d-bar {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  pointer-events: none;
+}
+.view3d-bar h2 {
+  margin: 0;
+  padding: 8px 14px;
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: var(--card-shadow);
+  font-size: 15px;
+  font-weight: 650;
+}
+.view3d-close {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px 8px 10px;
+  border-radius: 12px;
+  background: var(--card);
+  color: var(--text);
+  box-shadow: var(--card-shadow);
+  font-weight: 600;
+}
+.view3d-close:hover {
+  background: var(--tile);
+}
+.view3d-close .icon {
+  width: 18px;
+  height: 18px;
+}
+.view3d-status {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  margin: 0;
+  padding: 12px 18px;
+  border-radius: 12px;
+  background: var(--card);
+  box-shadow: var(--card-shadow);
+  font-weight: 600;
+}
+.view3d-status.error {
+  color: var(--error);
+}
+.view3d-help {
+  position: absolute;
+  bottom: 18px;
+  left: 50%;
+  transform: translateX(-50%);
+  margin: 0;
+  padding: 7px 14px;
+  border-radius: 999px;
+  background: var(--tag);
+  color: var(--tag-ink);
+  font-size: 13px;
+  white-space: nowrap;
+  pointer-events: none;
+}

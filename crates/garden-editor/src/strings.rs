@@ -185,6 +185,12 @@ pub struct Strings {
     pub align_top: &'static str,
     pub align_center_y: &'static str,
     pub align_bottom: &'static str,
+    pub view_3d: &'static str,
+    pub close_3d: &'static str,
+    pub loading_3d: &'static str,
+    pub help_3d: &'static str,
+    pub err_no_webgl: &'static str,
+    pub err_3d_failed: &'static str,
 }
 
 pub static EN: Strings = Strings {
@@ -369,6 +375,12 @@ pub static EN: Strings = Strings {
     align_top: "Align top",
     align_center_y: "Align centres vertically",
     align_bottom: "Align bottom",
+    view_3d: "3D view",
+    close_3d: "Back to plan",
+    loading_3d: "Loading 3D view…",
+    help_3d: "Drag to turn · right-drag to move · scroll to zoom",
+    err_no_webgl: "3D needs a browser with WebGL2",
+    err_3d_failed: "Couldn't load the 3D view. Check your connection and try again.",
 };
 
 /// Heading for a group of plants.

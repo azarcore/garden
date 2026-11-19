@@ -4,3 +4,7 @@
 stage = "post_build"
 command = "sh"
 command_arguments = ["-c", "sh \"$TRUNK_SOURCE_DIR/../../scripts/build-3d.sh\""]
+
+# Rebuild when the app or any of its local crates change (the 3D crates too).
+[watch]
+watch = [".", "../garden-core", "../garden-editor", "../garden-scene", "../garden-3d"]

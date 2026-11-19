@@ -1,0 +1,152 @@
+//! The full-screen 3D view. Its Bevy bundle (`garden3d/`) is downloaded the
+//! first time it opens; each time it opens it gets a snapshot of the design.
+
+use garden_editor::state::EditorState;
+use garden_editor::strings::EN;
+use leptos::prelude::*;
+use leptos::task::spawn_local;
+use wasm_bindgen::prelude::*;
+use wasm_bindgen_futures::JsFuture;
+
+use crate::icons::{Icon, icon};
+
+/// Where the 3D bundle lives, relative to the page.
+const MODULE_PATH: &str = "garden3d/garden_3d.js";
+const CANVAS_ID: &str = "garden-3d";
+
+#[wasm_bindgen(inline_js = "export function import_module(url) { return import(url); }")]
+extern "C" {
+    fn import_module(url: &str) -> js_sys::Promise;
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Status {
+    Idle,
+    Loading,
+    Ready,
+    Failed(&'static str),
+}
+
+/// Whether the 3D view is showing, and how loading went.
+#[derive(Clone, Copy)]
+pub struct View3d {
+    pub open: RwSignal<bool>,
+    status: RwSignal<Status>,
+    /// The loaded 3D module (imported at most once).
+    module: StoredValue<Option<JsValue>, LocalStorage>,
+}
+
+pub fn provide_view3d() {
+    provide_context(View3d {
+        open: RwSignal::new(false),
+        status: RwSignal::new(Status::Idle),
+        module: StoredValue::new_local(None),
+    });
+}
+
+fn has_webgl2() -> bool {
+    let Some(doc) = web_sys::window().and_then(|w| w.document()) else {
+        return false;
+    };
+    let Ok(canvas) = doc.create_element("canvas") else {
+        return false;
+    };
+    let canvas: web_sys::HtmlCanvasElement = canvas.unchecked_into();
+    matches!(canvas.get_context("webgl2"), Ok(Some(_)))
+}
+
+/// Call `name(args…)` on the loaded module.
+fn call(module: &JsValue, name: &str, args: &[&JsValue]) -> Result<JsValue, JsValue> {
+    let f: js_sys::Function = js_sys::Reflect::get(module, &JsValue::from_str(name))?.dyn_into()?;
+    let args: js_sys::Array = args.iter().copied().collect();
+    f.apply(&JsValue::NULL, &args)
+}
+
+fn snapshot(state: RwSignal<EditorState>) -> Option<String> {
+    state.with_untracked(|s| garden_core::io::to_json(s.doc()).ok())
+}
+
+/// Show the 3D view with the current design, loading the bundle the first time.
+pub fn open_3d(view: View3d, state: RwSignal<EditorState>) {
+    view.open.set(true);
+    match view.status.get_untracked() {
+        Status::Loading => {} // the design is read when loading finishes
+        Status::Ready => {
+            let module = view.module.get_value();
+            if let (Some(module), Some(json)) = (module, snapshot(state))
+                && call(&module, "show", &[&JsValue::from_str(&json)]).is_err()
+            {
+                view.status.set(Status::Failed(EN.err_3d_failed));
+            }
+        }
+        Status::Idle | Status::Failed(_) => {
+            if !has_webgl2() {
+                view.status.set(Status::Failed(EN.err_no_webgl));
+                return;
+            }
+            view.status.set(Status::Loading);
+            spawn_local(async move {
+                let result = load_and_start(view, state).await;
+                view.status.set(match result {
+                    Ok(()) => Status::Ready,
+                    Err(_) => Status::Failed(EN.err_3d_failed),
+                });
+            });
+        }
+    }
+}
+
+async fn load_and_start(view: View3d, state: RwSignal<EditorState>) -> Result<(), JsValue> {
+    let module = match view.module.get_value() {
+        Some(m) => m,
+        None => {
+            let base = web_sys::window()
+                .and_then(|w| w.document())
+                .and_then(|d| d.base_uri().ok().flatten())
+                .unwrap_or_default();
+            let url = web_sys::Url::new_with_base(MODULE_PATH, &base)?.href();
+            let module = JsFuture::from(import_module(&url)).await?;
+            // the bundle's default export fetches and starts its wasm
+            JsFuture::from(js_sys::Promise::from(call(&module, "default", &[])?)).await?;
+            view.module.set_value(Some(module.clone()));
+            module
+        }
+    };
+    let json = snapshot(state).ok_or_else(|| JsValue::from_str("design"))?;
+    call(
+        &module,
+        "open",
+        &[
+            &JsValue::from_str(&format!("#{CANVAS_ID}")),
+            &JsValue::from_str(&json),
+        ],
+    )?;
+    Ok(())
+}
+
+/// The full-screen 3D view. Stays in the page once opened, hidden when closed,
+/// so the viewer isn't restarted.
+#[component]
+pub fn View3dOverlay() -> impl IntoView {
+    let view = expect_context::<View3d>();
+    let close = move |_| view.open.set(false);
+    let status = move || match view.status.get() {
+        Status::Loading => Some(view! { <p class="view3d-status">{EN.loading_3d}</p> }.into_any()),
+        Status::Failed(m) => {
+            Some(view! { <p class="view3d-status error" role="alert">{m}</p> }.into_any())
+        }
+        Status::Idle | Status::Ready => None,
+    };
+    view! {
+        <section class="view3d" class:shown=move || view.open.get() aria-label=EN.view_3d
+            aria-hidden=move || (!view.open.get()).to_string()>
+            <canvas id=CANVAS_ID tabindex="0"></canvas>
+            <header class="view3d-bar">
+                <h2>{EN.view_3d}</h2>
+                <button class="view3d-close" on:click=close>{icon(Icon::Close)}{EN.close_3d}</button>
+            </header>
+            {status}
+            <p class="view3d-help">{EN.help_3d}</p>
+        </section>
+    }
+}

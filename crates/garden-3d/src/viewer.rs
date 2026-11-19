@@ -11,13 +11,18 @@ use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseSc
 use bevy::light::CascadeShadowConfigBuilder;
 use bevy::mesh::{Indices, PrimitiveTopology};
 use bevy::prelude::*;
-use bevy::winit::{UpdateMode, WinitSettings};
+use bevy::window::RequestRedraw;
+use bevy::winit::{
+    EventLoopProxy, EventLoopProxyWrapper, UpdateMode, WinitSettings, WinitUserEvent,
+};
 use garden_core::model::{PlantCategory, PlantSymbol};
 use garden_scene::{CameraStart, MeshData, PlantInstance, Scene, SurfaceKind};
 use wasm_bindgen::prelude::*;
 
 /// The next scene to show, handed over from JavaScript.
 static PENDING: Mutex<Option<Scene>> = Mutex::new(None);
+/// Wakes the (otherwise idle) viewer when a new snapshot arrives.
+static WAKER: Mutex<Option<EventLoopProxy<WinitUserEvent>>> = Mutex::new(None);
 /// Whether the Bevy app is already running.
 static STARTED: AtomicBool = AtomicBool::new(false);
 
@@ -28,6 +33,28 @@ const MAX_RADIUS: f32 = 400.0;
 /// Keep the camera this far above the horizon (radians) so it never goes underground.
 const MIN_PITCH: f32 = 0.08;
 const MAX_PITCH: f32 = 1.5;
+/// Frames to keep drawing after a new scene arrives: new meshes and
+/// materials reach the GPU a frame or two later, and the viewer otherwise only
+/// redraws on input.
+const SETTLE_FRAMES: u8 = 10;
+
+/// Hand a new scene to the viewer and wake it so it shows straight away.
+fn hand_over(scene: Scene) {
+    if let Ok(mut p) = PENDING.lock() {
+        *p = Some(scene);
+    }
+    if let Ok(w) = WAKER.lock()
+        && let Some(proxy) = w.as_ref()
+    {
+        let _ = proxy.send_event(WinitUserEvent::WakeUp);
+    }
+}
+
+fn remember_waker(proxy: Res<EventLoopProxyWrapper>) {
+    if let Ok(mut w) = WAKER.lock() {
+        *w = Some((**proxy).clone());
+    }
+}
 
 fn parse(design_json: &str) -> Result<Scene, JsValue> {
     let doc = garden_core::io::from_json(design_json)
@@ -38,10 +65,7 @@ fn parse(design_json: &str) -> Result<Scene, JsValue> {
 /// Start the viewer in the canvas matching `canvas_selector` (once), showing `design_json`.
 #[wasm_bindgen]
 pub fn open(canvas_selector: &str, design_json: &str) -> Result<(), JsValue> {
-    let scene = parse(design_json)?;
-    if let Ok(mut p) = PENDING.lock() {
-        *p = Some(scene);
-    }
+    hand_over(parse(design_json)?);
     if !STARTED.swap(true, Ordering::SeqCst) {
         start(canvas_selector);
     }
@@ -51,10 +75,7 @@ pub fn open(canvas_selector: &str, design_json: &str) -> Result<(), JsValue> {
 /// Show another snapshot in the running viewer (re-opening 3D after edits).
 #[wasm_bindgen]
 pub fn show(design_json: &str) -> Result<(), JsValue> {
-    let scene = parse(design_json)?;
-    if let Ok(mut p) = PENDING.lock() {
-        *p = Some(scene);
-    }
+    hand_over(parse(design_json)?);
     Ok(())
 }
 
@@ -88,9 +109,24 @@ fn start(canvas_selector: &str) {
             brightness: 700.0,
             ..default()
         })
-        .add_systems(Startup, setup)
-        .add_systems(Update, (apply_pending, orbit_controls).chain())
+        .add_systems(Startup, (setup, remember_waker))
+        .init_resource::<Settling>()
+        .add_systems(
+            Update,
+            (apply_pending, orbit_controls, keep_drawing).chain(),
+        )
         .run();
+}
+
+/// Redraws still owed after the last new scene.
+#[derive(Resource, Default)]
+struct Settling(u8);
+
+fn keep_drawing(mut settling: ResMut<Settling>, mut redraw: MessageWriter<RequestRedraw>) {
+    if settling.0 > 0 {
+        settling.0 -= 1;
+        redraw.write(RequestRedraw);
+    }
 }
 
 /// Everything built from a scene, removed when the next one arrives.
@@ -177,10 +213,13 @@ fn setup(
 }
 
 fn to_mesh(m: &MeshData) -> Mesh {
-    Mesh::new(PrimitiveTopology::TriangleList, RenderAssetUsages::default())
-        .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, m.positions.clone())
-        .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, m.normals.clone())
-        .with_inserted_indices(Indices::U32(m.indices.clone()))
+    Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::default(),
+    )
+    .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, m.positions.clone())
+    .with_inserted_attribute(Mesh::ATTRIBUTE_NORMAL, m.normals.clone())
+    .with_inserted_indices(Indices::U32(m.indices.clone()))
 }
 
 fn surface_material(m: &MeshData) -> StandardMaterial {
@@ -207,11 +246,13 @@ fn apply_pending(
     mut materials: ResMut<Assets<StandardMaterial>>,
     shapes: Option<Res<PlantShapes>>,
     mut camera: Query<(&mut Orbit, &mut Transform)>,
+    mut settling: ResMut<Settling>,
 ) {
     let Some(shapes) = shapes else { return };
     let Some(scene) = PENDING.lock().ok().and_then(|mut p| p.take()) else {
         return;
     };
+    settling.0 = SETTLE_FRAMES;
     for e in &parts {
         commands.entity(e).despawn();
     }
@@ -258,23 +299,39 @@ fn spawn_plant(
 ) {
     let base = Vec3::from_array(p.position);
     let (s, h) = (p.spread.max(0.05), p.height.max(0.05));
-    let mut part = |mesh: &Handle<Mesh>, mat: Handle<StandardMaterial>, centre_y: f32, size: Vec3| {
-        commands.spawn((
-            Mesh3d(mesh.clone()),
-            MeshMaterial3d(mat),
-            Transform::from_translation(base + Vec3::Y * centre_y).with_scale(size),
-            GardenPart,
-        ));
-    };
+    let mut part =
+        |mesh: &Handle<Mesh>, mat: Handle<StandardMaterial>, centre_y: f32, size: Vec3| {
+            commands.spawn((
+                Mesh3d(mesh.clone()),
+                MeshMaterial3d(mat),
+                Transform::from_translation(base + Vec3::Y * centre_y).with_scale(size),
+                GardenPart,
+            ));
+        };
     match p.category {
         PlantCategory::Tree => {
             let trunk_h = 0.35 * h;
             let trunk_w = (0.12 * s).min(0.5);
-            part(&shapes.cylinder, shapes.trunk.clone(), trunk_h / 2.0, Vec3::new(trunk_w, trunk_h, trunk_w));
+            part(
+                &shapes.cylinder,
+                shapes.trunk.clone(),
+                trunk_h / 2.0,
+                Vec3::new(trunk_w, trunk_h, trunk_w),
+            );
             if p.symbol == PlantSymbol::Conifer {
-                part(&shapes.cone, material, h - 0.4 * h, Vec3::new(s, 0.8 * h, s));
+                part(
+                    &shapes.cone,
+                    material,
+                    h - 0.4 * h,
+                    Vec3::new(s, 0.8 * h, s),
+                );
             } else {
-                part(&shapes.sphere, material, h - 0.35 * h, Vec3::new(s, 0.7 * h, s));
+                part(
+                    &shapes.sphere,
+                    material,
+                    h - 0.35 * h,
+                    Vec3::new(s, 0.7 * h, s),
+                );
             }
         }
         PlantCategory::Grass => part(&shapes.cone, material, h / 2.0, Vec3::new(s, h, s)),
@@ -323,7 +380,7 @@ fn orbit_controls(
     if scroll.delta.y != 0.0 {
         let k = match scroll.unit {
             MouseScrollUnit::Line => 0.12,
-            MouseScrollUnit::Pixel => 0.0015,
+            MouseScrollUnit::Pixel => 0.0006,
         };
         orbit.radius = (orbit.radius * (-scroll.delta.y * k).exp()).clamp(MIN_RADIUS, MAX_RADIUS);
         changed = true;

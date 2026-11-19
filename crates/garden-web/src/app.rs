@@ -47,7 +47,17 @@ fn on_key_down(
     space: RwSignal<bool>,
     plant: RwSignal<PlantDef>,
     designs_open: RwSignal<bool>,
+    view3d: crate::view3d::View3d,
 ) {
+    // The 3D view covers the editor: only Escape (close it) does anything, so
+    // shortcuts can't change the design hidden behind it.
+    if view3d.open.get_untracked() {
+        if e.key() == "Escape" {
+            e.prevent_default();
+            view3d.open.set(false);
+        }
+        return;
+    }
     if typing_in_field(&e) {
         return;
     }
@@ -99,6 +109,10 @@ fn on_key_down(
     if m.alt {
         return;
     }
+    if lower == "3" {
+        crate::view3d::open_3d(view3d, state);
+        return;
+    }
     let mut chars = lower.chars();
     if let (Some(c), None) = (chars.next(), chars.next()) {
         let c = c.to_ascii_uppercase();
@@ -130,12 +144,14 @@ pub fn App() -> impl IntoView {
     provide_context(LastPlant(plant));
     crate::library::provide_library(state);
     crate::trace::provide_trace();
+    crate::view3d::provide_view3d();
+    let view3d = expect_context::<crate::view3d::View3d>();
     provide_context(crate::print::PrintOpen(RwSignal::new(false)));
     provide_context(crate::layers::LayersOpen(RwSignal::new(false)));
     let crate::library::DesignsOpen(designs_open) = expect_context::<crate::library::DesignsOpen>();
 
     let down = window_event_listener(ev::keydown, move |e| {
-        on_key_down(e, state, space, plant, designs_open)
+        on_key_down(e, state, space, plant, designs_open, view3d)
     });
     let up = window_event_listener(ev::keyup, move |e| {
         if e.key() == " " {
@@ -165,6 +181,7 @@ pub fn App() -> impl IntoView {
             <Inspector />
             <HintBar />
             <ToolDock />
+            <crate::view3d::View3dOverlay />
         </div>
     }
 }

@@ -48,6 +48,7 @@ pub enum Icon {
     Lock,
     Unlock,
     Plus,
+    Cube,
 }
 
 fn body(icon: Icon) -> AnyView {
@@ -128,6 +129,7 @@ fn body(icon: Icon) -> AnyView {
         Icon::Lock => view! { <path d="M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 017 0v3" /> }.into_any(),
         Icon::Unlock => view! { <path d="M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 016.8-1.2" /> }.into_any(),
         Icon::Plus => view! { <path d="M12 5v14M5 12h14" /> }.into_any(),
+        Icon::Cube => view! { <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 12l8-4.5M12 12v9M12 12L4 7.5" /> }.into_any(),
         Icon::Fit => view! { <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5M9 9h6v6H9z" /> }.into_any(),
     }
 }

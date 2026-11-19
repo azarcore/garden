@@ -13,6 +13,7 @@ mod print;
 mod storage;
 mod toolbar;
 mod trace;
+mod view3d;
 
 fn main() {
     console_error_panic_hook::set_once();

@@ -1,9 +1,9 @@
 //! Which properties the inspector shows for an object, and how typed text is applied.
 
-use garden_core::model::{Object, ObjectKind};
-use garden_core::units::{UnitSystem, format_length, parse_length};
+use garden_core::model::{Document, Object, ObjectKind};
+use garden_core::units::{UnitSystem, format_area, format_length, parse_length};
 
-use crate::strings::Strings;
+use crate::strings::{EN, Strings};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Field {
@@ -59,6 +59,34 @@ fn length_slot(kind: &mut ObjectKind, field: Field) -> Option<&mut f64> {
     }
 }
 
+/// Read-only quantities for an object: area of surfaces, length of lines,
+/// and how many of a plant the plan contains (label, value).
+pub fn measures(doc: &Document, object: &Object, units: UnitSystem) -> Vec<(&'static str, String)> {
+    match &object.kind {
+        ObjectKind::PlotBoundary { shape } | ObjectKind::Area { shape, .. } => {
+            vec![(EN.measure_area, format_area(shape.area(), units))]
+        }
+        ObjectKind::Structure { footprint, .. } => {
+            vec![(EN.measure_area, format_area(footprint.area(), units))]
+        }
+        ObjectKind::Path { shape, .. } | ObjectKind::Linear { shape, .. } => {
+            vec![(EN.measure_length, format_length(shape.length(), units))]
+        }
+        ObjectKind::Plant { catalog_id, .. } => {
+            let count = match catalog_id {
+                Some(id) => doc
+                    .objects
+                    .iter()
+                    .filter(|o| matches!(&o.kind, ObjectKind::Plant { catalog_id: Some(c), .. } if c == id))
+                    .count(),
+                None => 1,
+            };
+            vec![(EN.measure_in_plan, count.to_string())]
+        }
+        ObjectKind::Label { .. } | ObjectKind::Dimension { .. } => Vec::new(),
+    }
+}
+
 /// Current value of a field as display text.
 pub fn field_value(object: &Object, field: Field, units: UnitSystem) -> String {
     match (field, &object.kind) {
@@ -108,6 +136,7 @@ pub fn apply_field(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::strings::EN;
     use crate::test_util::plant_at;
     use garden_core::geometry::{Point, Shape};
     use garden_core::model::LayerId;
@@ -153,5 +182,51 @@ mod tests {
             Err(FieldError::Empty)
         );
         assert!(matches!(o.kind, ObjectKind::Plant { spread, .. } if spread == 600.));
+    }
+
+    #[test]
+    fn measures_show_area_length_and_plant_count() {
+        let d = crate::test_util::doc_with(vec![
+            ObjectKind::Area {
+                area_type: garden_core::model::AreaType::Bed,
+                shape: Shape::rect(Point::ZERO, 4000., 2100.),
+            },
+            ObjectKind::Path {
+                shape: Shape::polyline(&[Point::ZERO, Point::new(3500., 0.)], false),
+                width: 900.,
+            },
+        ]);
+        let bed = &d.objects[0];
+        assert_eq!(
+            measures(&d, bed, UnitSystem::Metric),
+            vec![(EN.measure_area, "8.4 m²".to_string())]
+        );
+        let path = &d.objects[1];
+        assert_eq!(
+            measures(&d, path, UnitSystem::Metric),
+            vec![(EN.measure_length, "3.50 m".to_string())]
+        );
+
+        let def = crate::catalog::builtin_plants()
+            .into_iter()
+            .find(|p| p.id == "salvia")
+            .unwrap();
+        let mut d2 = d.clone();
+        let l = d2.layers[0].id;
+        for (i, x) in [0., 600., 1200.].into_iter().enumerate() {
+            d2.apply(
+                garden_core::command::Command::Insert {
+                    object: def.place(Point::new(x, 0.), l),
+                    index: 2 + i,
+                },
+                1,
+            )
+            .unwrap();
+        }
+        let salvia = &d2.objects[2];
+        assert_eq!(
+            measures(&d2, salvia, UnitSystem::Metric),
+            vec![(EN.measure_in_plan, "3".to_string())]
+        );
     }
 }

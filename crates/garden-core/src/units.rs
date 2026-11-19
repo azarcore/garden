@@ -68,6 +68,26 @@ pub fn format_length(mm: f64, system: UnitSystem) -> String {
     }
 }
 
+/// Format an area given in mm², e.g. `"8.4 m²"` or `"90 ft²"`.
+pub fn format_area(mm2: f64, system: UnitSystem) -> String {
+    if !mm2.is_finite() {
+        return "—".to_string();
+    }
+    match system {
+        UnitSystem::Metric => {
+            let m2 = mm2 / 1e6;
+            if m2 < 1.0 {
+                format!("{m2:.2} m²")
+            } else if m2 < 100.0 {
+                format!("{m2:.1} m²")
+            } else {
+                format!("{m2:.0} m²")
+            }
+        }
+        UnitSystem::Imperial => format!("{:.0} ft²", mm2 / (MM_PER_INCH * 12.0).powi(2)),
+    }
+}
+
 #[derive(Clone, Copy, PartialEq)]
 enum Unit {
     Mm,
@@ -296,5 +316,14 @@ mod tests {
             parse_length("1.2.3m", UnitSystem::Metric),
             Err(ParseLengthError::Invalid(_))
         ));
+    }
+
+    #[test]
+    fn formats_areas() {
+        assert_eq!(format_area(8_400_000.0, UnitSystem::Metric), "8.4 m²");
+        assert_eq!(format_area(250_000.0, UnitSystem::Metric), "0.25 m²");
+        assert_eq!(format_area(120_000_000.0, UnitSystem::Metric), "120 m²");
+        assert_eq!(format_area(8_361_274.0, UnitSystem::Imperial), "90 ft²"); // 90 sq ft
+        assert_eq!(format_area(f64::NAN, UnitSystem::Metric), "—");
     }
 }

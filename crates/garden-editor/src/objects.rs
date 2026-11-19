@@ -1,6 +1,6 @@
 //! Small helpers over object kinds used by tools.
 
-use garden_core::geometry::Point;
+use garden_core::geometry::{Point, Shape};
 use garden_core::model::ObjectKind;
 use garden_core::query::dimension_line;
 use kurbo::{Rect, Vec2};
@@ -65,6 +65,36 @@ pub fn object_vertices(kind: &ObjectKind) -> Vec<Point> {
     }
 }
 
+/// The outline of objects that have one (not plants, labels or dimensions).
+pub fn kind_shape(kind: &ObjectKind) -> Option<&Shape> {
+    match kind {
+        ObjectKind::PlotBoundary { shape }
+        | ObjectKind::Area { shape, .. }
+        | ObjectKind::Path { shape, .. }
+        | ObjectKind::Linear { shape, .. }
+        | ObjectKind::Structure {
+            footprint: shape, ..
+        } => Some(shape),
+        _ => None,
+    }
+}
+
+/// A copy of `kind` with its outline replaced (unchanged if it has none).
+pub fn with_shape(kind: &ObjectKind, new: Shape) -> ObjectKind {
+    let mut k = kind.clone();
+    match &mut k {
+        ObjectKind::PlotBoundary { shape }
+        | ObjectKind::Area { shape, .. }
+        | ObjectKind::Path { shape, .. }
+        | ObjectKind::Linear { shape, .. }
+        | ObjectKind::Structure {
+            footprint: shape, ..
+        } => *shape = new,
+        _ => {}
+    }
+    k
+}
+
 /// Name given to newly created objects.
 pub fn default_name(kind: &ObjectKind) -> &'static str {
     kind_label(&EN, kind)
@@ -74,7 +104,6 @@ pub fn default_name(kind: &ObjectKind) -> &'static str {
 mod tests {
     use super::*;
     use crate::test_util::all_kinds_sample;
-    use garden_core::geometry::Shape;
 
     #[test]
     fn translate_moves_every_kind() {

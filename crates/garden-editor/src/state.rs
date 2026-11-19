@@ -79,6 +79,15 @@ pub(crate) enum Gesture {
     Scale {
         points: Vec<Point>,
     },
+    /// Dragging a handle of the selected object. `at` is where the handle was,
+    /// `press` where the pointer went down; `result` is the reshaped object so far.
+    Handle {
+        kind: crate::handles::HandleKind,
+        at: Point,
+        press: Point,
+        moved: bool,
+        result: Option<garden_core::model::ObjectKind>,
+    },
 }
 
 pub struct EditorState {
@@ -402,8 +411,28 @@ impl EditorState {
     }
 
     fn handle_select(&mut self, input: Input, now_ms: i64) {
+        if matches!(self.gesture, Gesture::Handle { .. }) {
+            match input {
+                Input::Move(p, m) => return self.drag_handle(p, m),
+                Input::Up(p, m) => {
+                    self.drag_handle(p, m);
+                    return self.finish_handle(now_ms);
+                }
+                _ => {}
+            }
+        }
         match input {
             Input::Down(p, m) => {
+                if let Some(h) = self.handle_at(p) {
+                    self.gesture = Gesture::Handle {
+                        kind: h.kind,
+                        at: h.at,
+                        press: p,
+                        moved: false,
+                        result: None,
+                    };
+                    return;
+                }
                 let tol = self.viewport.px_to_mm(self.hit_radius_px);
                 match hit_test_selectable(self.doc(), p, tol) {
                     Some(id) if m.shift => {

@@ -185,10 +185,35 @@ pub fn HintBar() -> impl IntoView {
         })
     });
     let key = move |k: Key| state.update(|s| s.handle(Input::Key(k, Modifiers::default()), now()));
+    // Set scale: after two clicks, type the real distance here.
+    let scale_tool = Memo::new(move |_| state.with(|s| matches!(s.tool(), ToolKind::SetScale)));
+    let scaling = Memo::new(move |_| state.with(|s| s.pending_scale().is_some()));
+    let distance = RwSignal::new(String::new());
+    let scale_error = RwSignal::new(None::<&'static str>);
+    let apply = move || {
+        let text = distance.get_untracked();
+        let mut result = Ok(());
+        state.update(|s| result = s.apply_scale(&text, now()));
+        match result {
+            Ok(()) => {
+                scale_error.set(None);
+                distance.set(String::new());
+            }
+            Err(e) => scale_error.set(Some(e.message(&EN))),
+        }
+    };
     view! {
         <div class="hint-bar" role="status" class:idle=move || state.with(|s| matches!(s.tool(), ToolKind::Select))>
             <span class="hint-text">{move || info.get().0}</span>
-            <Show when=move || { info.get().1 > 0 }>
+            <Show when=move || scaling.get()>
+                <input class="hint-input" type="text" placeholder=EN.scale_placeholder prop:value=move || distance.get()
+                    on:input=move |e| distance.set(event_target_value(&e))
+                    on:keydown=move |e: leptos::ev::KeyboardEvent| if e.key() == "Enter" { apply() } />
+                <button class="hint-btn primary" on:click=move |_| apply()>{EN.apply}</button>
+                <button class="hint-btn" on:click=move |_| key(Key::Escape)>{EN.cancel}</button>
+                {move || scale_error.get().map(|m| view! { <span class="hint-error">{m}</span> })}
+            </Show>
+            <Show when=move || { info.get().1 > 0 && !scale_tool.get() }>
                 <button class="hint-btn primary" on:click=move |_| key(Key::Enter)>{EN.finish}</button>
                 <button class="hint-btn" on:click=move |_| state.update(|s| { s.undo(now()); })>{EN.undo_point}</button>
                 <button class="hint-btn" on:click=move |_| key(Key::Escape)>{EN.cancel}</button>
@@ -257,34 +282,39 @@ pub fn ControlsCard() -> impl IntoView {
     let snap_grid = Memo::new(move |_| state.with(|s| s.snap_grid));
     let snap_objects = Memo::new(move |_| state.with(|s| s.snap_objects));
     let set_units = move |u: UnitSystem| state.update(|s| s.set_units(u, now()));
+    let trace = expect_context::<crate::trace::Trace>();
 
     view! {
-        <div class="card controls" role="toolbar" aria-label=EN.actions_label>
-            <button class="icon-btn" data-tip=EN.undo aria-label=EN.undo disabled=move || !can_undo.get()
-                on:click=move |_| state.update(|s| { s.undo(now()); })>{icon(Icon::Undo)}</button>
-            <button class="icon-btn" data-tip=EN.redo aria-label=EN.redo disabled=move || !can_redo.get()
-                on:click=move |_| state.update(|s| { s.redo(now()); })>{icon(Icon::Redo)}</button>
-            <span class="card-sep"></span>
-            <button class="icon-btn" data-tip=EN.duplicate aria-label=EN.duplicate disabled=move || !has_selection.get()
-                on:click=move |_| state.update(|s| s.duplicate_selection(now()))>{icon(Icon::Duplicate)}</button>
-            <button class="icon-btn" data-tip=EN.delete aria-label=EN.delete disabled=move || !has_selection.get()
-                on:click=move |_| state.update(|s| s.delete_selection(now()))>{icon(Icon::Delete)}</button>
-            <button class="icon-btn" data-tip=EN.fit aria-label=EN.fit
-                on:click=move |_| state.update(|s| s.fit_to_content())>{icon(Icon::Fit)}</button>
-            <span class="card-sep"></span>
-            <button class="icon-btn toggle" data-tip=EN.snap_grid aria-label=EN.snap_grid
-                aria-pressed=move || snap_grid.get().to_string()
-                on:click=move |_| state.update(|s| s.snap_grid = !s.snap_grid)>{icon(Icon::Grid)}</button>
-            <button class="icon-btn toggle" data-tip=EN.snap_objects aria-label=EN.snap_objects
-                aria-pressed=move || snap_objects.get().to_string()
-                on:click=move |_| state.update(|s| s.snap_objects = !s.snap_objects)>{icon(Icon::Magnet)}</button>
-            <span class="card-sep"></span>
-            <div class="segmented" role="group">
-                <button aria-pressed=move || (units.get() == UnitSystem::Metric).to_string()
-                    on:click=move |_| set_units(UnitSystem::Metric)>{EN.units_metric}</button>
-                <button aria-pressed=move || (units.get() == UnitSystem::Imperial).to_string()
-                    on:click=move |_| set_units(UnitSystem::Imperial)>{EN.units_imperial}</button>
+            <div class="card controls" role="toolbar" aria-label=EN.actions_label>
+                <button class="icon-btn" data-tip=EN.undo aria-label=EN.undo disabled=move || !can_undo.get()
+                    on:click=move |_| state.update(|s| { s.undo(now()); })>{icon(Icon::Undo)}</button>
+                <button class="icon-btn" data-tip=EN.redo aria-label=EN.redo disabled=move || !can_redo.get()
+                    on:click=move |_| state.update(|s| { s.redo(now()); })>{icon(Icon::Redo)}</button>
+                <span class="card-sep"></span>
+                <button class="icon-btn" data-tip=EN.duplicate aria-label=EN.duplicate disabled=move || !has_selection.get()
+                    on:click=move |_| state.update(|s| s.duplicate_selection(now()))>{icon(Icon::Duplicate)}</button>
+                <button class="icon-btn" data-tip=EN.delete aria-label=EN.delete disabled=move || !has_selection.get()
+                    on:click=move |_| state.update(|s| s.delete_selection(now()))>{icon(Icon::Delete)}</button>
+                <button class="icon-btn" data-tip=EN.fit aria-label=EN.fit
+                    on:click=move |_| state.update(|s| s.fit_to_content())>{icon(Icon::Fit)}</button>
+                <span class="card-sep"></span>
+                <button class="icon-btn toggle" data-tip=EN.snap_grid aria-label=EN.snap_grid
+                    aria-pressed=move || snap_grid.get().to_string()
+                    on:click=move |_| state.update(|s| s.snap_grid = !s.snap_grid)>{icon(Icon::Grid)}</button>
+                <button class="icon-btn toggle" data-tip=EN.snap_objects aria-label=EN.snap_objects
+                    aria-pressed=move || snap_objects.get().to_string()
+                    on:click=move |_| state.update(|s| s.snap_objects = !s.snap_objects)>{icon(Icon::Magnet)}</button>
+                <span class="card-sep"></span>
+    <button class="icon-btn toggle" data-tip=EN.tool_trace aria-label=EN.tool_trace
+                    aria-pressed=move || trace.open.get().to_string()
+                    on:click=move |_| trace.open.update(|o| *o = !*o)>{icon(Icon::Photo)}</button>
+                <span class="card-sep"></span>
+                            <div class="segmented" role="group">
+                    <button aria-pressed=move || (units.get() == UnitSystem::Metric).to_string()
+                        on:click=move |_| set_units(UnitSystem::Metric)>{EN.units_metric}</button>
+                    <button aria-pressed=move || (units.get() == UnitSystem::Imperial).to_string()
+                        on:click=move |_| set_units(UnitSystem::Imperial)>{EN.units_imperial}</button>
+                </div>
             </div>
-        </div>
-    }
+        }
 }

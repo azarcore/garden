@@ -26,6 +26,10 @@ pub enum Icon {
     Leaf,
     Grid,
     Magnet,
+    Close,
+    Photo,
+    #[allow(dead_code)] // used by the print card (task 7)
+    Printer,
 }
 
 fn body(icon: Icon) -> AnyView {
@@ -84,6 +88,9 @@ fn body(icon: Icon) -> AnyView {
         }
         .into_any(),
         Icon::Magnet => view! { <path d="M6 4v8a6 6 0 0012 0V4h-4v8a2 2 0 01-4 0V4zM6 8h4M14 8h4" /> }.into_any(),
+        Icon::Close => view! { <path d="M6 6l12 12M18 6L6 18" /> }.into_any(),
+        Icon::Photo => view! { <path d="M4 5h16v14H4zM4 16l5-5 4 4 3-3 4 4" /><circle cx="15.5" cy="9" r="1.5" /> }.into_any(),
+        Icon::Printer => view! { <path d="M7 9V4h10v5M7 17H4v-7h16v7h-3M7 14h10v6H7z" /> }.into_any(),
         Icon::Fit => view! { <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5M9 9h6v6H9z" /> }.into_any(),
     }
 }

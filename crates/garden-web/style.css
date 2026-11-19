@@ -452,6 +452,104 @@ button.title-card {
   }
 }
 
+/* trace card (right, under the controls) */
+.trace-card {
+  top: 76px;
+  right: 16px;
+  width: 300px;
+  padding: 12px 14px 14px;
+  z-index: 4;
+}
+
+.trace-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.trace-head h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+}
+
+.trace-note {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.trace-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 12px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.trace-row input {
+  flex: 1;
+  accent-color: var(--accent);
+}
+
+.trace-primary {
+  width: 100%;
+  padding: 9px 12px;
+  border-radius: 11px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.trace-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.trace-actions button {
+  flex: 1;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: var(--tile);
+  font-size: 13px;
+  font-weight: 550;
+}
+
+.trace-actions .danger-text {
+  color: var(--error);
+}
+
+.trace-photo {
+  pointer-events: none;
+}
+
+.hint-input {
+  width: 90px;
+  padding: 5px 9px;
+  border-radius: 999px;
+  border: 0;
+  font: 600 13px var(--font);
+  color: var(--text);
+  background: var(--card);
+}
+
+.hint-error {
+  color: #ffb4a8;
+  font-size: 12px;
+}
+
+@media (max-width: 768px) {
+  .trace-card {
+    top: 118px;
+    left: 10px;
+    right: 10px;
+    width: auto;
+  }
+}
+
 /* controls (top-right) */
 .controls {
   top: 16px;

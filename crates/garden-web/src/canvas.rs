@@ -248,6 +248,17 @@ pub fn Canvas() -> impl IntoView {
     let crate::library::ImportMessage(import_message) =
         expect_context::<crate::library::ImportMessage>();
     let crate::library::DesignsOpen(designs_open) = expect_context::<crate::library::DesignsOpen>();
+    let cache = expect_context::<crate::trace::ImageCache>();
+    let trace = expect_context::<crate::trace::Trace>();
+    // load the traced photo whenever the design's background changes
+    Effect::new(move |_| {
+        if let Some(image_ref) =
+            state.with(|s| s.doc().background.as_ref().map(|b| b.image_ref.clone()))
+        {
+            leptos::task::spawn_local(crate::trace::ensure_image(lib, cache, trace, image_ref));
+        }
+    });
+    let photo = crate::trace::background_view(state, cache);
     let on_drag_over = move |e: ev::DragEvent| e.prevent_default();
     let on_drop = move |e: ev::DragEvent| {
         e.prevent_default();
@@ -258,6 +269,13 @@ pub fn Canvas() -> impl IntoView {
         else {
             return;
         };
+        if file.type_().starts_with("image/") {
+            let blob: web_sys::Blob = file.into();
+            leptos::task::spawn_local(async move {
+                crate::trace::add_photo(lib, state, cache, trace, blob).await;
+            });
+            return;
+        }
         leptos::task::spawn_local(async move {
             let Ok(text) = wasm_bindgen_futures::JsFuture::from(file.text()).await else {
                 return;
@@ -351,6 +369,7 @@ pub fn Canvas() -> impl IntoView {
             {defs()}
             <g transform=transform>
                 {grid}
+                {photo}
                 <g class="plan-content">{content}</g>
                 {preview}
                 {tag}

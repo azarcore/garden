@@ -10,6 +10,7 @@ mod plan_art;
 mod plant_picker;
 mod storage;
 mod toolbar;
+mod trace;
 
 fn main() {
     console_error_panic_hook::set_once();

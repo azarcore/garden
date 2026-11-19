@@ -148,7 +148,6 @@ impl Store {
     }
 
     /// Store the bytes of a traced photo under its reference.
-    #[allow(dead_code)] // used by the trace card (next task)
     pub async fn put_image(
         &self,
         image_ref: &str,
@@ -168,7 +167,6 @@ impl Store {
         Ok(())
     }
 
-    #[allow(dead_code)] // used by the trace card (next task)
     pub async fn get_image(&self, image_ref: &str) -> Result<Option<web_sys::Blob>, StorageError> {
         use wasm_bindgen::JsCast;
         let tx = self

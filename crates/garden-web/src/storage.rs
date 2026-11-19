@@ -1,7 +1,6 @@
 //! Designs kept in the browser's IndexedDB.
 //! One record per design: `{ id, name, modified, json }`, where `json` is exactly
 //! what a `.garden.json` file contains (so loading always goes through migrations).
-#![allow(dead_code)] // wired up in the autosave task
 
 use garden_core::io;
 use garden_core::model::Document;

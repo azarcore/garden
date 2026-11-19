@@ -69,7 +69,6 @@ pub async fn refresh_summaries(lib: Library) {
 }
 
 /// Save the open design now (used before switching designs).
-#[allow(dead_code)] // used by the My designs panel (next task)
 pub async fn save_now(lib: Library, state: RwSignal<EditorState>) -> Result<(), StorageError> {
     let Some(store) = lib.store.get_value() else {
         return Err(StorageError::Unavailable(String::new()));
@@ -120,6 +119,7 @@ pub fn provide_library(state: RwSignal<EditorState>) -> Library {
         autosave: StoredValue::new_local(Autosave::new(0)),
     };
     provide_context(lib);
+    provide_context(DesignsOpen(RwSignal::new(false)));
     spawn_local(async move {
         let store = match storage::open().await {
             Ok(store) => store,
@@ -145,4 +145,172 @@ pub fn provide_library(state: RwSignal<EditorState>) -> Library {
     });
     let _ = set_interval_with_handle(move || tick(lib, state), Duration::from_millis(250));
     lib
+}
+
+/// Whether the "My designs" panel is open.
+#[derive(Clone, Copy)]
+pub struct DesignsOpen(pub RwSignal<bool>);
+
+fn current_id(state: RwSignal<EditorState>) -> String {
+    state.with_untracked(|s| s.doc().id.to_string())
+}
+
+/// Open `doc` in the editor and start autosaving it from a clean slate.
+fn show(lib: Library, state: RwSignal<EditorState>, doc: Document) {
+    state.update(|s| s.open_document(doc));
+    lib.reset_autosave(state.with_untracked(|s| s.change_count()));
+}
+
+/// Start a new, empty design (the current one is saved first).
+pub async fn new_design(lib: Library, state: RwSignal<EditorState>) {
+    let _ = save_now(lib, state).await;
+    refresh_summaries(lib).await; // names must include a just-saved rename
+    let names: Vec<String> = lib
+        .summaries
+        .with_untracked(|s| s.iter().map(|d| d.name.clone()).collect());
+    let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+    let doc = Document::new(garden_editor::library::next_design_name(&refs), now());
+    if let Some(store) = lib.store.get_value() {
+        let _ = store.put(&doc).await;
+    }
+    show(lib, state, doc);
+    refresh_summaries(lib).await;
+}
+
+/// Switch to a stored design (the current one is saved first).
+pub async fn open_design(lib: Library, state: RwSignal<EditorState>, id: String) {
+    if id == current_id(state) {
+        return;
+    }
+    let _ = save_now(lib, state).await;
+    let Some(store) = lib.store.get_value() else {
+        return;
+    };
+    if let Ok(Some(record)) = store.get(&id).await
+        && let Ok(doc) = parse(&record)
+    {
+        show(lib, state, doc);
+    }
+    refresh_summaries(lib).await;
+}
+
+/// Delete a stored design. Deleting the open one switches to the newest other
+/// design, or a new one.
+pub async fn delete_design(lib: Library, state: RwSignal<EditorState>, id: String) {
+    let Some(store) = lib.store.get_value() else {
+        return;
+    };
+    let _ = store.delete(&id).await;
+    if id == current_id(state) {
+        let next = match store.list().await {
+            Ok(records) => records.iter().find_map(|r| parse(r).ok()),
+            Err(_) => None,
+        };
+        match next {
+            Some(doc) => show(lib, state, doc),
+            None => {
+                refresh_summaries(lib).await;
+                new_design(lib, state).await;
+                return;
+            }
+        }
+    }
+    refresh_summaries(lib).await;
+}
+
+#[component]
+fn DesignRow(summary: DesignSummary) -> impl IntoView {
+    let state = expect_context::<RwSignal<EditorState>>();
+    let lib = expect_context::<Library>();
+    let DesignsOpen(open) = expect_context::<DesignsOpen>();
+    let confirming = RwSignal::new(false);
+    let id = summary.id.clone();
+    let is_current = {
+        let id = id.clone();
+        Memo::new(move |_| state.with(|s| s.doc().id.to_string() == id))
+    };
+    let can_open = summary.error.is_none();
+    let detail = match (&summary.error, &summary.size) {
+        (Some(_), _) => garden_editor::strings::EN.cant_open.to_string(),
+        (None, Some(size)) => size.clone(),
+        (None, None) => garden_editor::strings::EN.no_plot_yet.to_string(),
+    };
+    let when = garden_editor::library::relative_time(now(), summary.modified);
+    let open_id = id.clone();
+    let delete_id = id.clone();
+    view! {
+        <li class="design-row" class:current=move || is_current.get() class:broken=!can_open>
+            <button class="design-open" disabled=!can_open aria-current=move || is_current.get().then_some("true")
+                on:click=move |_| {
+                    let id = open_id.clone();
+                    spawn_local(async move { open_design(lib, state, id).await });
+                    open.set(false);
+                }>
+                <span class="design-name">{summary.name.clone()}</span>
+                <span class="design-meta">{detail}</span>
+                <span class="design-when">{when}</span>
+            </button>
+            <Show when=move || !confirming.get() fallback=move || {
+                let id = delete_id.clone();
+                view! {
+                    <div class="confirm">
+                        <span>{garden_editor::strings::EN.delete_confirm}</span>
+                        <button class="danger" on:click=move |_| {
+                            let id = id.clone();
+                            spawn_local(async move { delete_design(lib, state, id).await });
+                        }>{garden_editor::strings::EN.delete_design}</button>
+                        <button on:click=move |_| confirming.set(false)>{garden_editor::strings::EN.keep}</button>
+                    </div>
+                }
+            }>
+                <button class="icon-btn design-delete" aria-label=garden_editor::strings::EN.delete_design
+                    data-tip=garden_editor::strings::EN.delete_design on:click=move |_| confirming.set(true)>
+                    {crate::icons::icon(crate::icons::Icon::Delete)}
+                </button>
+            </Show>
+        </li>
+    }
+}
+
+/// The "My designs" card, opened from the title card.
+#[component]
+pub fn MyDesigns() -> impl IntoView {
+    use garden_editor::strings::EN;
+    let state = expect_context::<RwSignal<EditorState>>();
+    let lib = expect_context::<Library>();
+    let DesignsOpen(open) = expect_context::<DesignsOpen>();
+    let name = Memo::new(move |_| state.with(|s| s.doc().name.clone()));
+    let close_on_escape = window_event_listener(leptos::ev::keydown, move |e| {
+        if e.key() == "Escape" && open.get_untracked() {
+            open.set(false);
+        }
+    });
+    on_cleanup(move || close_on_escape.remove());
+    let rows = move || {
+        lib.summaries
+            .get()
+            .into_iter()
+            .map(|summary| view! { <DesignRow summary=summary /> })
+            .collect_view()
+    };
+    view! {
+        <Show when=move || open.get()>
+            <section class="card designs" aria-label=EN.my_designs>
+                <div class="field design-title">
+                    <label for="design-name">{EN.rename}</label>
+                    <input id="design-name" type="text" prop:value=move || name.get()
+                        on:change=move |e| {
+                            let value = event_target_value(&e);
+                            state.update(|s| s.rename(&value, now()));
+                        } />
+                </div>
+                <button class="new-design" on:click=move |_| {
+                    spawn_local(async move { new_design(lib, state).await });
+                    open.set(false);
+                }>{crate::icons::icon(crate::icons::Icon::Leaf)}{EN.new_design}</button>
+                <h3>{EN.my_designs}</h3>
+                <ul class="design-list">{rows}</ul>
+            </section>
+        </Show>
+    }
 }

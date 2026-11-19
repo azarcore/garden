@@ -145,6 +145,7 @@ pub fn App() -> impl IntoView {
                 <Canvas />
             </main>
             <TitleCard />
+            <crate::library::MyDesigns />
             <ControlsCard />
             <PlantPicker />
             <Inspector />

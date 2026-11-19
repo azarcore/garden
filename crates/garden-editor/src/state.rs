@@ -263,6 +263,19 @@ impl EditorState {
         self.try_execute(Command::Replace { object }, now_ms)
     }
 
+    /// Rename the design (undoable). Blank names are ignored.
+    pub fn rename(&mut self, name: &str, now_ms: i64) {
+        let name = name.trim();
+        if !name.is_empty() && name != self.doc().name {
+            self.execute(
+                Command::Rename {
+                    name: name.to_string(),
+                },
+                now_ms,
+            );
+        }
+    }
+
     pub fn set_units(&mut self, units: UnitSystem, now_ms: i64) {
         if self.doc().units != units {
             self.execute(Command::SetUnits { units }, now_ms);
@@ -678,5 +691,18 @@ mod tests {
         assert!(s.selection.is_empty());
         assert!(!s.can_undo());
         assert!(!s.is_busy());
+    }
+
+    #[test]
+    fn rename_is_undoable() {
+        let mut s = state_with(vec![]);
+        let c0 = s.change_count();
+        s.rename("Back garden", 1);
+        assert_eq!(s.doc().name, "Back garden");
+        assert_eq!(s.change_count(), c0 + 1);
+        s.rename("   ", 2); // blank names are ignored
+        assert_eq!(s.doc().name, "Back garden");
+        assert!(s.undo(3));
+        assert_eq!(s.doc().name, "g");
     }
 }

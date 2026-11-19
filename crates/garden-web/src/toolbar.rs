@@ -9,7 +9,7 @@ use leptos::prelude::*;
 
 use crate::app::{LastPlant, now};
 use crate::icons::{Icon, icon};
-use crate::library::{Library, SaveStatus};
+use crate::library::{DesignsOpen, Library, SaveStatus};
 
 /// A tool: label, keyboard shortcut, icon, and the group it sits in.
 pub struct ToolEntry {
@@ -209,6 +209,7 @@ pub fn TitleCard() -> impl IntoView {
         })
     });
     let lib = expect_context::<Library>();
+    let DesignsOpen(designs_open) = expect_context::<DesignsOpen>();
     let status_key = move || match lib.status.get() {
         SaveStatus::Saved => "saved",
         SaveStatus::Saving => "saving",
@@ -222,14 +223,16 @@ pub fn TitleCard() -> impl IntoView {
         SaveStatus::Unavailable => EN.not_saved,
     };
     view! {
-        <header class="card title-card">
+        <button class="card title-card" aria-expanded=move || designs_open.get().to_string()
+            aria-label=EN.my_designs on:click=move |_| designs_open.update(|o| *o = !*o)>
             <span class="logo">{icon(Icon::Leaf)}</span>
             <div class="title-text">
                 <strong>{move || name.get()}</strong>
                 <span>{move || plot.get().unwrap_or_else(|| EN.no_plot_yet.to_string())}</span>
             </div>
             <span class="save-status" data-status=status_key title=status_text>{status_text}</span>
-        </header>
+            <span class="title-chevron" aria-hidden="true"></span>
+        </button>
     }
 }
 

@@ -90,6 +90,22 @@ pub fn search(entries: &[CatalogEntry], query: &str, group: Option<Group>) -> Ve
     scored.into_iter().map(|(_, i)| i).collect()
 }
 
+/// Recent picks with `id` moved to the front, no duplicates, at most `max`.
+pub fn remember(recent: &[String], id: &str, max: usize) -> Vec<String> {
+    std::iter::once(id.to_string())
+        .chain(recent.iter().filter(|r| r.as_str() != id).cloned())
+        .take(max)
+        .collect()
+}
+
+/// Indices of the entries for `recent` ids, in that order; unknown ids are skipped.
+pub fn recent_entries(entries: &[CatalogEntry], recent: &[String]) -> Vec<usize> {
+    recent
+        .iter()
+        .filter_map(|id| entries.iter().position(|e| &e.id == id))
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -140,5 +156,22 @@ mod tests {
         assert_eq!(names("é"), names("e")); // accents ignored
         assert_eq!(names("japanese maple")[0], "Japanese Maple");
         assert!(names("maple japanese").contains(&"Japanese Maple".to_string()));
+    }
+
+    #[test]
+    fn recent_picks_are_newest_first_without_duplicates() {
+        let r = remember(&["a".into(), "b".into()], "b", 6);
+        assert_eq!(r, ["b", "a"]);
+        let r = (0..10).fold(Vec::new(), |r, i| remember(&r, &i.to_string(), 6));
+        assert_eq!(r.len(), 6);
+        assert_eq!(r[0], "9");
+    }
+
+    #[test]
+    fn unknown_recent_ids_are_skipped() {
+        let c = catalog();
+        let idx = recent_entries(&c, &["gone".into(), "lavender".into()]);
+        assert_eq!(idx.len(), 1);
+        assert_eq!(c[idx[0]].id, "lavender");
     }
 }

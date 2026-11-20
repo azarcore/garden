@@ -258,6 +258,13 @@ pub struct Strings {
     pub plant_no_storage: &'static str,
     pub plant_not_deleted: &'static str,
     pub plants_not_saved: &'static str,
+    pub prints_on: &'static str,
+    pub pages: &'static str,
+    pub overview_page: &'static str,
+    pub too_many_pages: &'static str,
+    pub page_word: &'static str,
+    pub of_word: &'static str,
+    pub overview_title: &'static str,
 }
 
 pub static EN: Strings = Strings {
@@ -515,6 +522,13 @@ pub static EN: Strings = Strings {
     plant_no_storage: "Saving isn't available in this browser window, so your own plants can't be kept.",
     plant_not_deleted: "Couldn't delete the plant. Try again.",
     plants_not_saved: "Some plants in the file couldn't be saved to your library.",
+    prints_on: "Prints on",
+    pages: "pages",
+    overview_page: "Add an overview page",
+    too_many_pages: "That would take more than 60 pages — try 1:",
+    page_word: "page",
+    of_word: "of",
+    overview_title: "Overview",
 };
 
 /// Heading for a group of plants.

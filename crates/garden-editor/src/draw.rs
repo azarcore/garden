@@ -315,6 +315,7 @@ fn poly_cursor(s: &mut EditorState, p: Point, m: Modifiers, last: Option<Point>)
     match last {
         Some(last) if m.shift => {
             s.preview.snap = None;
+            s.preview.guides.clear(); // the angle decides the point, not alignment
             snap_angle(last, p, ANGLE_STEP)
         }
         _ => snapped(s, p, m),
@@ -438,7 +439,9 @@ fn poly(s: &mut EditorState, input: Input, now_ms: i64, target: PolyTarget) {
             let cursor = poly_cursor(s, p, m, points.last().copied());
             if matches!(target, PolyTarget::Closed(_))
                 && points.len() >= 3
-                && points[0].distance(cursor) <= close_radius
+                // the click itself counts, even if alignment pulled the cursor away
+                && (points[0].distance(p) <= close_radius
+                    || points[0].distance(cursor) <= close_radius)
             {
                 finish_poly(s, &target, now_ms);
                 return;

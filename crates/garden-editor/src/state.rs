@@ -641,7 +641,8 @@ impl EditorState {
                         if g.aligned_y || g.spaced_y {
                             delta.y = raw_delta.y + g.shift.y;
                         }
-                        guides = g.lines;
+                        // draw the lines where the object actually lands
+                        guides = crate::guides::exact_lines(moving + delta, &others, tol);
                     }
                     guides.extend(crate::guides::distance_guides(
                         moving + delta,
@@ -1063,6 +1064,61 @@ mod tests {
             s.handle(Input::Up(Point::new(2040., 1010.), NO), 2);
             let bb = object_bounds(&s.doc().objects[1].kind);
             assert_eq!((bb.x0, bb.y0), (2000., 1000.));
+        }
+
+        #[test]
+        fn guide_lines_follow_where_the_object_lands() {
+            // equal spacing on x; on y the grid moves the plant from 523 to 500
+            let mut s = state_with(vec![
+                bed_at(0., 0., 1000., 1400.),
+                bed_at(3000., 0., 1000., 1400.),
+                plant_at(5000., 3000., 600.),
+            ]);
+            s.snap_radius_px = 1.0; // 20 mm: only equal spacing (and the grid) apply
+            s.handle(Input::Down(Point::new(5000., 3000.), NO), 1);
+            s.handle(Input::Move(Point::new(2010., 523.), NO), 1);
+            let equal: Vec<_> = s
+                .preview()
+                .guides
+                .iter()
+                .filter(|g| g.kind == GuideKind::Equal)
+                .collect();
+            assert_eq!(equal.len(), 2);
+            assert!(
+                equal.iter().all(|g| g.from.y == 500. && g.to.y == 500.),
+                "{equal:?}"
+            );
+        }
+
+        #[test]
+        fn polygon_closes_on_the_first_point_even_when_alignment_pulls() {
+            let mut s = state_with(vec![bed_at(200., 5000., 1000., 1000.)]); // left edge x = 200
+            s.snap_grid = false;
+            s.set_tool(ToolKind::Polygon(DrawTarget::Area(AreaType::Bed)));
+            for p in [
+                Point::new(0., 0.),
+                Point::new(3000., 0.),
+                Point::new(3000., 3000.),
+            ] {
+                click(&mut s, p, NO);
+            }
+            click(&mut s, Point::new(40., 30.), NO); // on the first point
+            assert_eq!(s.doc().objects.len(), 2);
+            assert!(
+                matches!(&s.doc().objects[1].kind, ObjectKind::Area { shape, .. } if shape.vertices().len() == 3)
+            );
+        }
+
+        #[test]
+        fn shift_drawing_drops_stale_guides() {
+            let mut s = state_with(vec![bed_at(1000., 0., 2000., 1000.)]);
+            s.snap_grid = false;
+            s.set_tool(ToolKind::Polygon(DrawTarget::Area(AreaType::Bed)));
+            click(&mut s, Point::new(0., 3000.), NO);
+            s.handle(Input::Move(Point::new(1050., 3500.), NO), 1);
+            assert!(!s.preview().guides.is_empty());
+            s.handle(Input::Move(Point::new(1050., 3500.), SHIFT), 1);
+            assert!(s.preview().guides.is_empty());
         }
 
         #[test]

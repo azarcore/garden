@@ -227,6 +227,27 @@ pub fn move_guides(moving: Rect, others: &[Rect], tol: f64) -> MoveGuides {
     g
 }
 
+/// The alignment and equal-spacing lines that hold exactly for `moving` where
+/// it is (no further shift needed) — for drawing guides at the final position.
+pub fn exact_lines(moving: Rect, others: &[Rect], tol: f64) -> Vec<GuideLine> {
+    let g = move_guides(moving, others, tol);
+    let exact = |v: f64| v.abs() < 1e-6;
+    let keep_x = (g.aligned_x || g.spaced_x) && exact(g.shift.x);
+    let keep_y = (g.aligned_y || g.spaced_y) && exact(g.shift.y);
+    g.lines
+        .into_iter()
+        .filter(|l| {
+            let vertical = l.from.x == l.to.x;
+            // alignment in x is a vertical line; equal gaps in x are horizontal lines
+            let x_axis = match l.kind {
+                GuideKind::Align => vertical,
+                _ => !vertical,
+            };
+            if x_axis { keep_x } else { keep_y }
+        })
+        .collect()
+}
+
 /// Distance lines from each side of `moving` to the nearest neighbour on that
 /// side whose span overlaps it on the other axis, or to the inside of
 /// `container` (the plot).

@@ -6,6 +6,7 @@ use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
+use crate::gestures::{Finger, Gesture, Taps, gesture};
 use bevy::asset::RenderAssetUsages;
 use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::light::CascadeShadowConfigBuilder;
@@ -25,6 +26,11 @@ static PENDING: Mutex<Option<Scene>> = Mutex::new(None);
 static WAKER: Mutex<Option<EventLoopProxy<WinitUserEvent>>> = Mutex::new(None);
 /// Set if the viewer panicked (e.g. the GPU lacks what Bevy needs).
 static FAILED: AtomicBool = AtomicBool::new(false);
+/// Double taps, timed by the browser's own event timestamps (frames can lag
+/// well behind input, which would make a quick tap look like a long press).
+static TAPS: Mutex<Option<Taps>> = Mutex::new(None);
+/// Set by a double tap; the next frame puts the view back where it started.
+static RESET: AtomicBool = AtomicBool::new(false);
 /// Whether the Bevy app is already running.
 static STARTED: AtomicBool = AtomicBool::new(false);
 
@@ -45,6 +51,11 @@ fn hand_over(scene: Scene) {
     if let Ok(mut p) = PENDING.lock() {
         *p = Some(scene);
     }
+    wake();
+}
+
+/// Run a frame soon, even if the viewer is idle.
+fn wake() {
     if let Ok(w) = WAKER.lock()
         && let Some(proxy) = w.as_ref()
     {
@@ -87,7 +98,49 @@ pub fn show(design_json: &str) -> Result<(), JsValue> {
     Ok(())
 }
 
+/// Watch the canvas for double taps (touch only).
+fn listen_for_taps(canvas_selector: &str) {
+    use wasm_bindgen::JsCast;
+    let Some(canvas) = web_sys::window()
+        .and_then(|w| w.document())
+        .and_then(|d| d.query_selector(canvas_selector).ok().flatten())
+    else {
+        return;
+    };
+    let on_tap = |press: bool| {
+        Closure::<dyn FnMut(web_sys::PointerEvent)>::new(move |e: web_sys::PointerEvent| {
+            if e.pointer_type() != "touch" {
+                return;
+            }
+            let Ok(mut taps) = TAPS.lock() else { return };
+            let taps = taps.get_or_insert_with(Taps::default);
+            let (id, t, x, y) = (
+                e.pointer_id() as u64,
+                e.time_stamp(),
+                e.client_x() as f32,
+                e.client_y() as f32,
+            );
+            if press {
+                taps.press(id, t, x, y);
+            } else if taps.release(id, t, x, y) {
+                RESET.store(true, Ordering::SeqCst);
+                wake();
+            }
+        })
+    };
+    for (event, press) in [
+        ("pointerdown", true),
+        ("pointerup", false),
+        ("pointercancel", false),
+    ] {
+        let listener = on_tap(press);
+        let _ = canvas.add_event_listener_with_callback(event, listener.as_ref().unchecked_ref());
+        listener.forget();
+    }
+}
+
 fn start(canvas_selector: &str) {
+    listen_for_taps(canvas_selector);
     let mut app = App::new();
     app.add_plugins(
         DefaultPlugins
@@ -119,9 +172,11 @@ fn start(canvas_selector: &str) {
     })
     .add_systems(Startup, (setup, remember_waker))
     .init_resource::<Settling>()
+    .init_resource::<StartView>()
+    .init_resource::<LastFingers>()
     .add_systems(
         Update,
-        (apply_pending, orbit_controls, keep_drawing).chain(),
+        (apply_pending, orbit_controls, touch_controls, keep_drawing).chain(),
     );
     // after the plugins: Bevy installs its own panic hook while adding them
     let previous = std::panic::take_hook();
@@ -164,6 +219,25 @@ impl Orbit {
             yaw: c.yaw,
             pitch: c.pitch.clamp(MIN_PITCH, MAX_PITCH),
         }
+    }
+
+    /// Turn around the target by a drag of (dx, dy) px.
+    fn turn(&mut self, dx: f32, dy: f32) {
+        self.yaw -= dx * 0.006;
+        self.pitch = (self.pitch + dy * 0.006).clamp(MIN_PITCH, MAX_PITCH);
+    }
+
+    /// Move across the garden by a drag of (dx, dy) px, as seen from `t`.
+    fn pan(&mut self, dx: f32, dy: f32, t: &Transform) {
+        let right = t.right().as_vec3();
+        let forward = Vec3::new(t.forward().x, 0.0, t.forward().z).normalize_or_zero();
+        let k = self.radius * 0.0015;
+        self.target += (-right * dx + forward * dy) * k;
+    }
+
+    /// Move closer (`factor` < 1) or further away.
+    fn zoom(&mut self, factor: f32) {
+        self.radius = (self.radius * factor).clamp(MIN_RADIUS, MAX_RADIUS);
     }
 
     fn place(&self, t: &mut Transform) {
@@ -261,6 +335,7 @@ fn apply_pending(
     shapes: Option<Res<PlantShapes>>,
     mut camera: Query<(&mut Orbit, &mut Transform)>,
     mut settling: ResMut<Settling>,
+    mut start_view: ResMut<StartView>,
 ) {
     let Some(shapes) = shapes else { return };
     let Some(scene) = PENDING.lock().ok().and_then(|mut p| p.take()) else {
@@ -298,6 +373,7 @@ fn apply_pending(
         spawn_plant(&mut commands, &shapes, material, p);
     }
     if let (Some(start), Ok((mut orbit, mut t))) = (scene.camera, camera.single_mut()) {
+        start_view.0 = Some(start);
         *orbit = Orbit::from_start(start);
         orbit.place(&mut t);
     }
@@ -381,14 +457,10 @@ fn orbit_controls(
         || buttons.pressed(MouseButton::Middle)
         || (shift && buttons.pressed(MouseButton::Left));
     if d != Vec2::ZERO && panning {
-        let right = t.right().as_vec3();
-        let forward = Vec3::new(t.forward().x, 0.0, t.forward().z).normalize_or_zero();
-        let k = orbit.radius * 0.0015;
-        orbit.target += (-right * d.x + forward * d.y) * k;
+        orbit.pan(d.x, d.y, &t);
         changed = true;
     } else if d != Vec2::ZERO && buttons.pressed(MouseButton::Left) {
-        orbit.yaw -= d.x * 0.006;
-        orbit.pitch = (orbit.pitch + d.y * 0.006).clamp(MIN_PITCH, MAX_PITCH);
+        orbit.turn(d.x, d.y);
         changed = true;
     }
     if scroll.delta.y != 0.0 {
@@ -396,10 +468,58 @@ fn orbit_controls(
             MouseScrollUnit::Line => 0.12,
             MouseScrollUnit::Pixel => 0.0006,
         };
-        orbit.radius = (orbit.radius * (-scroll.delta.y * k).exp()).clamp(MIN_RADIUS, MAX_RADIUS);
+        orbit.zoom((-scroll.delta.y * k).exp());
         changed = true;
     }
     if changed {
         orbit.place(&mut t);
     }
+}
+
+/// Where the camera started for the garden on show (double-tap goes back there).
+#[derive(Resource, Default)]
+struct StartView(Option<CameraStart>);
+
+/// The fingers down when `touch_controls` last ran.
+#[derive(Resource, Default)]
+struct LastFingers(Vec<Finger>);
+
+/// One finger turns around the garden, two fingers pinch to zoom and move
+/// across it, a double tap goes back to the starting view.
+fn touch_controls(
+    touches: Res<Touches>,
+    start_view: Res<StartView>,
+    mut last: ResMut<LastFingers>,
+    mut camera: Query<(&mut Orbit, &mut Transform)>,
+) {
+    let Ok((mut orbit, mut t)) = camera.single_mut() else {
+        return;
+    };
+    let reset = RESET.swap(false, Ordering::SeqCst);
+    if reset && let Some(start) = start_view.0 {
+        *orbit = Orbit::from_start(start);
+        orbit.place(&mut t);
+        return;
+    }
+    // compare with the fingers as this system last saw them (Bevy's
+    // `previous_position` repeats the last move in frames without new input);
+    // a finger pressed or lifted since makes the lists differ, so nothing jumps
+    let now: Vec<Finger> = touches
+        .iter()
+        .map(|tc| Finger {
+            id: tc.id(),
+            x: tc.position().x,
+            y: tc.position().y,
+        })
+        .collect();
+    let prev = std::mem::replace(&mut last.0, now.clone());
+    match gesture(&prev, &now) {
+        Gesture::Still => return,
+        Gesture::Orbit { dx, dy } => orbit.turn(dx, dy),
+        Gesture::Pinch { zoom, dx, dy } => {
+            orbit.zoom(zoom);
+            orbit.pan(dx, dy, &t);
+        }
+    }
+    orbit.place(&mut t);
 }

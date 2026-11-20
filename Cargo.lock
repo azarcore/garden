@@ -3097,6 +3097,7 @@ dependencies = [
  "garden-core",
  "garden-scene",
  "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]

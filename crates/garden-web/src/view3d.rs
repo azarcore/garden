@@ -181,6 +181,11 @@ async fn load_and_start(view: View3d, state: RwSignal<EditorState>) -> Result<()
 pub fn View3dOverlay() -> impl IntoView {
     let view = expect_context::<View3d>();
     let close = move |_| view.open.set(false);
+    // touch wording on phones and tablets (a finger is the main pointer)
+    let touch = web_sys::window()
+        .and_then(|w| w.match_media("(pointer: coarse)").ok().flatten())
+        .is_some_and(|m| m.matches());
+    let help = if touch { EN.help_3d_touch } else { EN.help_3d };
     let status = move || match view.status.get() {
         Status::Loading => Some(view! { <p class="view3d-status">{EN.loading_3d}</p> }.into_any()),
         Status::Failed(m) => {
@@ -197,7 +202,7 @@ pub fn View3dOverlay() -> impl IntoView {
                 <button class="view3d-close" on:click=close>{icon(Icon::Close)}{EN.close_3d}</button>
             </header>
             {status}
-            <p class="view3d-help">{EN.help_3d}</p>
+            <p class="view3d-help">{help}</p>
         </section>
     }
 }

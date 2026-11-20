@@ -510,20 +510,40 @@ button.title-card {
     font-family: var(--font);
   }
 
+  /* header and footer have fixed heights (8 mm + 10 mm) so every page stays
+     within PRINT_FURNITURE_MM (20 mm) and the plan keeps its full page */
   .print-title {
     display: flex;
     gap: 6mm;
     align-items: baseline;
-    margin-bottom: 3mm;
+    height: 6mm;
+    line-height: 6mm;
+    margin-bottom: 2mm;
+    overflow: hidden;
     font-size: 11pt;
+    white-space: nowrap;
+  }
+
+  .print-title strong {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   .print-title span {
+    flex: none;
     color: #555;
   }
 
   .print-bar {
-    margin-top: 3mm;
+    height: 8mm;
+    margin-top: 2mm;
+    overflow: hidden;
+  }
+
+  /* no inline baseline gap under plan or scale bar */
+  #print-root svg {
+    display: block;
   }
 
   /* multi-page prints: one section per sheet */
@@ -537,9 +557,6 @@ button.title-card {
   }
   .print-sheet {
     position: relative;
-  }
-  .print-sheet > svg {
-    display: block;
   }
   .print-sheet > .print-marks {
     position: absolute;

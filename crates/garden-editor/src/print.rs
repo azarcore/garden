@@ -239,6 +239,21 @@ pub fn neighbours(t: &Tile, tiling: &Tiling) -> [Option<String>; 4] {
     ]
 }
 
+/// Where to cut (and line up) on each side that has a neighbour, on this sheet's paper (mm from
+/// its top-left): left x, right x, top y, bottom y.
+pub fn cut_lines(t: &Tile, tiling: &Tiling) -> [Option<f64>; 4] {
+    let [l, r, u, d] = neighbours(t, tiling);
+    let (pw, ph) = tiling.page_mm;
+    // the middle of the overlap, so both sheets mark the same line
+    let half = TILE_OVERLAP_MM / 2.0;
+    [
+        l.map(|_| half),
+        r.map(|_| pw - half),
+        u.map(|_| half),
+        d.map(|_| ph - half),
+    ]
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -345,6 +360,23 @@ mod tests {
         );
         assert!(t.landscape);
         assert_eq!((t.cols, t.rows), (1, 8));
+    }
+
+    #[test]
+    fn neighbours_cut_on_the_same_line() {
+        let t = tile(r(40_000., 28_000.), Paper::A4, 50).unwrap();
+        let at = |l: &str| t.tiles.iter().find(|x| x.label == l).unwrap();
+        let (a1, b1, a2) = (at("A1"), at("B1"), at("A2"));
+        // A1's right cut and B1's left cut are the same line in the plan
+        let a_right = a1.world.x0 + cut_lines(a1, &t)[1].unwrap() * t.scale;
+        let b_left = b1.world.x0 + cut_lines(b1, &t)[0].unwrap() * t.scale;
+        assert!((a_right - b_left).abs() < 1e-6, "{a_right} vs {b_left}");
+        let a_down = a1.world.y0 + cut_lines(a1, &t)[3].unwrap() * t.scale;
+        let a2_up = a2.world.y0 + cut_lines(a2, &t)[2].unwrap() * t.scale;
+        assert!((a_down - a2_up).abs() < 1e-6, "{a_down} vs {a2_up}");
+        // no cut on an outer edge
+        assert_eq!(cut_lines(a1, &t)[0], None);
+        assert_eq!(cut_lines(a1, &t)[2], None);
     }
 
     #[test]

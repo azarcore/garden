@@ -2,8 +2,8 @@
 
 use garden_core::units::format_length;
 use garden_editor::print::{
-    Layout, Paper, STANDARD_SCALES, TILE_OVERLAP_MM, Tiling, best_standard_scale, fit_in,
-    fit_to_page, layout_at, neighbours, tile,
+    Layout, Paper, STANDARD_SCALES, Tiling, best_standard_scale, cut_lines, fit_in, fit_to_page,
+    layout_at, neighbours, tile,
 };
 use garden_editor::state::EditorState;
 use garden_editor::strings::EN;
@@ -129,13 +129,12 @@ fn print_tiled(state: RwSignal<EditorState>, paper: Paper, tiling: &Tiling, over
         }
     }
     let (pw, ph) = tiling.page_mm;
-    let o = TILE_OVERLAP_MM;
     for (i, t) in tiling.tiles.iter().enumerate() {
         let Some((svg, _, _)) = crate::files::plan_svg(t.world, Some((pw, ph))) else {
             continue;
         };
         let [left, right, up, down] = neighbours(t, tiling);
-        // trim marks where a neighbour overlaps, and the neighbours' labels
+        // a cut line in the middle of each overlap (the neighbour marks the same line), and the neighbours' labels
         let mut marks = String::new();
         let tick = |x1: f64, y1: f64, x2: f64, y2: f64| {
             format!(
@@ -152,29 +151,31 @@ fn print_tiled(state: RwSignal<EditorState>, paper: Paper, tiling: &Tiling, over
                 r##"<text x="{x}" y="{y}" font-size="3.2" text-anchor="{anchor}" fill="#1c241e" font-weight="700" paint-order="stroke" stroke="#fff" stroke-width="1.2">{text}</text>"##
             )
         };
-        if let Some(l) = &left {
-            marks += &tick(o, 0.0, o, 5.0);
-            marks += &tick(o, ph - 5.0, o, ph);
-            marks += &dashed(o, 5.0, o, ph - 5.0);
-            marks += &tag(1.5, ph / 2.0, "start", format!("← {l}"));
+        let [cut_l, cut_r, cut_u, cut_d] = cut_lines(t, tiling);
+        let side = |at: Option<f64>, label: &Option<String>| at.zip(label.clone());
+        if let Some((x, l)) = side(cut_l, &left) {
+            marks += &tick(x, 0.0, x, 5.0);
+            marks += &tick(x, ph - 5.0, x, ph);
+            marks += &dashed(x, 5.0, x, ph - 5.0);
+            marks += &tag(x + 1.5, ph / 2.0, "start", format!("← {l}"));
         }
-        if let Some(r) = &right {
-            marks += &tick(pw - o, 0.0, pw - o, 5.0);
-            marks += &tick(pw - o, ph - 5.0, pw - o, ph);
-            marks += &dashed(pw - o, 5.0, pw - o, ph - 5.0);
-            marks += &tag(pw - 1.5, ph / 2.0, "end", format!("{r} →"));
+        if let Some((x, r)) = side(cut_r, &right) {
+            marks += &tick(x, 0.0, x, 5.0);
+            marks += &tick(x, ph - 5.0, x, ph);
+            marks += &dashed(x, 5.0, x, ph - 5.0);
+            marks += &tag(x - 1.5, ph / 2.0, "end", format!("{r} →"));
         }
-        if let Some(u) = &up {
-            marks += &tick(0.0, o, 5.0, o);
-            marks += &tick(pw - 5.0, o, pw, o);
-            marks += &dashed(5.0, o, pw - 5.0, o);
-            marks += &tag(pw / 2.0, 4.0, "middle", format!("↑ {u}"));
+        if let Some((y, u)) = side(cut_u, &up) {
+            marks += &tick(0.0, y, 5.0, y);
+            marks += &tick(pw - 5.0, y, pw, y);
+            marks += &dashed(5.0, y, pw - 5.0, y);
+            marks += &tag(pw / 2.0, y + 4.0, "middle", format!("↑ {u}"));
         }
-        if let Some(d) = &down {
-            marks += &tick(0.0, ph - o, 5.0, ph - o);
-            marks += &tick(pw - 5.0, ph - o, pw, ph - o);
-            marks += &dashed(5.0, ph - o, pw - 5.0, ph - o);
-            marks += &tag(pw / 2.0, ph - 1.5, "middle", format!("↓ {d}"));
+        if let Some((y, d)) = side(cut_d, &down) {
+            marks += &tick(0.0, y, 5.0, y);
+            marks += &tick(pw - 5.0, y, pw, y);
+            marks += &dashed(5.0, y, pw - 5.0, y);
+            marks += &tag(pw / 2.0, y - 1.5, "middle", format!("↓ {d}"));
         }
         let overlay = format!(
             r#"<svg class="print-marks" xmlns="http://www.w3.org/2000/svg" width="{pw}mm" height="{ph}mm" viewBox="0 0 {pw} {ph}">{marks}</svg>"#

@@ -89,6 +89,8 @@ pub async fn pick_file(accept: &str) -> Option<String> {
 }
 
 /// All CSS rules the page can read (cross-origin sheets such as web fonts are skipped).
+/// Styles inside exported or printed copies of the plan are skipped too: they
+/// are copies of the page's CSS, and copying them again would grow every print.
 fn page_css(doc: &web_sys::Document) -> String {
     let mut css = String::new();
     let sheets = doc.style_sheets();
@@ -99,6 +101,13 @@ fn page_css(doc: &web_sys::Document) -> String {
         else {
             continue;
         };
+        let copied = sheet
+            .owner_node()
+            .and_then(|n| n.dyn_into::<Element>().ok())
+            .is_some_and(|el| matches!(el.closest("#print-root, svg"), Ok(Some(_))));
+        if copied {
+            continue;
+        }
         let Ok(rules) = sheet.css_rules() else {
             continue;
         };

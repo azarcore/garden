@@ -43,9 +43,10 @@ fn typing_in_field(e: &ev::KeyboardEvent) -> bool {
         || el.closest(".plant-form").ok().flatten().is_some()
         // nor are the garden list's buttons
         || el.closest(".list-card").ok().flatten().is_some()
-        // nor the plant card's and products library's
-        || el.closest(".plant-card").ok().flatten().is_some()
-        || el.closest(".products-card").ok().flatten().is_some()
+        // nor the job and product forms' buttons (the rest of the plant card
+        // keeps Ctrl+Z, so a health change can be undone straight away)
+        || el.closest(".log-form").ok().flatten().is_some()
+        || el.closest(".product-form").ok().flatten().is_some()
 }
 
 /// The panels and modes the keyboard handler needs to know about.
@@ -197,6 +198,7 @@ pub fn App() -> impl IntoView {
     ));
     state.update(|s| s.set_mode(crate::garden::saved_mode()));
     provide_context(crate::garden::SelectSeveral(RwSignal::new(false)));
+    crate::care::provide_care_ui();
     let space = RwSignal::new(false);
     let default_plant = builtin_plants()
         .into_iter()
@@ -255,6 +257,8 @@ pub fn App() -> impl IntoView {
             <Show when=design><crate::trace::TraceCard /></Show>
             <crate::print::PrintCard />
             <crate::list::ListCard />
+            <crate::care::PlantCard />
+            <crate::care::ProductsCard />
             <Show when=design><crate::layers::LayersCard /></Show>
             <ControlsCard />
             <Show when=design>

@@ -60,8 +60,14 @@ pub fn set_mode(state: RwSignal<EditorState>, mode: Mode) {
         if let Some(t) = use_context::<crate::trace::Trace>() {
             t.open.set(false);
         }
-    } else if let Some(SelectSeveral(several)) = use_context::<SelectSeveral>() {
-        several.set(false);
+    } else {
+        if let Some(SelectSeveral(several)) = use_context::<SelectSeveral>() {
+            several.set(false);
+        }
+        if let Some(ui) = use_context::<crate::care::CareUi>() {
+            ui.products_open.set(false);
+            ui.form.set(None);
+        }
     }
 }
 

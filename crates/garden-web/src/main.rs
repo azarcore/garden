@@ -2,6 +2,7 @@
 
 mod app;
 mod canvas;
+mod care;
 mod catalog;
 mod files;
 mod garden;
@@ -10,6 +11,7 @@ mod inspector;
 mod layers;
 mod library;
 mod list;
+mod photos;
 mod plan_art;
 mod print;
 mod storage;

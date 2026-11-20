@@ -2280,3 +2280,272 @@ button.title-card {
   background: var(--tile);
   font-weight: 600;
 }
+
+/* ---------- garden mode cards ---------- */
+
+.plant-card,
+.products-card {
+  top: 76px;
+  right: 16px;
+  width: 360px;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+  padding: 14px 16px 12px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.products-card {
+  z-index: 6;
+}
+
+.care-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.care-head h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.care-head small {
+  display: block;
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12.5px;
+}
+
+.care-section h3 {
+  margin: 0 0 6px;
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.health-buttons {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+}
+
+.health-buttons button {
+  padding: 6px 4px;
+}
+
+.health-buttons .health-watch[aria-pressed="true"] {
+  color: var(--watch);
+  box-shadow: inset 0 0 0 1.5px var(--watch);
+}
+
+.health-buttons .health-sick[aria-pressed="true"] {
+  color: var(--sick);
+  box-shadow: inset 0 0 0 1.5px var(--sick);
+}
+
+.health-buttons .health-healthy[aria-pressed="true"] {
+  color: var(--accent-strong);
+}
+
+.safe-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13.5px;
+}
+
+.safe-lines:empty {
+  display: none;
+}
+
+.safe-lines li {
+  padding: 6px 10px;
+  border-radius: 9px;
+  background: var(--accent-tint);
+  color: var(--accent-strong);
+  font-weight: 550;
+}
+
+.safe-lines li + li {
+  margin-top: 4px;
+}
+
+.plant-card textarea,
+.products-card textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 7px 10px;
+  border-radius: 9px;
+  border: 0;
+  background: var(--tile);
+  color: var(--text);
+  font: 500 14px var(--font);
+  resize: vertical;
+}
+
+.plant-card textarea:focus,
+.products-card textarea:focus {
+  outline: none;
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+.care-empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.history,
+.products {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.entry,
+.product-row {
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+  font-size: 13.5px;
+}
+
+.entry:first-child,
+.product-row:first-child {
+  border-top: 0;
+}
+
+.entry-head {
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.entry-head time {
+  flex: none;
+  color: var(--muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+.entry-what {
+  font-weight: 600;
+}
+
+.entry-with,
+.product-row small {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.entry-note {
+  margin: 3px 0 0;
+}
+
+.entry-warning {
+  margin: 4px 0 0;
+  padding: 5px 8px;
+  border-radius: 8px;
+  color: var(--sick);
+  background: color-mix(in srgb, var(--sick) 10%, transparent);
+  font-size: 12.5px;
+}
+
+.entry-actions {
+  display: flex;
+  gap: 10px;
+  margin-top: 4px;
+}
+
+.entry-actions button {
+  color: var(--accent-strong);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.product-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+}
+
+.job-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.job-buttons button {
+  padding: 6px 10px;
+  border-radius: 9px;
+  background: var(--tile);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 550;
+}
+
+.job-buttons button[aria-pressed="true"] {
+  background: var(--accent-tint);
+  color: var(--accent-strong);
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+.log-warnings {
+  padding: 10px 12px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--sick) 9%, transparent);
+  color: var(--text);
+  font-size: 13px;
+}
+
+.log-warnings strong {
+  color: var(--sick);
+}
+
+.log-warnings ul {
+  margin: 6px 0 10px;
+  padding-left: 18px;
+}
+
+.product-form {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--tile);
+}
+
+.product-form .form-field input,
+.product-form .form-field select,
+.product-form textarea {
+  background: var(--card);
+}
+
+.select-several {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+@media (min-width: 769px) {
+  .select-several {
+    display: none;
+  }
+}
+
+@media (max-width: 768px) {
+  .plant-card,
+  .products-card {
+    top: auto;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    width: auto;
+    max-height: 58vh;
+  }
+}

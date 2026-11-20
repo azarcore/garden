@@ -328,6 +328,7 @@ pub fn ControlsCard() -> impl IntoView {
     let crate::list::ListOpen(list_open) = expect_context::<crate::list::ListOpen>();
     let crate::layers::LayersOpen(layers_open) = expect_context::<crate::layers::LayersOpen>();
     let view3d = expect_context::<crate::view3d::View3d>();
+    let care = expect_context::<crate::care::CareUi>();
     let design = Memo::new(move |_| state.with(|s| s.mode() == garden_editor::state::Mode::Design));
 
     view! {
@@ -363,6 +364,11 @@ pub fn ControlsCard() -> impl IntoView {
             <button class="icon-btn toggle" data-tip=EN.print aria-label=EN.print
                 aria-pressed=move || print_open.get().to_string()
                 on:click=move |_| print_open.update(|o| *o = !*o)>{icon(Icon::Printer)}</button>
+            <Show when=move || !design.get()>
+                <button class="icon-btn" data-tip=EN.products_button aria-label=EN.products_button
+                    aria-pressed=move || care.products_open.get().to_string()
+                    on:click=move |_| care.products_open.update(|o| *o = !*o)>{icon(Icon::Bottle)}</button>
+            </Show>
             // not a .toggle: the list stays reachable on phones (at the garden centre)
             <button class="icon-btn" data-tip=EN.list_title aria-label=EN.list_title
                 aria-pressed=move || list_open.get().to_string()

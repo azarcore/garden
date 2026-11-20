@@ -3,7 +3,7 @@
 
 use serde_json::Value;
 
-use crate::model::Document;
+use crate::model::{Document, PlantDef};
 
 /// Version of the JSON save format written by this build.
 pub const SCHEMA_VERSION: u32 = 1;
@@ -45,15 +45,36 @@ pub struct EmbeddedImage {
 }
 
 /// `to_json` plus a top-level `"images"` array (left out when there are none).
-/// Older readers ignore the extra field, so the schema version stays the same.
 pub fn to_json_with_images(doc: &Document, images: &[EmbeddedImage]) -> Result<String, SaveError> {
+    to_json_with_extras(doc, images, &[])
+}
+
+/// The most custom plants read from one file.
+const MAX_FILE_PLANTS: usize = 1000;
+
+/// `to_json` plus top-level `"images"` and `"plants"` (custom plants the design
+/// uses) arrays, each left out when empty. Older readers ignore the extra
+/// fields, so the schema version stays the same.
+pub fn to_json_with_extras(
+    doc: &Document,
+    images: &[EmbeddedImage],
+    plants: &[PlantDef],
+) -> Result<String, SaveError> {
     use base64::Engine as _;
     let text = to_json(doc)?;
-    if images.is_empty() {
+    if images.is_empty() && plants.is_empty() {
         return Ok(text);
     }
     let mut value: Value =
         serde_json::from_str(&text).map_err(|e| SaveError::Serialize(e.to_string()))?;
+    if !plants.is_empty() {
+        value["plants"] =
+            serde_json::to_value(plants).map_err(|e| SaveError::Serialize(e.to_string()))?;
+    }
+    if images.is_empty() {
+        return serde_json::to_string_pretty(&value)
+            .map_err(|e| SaveError::Serialize(e.to_string()));
+    }
     value["images"] = images
         .iter()
         .map(|i| {
@@ -65,6 +86,29 @@ pub fn to_json_with_images(doc: &Document, images: &[EmbeddedImage]) -> Result<S
         })
         .collect();
     serde_json::to_string_pretty(&value).map_err(|e| SaveError::Serialize(e.to_string()))
+}
+
+/// Custom plants carried by a file; malformed or unsafe entries are skipped
+/// (sizes must be finite and above zero, ids must start with `custom-`).
+pub fn extract_plants(text: &str) -> Vec<PlantDef> {
+    let Ok(value) = serde_json::from_str::<Value>(text) else {
+        return Vec::new();
+    };
+    let Some(list) = value.get("plants").and_then(Value::as_array) else {
+        return Vec::new();
+    };
+    list.iter()
+        .filter_map(|entry| serde_json::from_value::<PlantDef>(entry.clone()).ok())
+        .filter(|p| {
+            p.id.starts_with("custom-")
+                && !p.name.trim().is_empty()
+                && p.is_finite()
+                && p.spread > 0.0
+                && p.height > 0.0
+        })
+        .map(|p| PlantDef { custom: true, ..p })
+        .take(MAX_FILE_PLANTS)
+        .collect()
 }
 
 /// Images carried by a file; malformed entries (or files) give none.
@@ -213,5 +257,69 @@ mod tests {
         v["images"] = serde_json::json!([{"ref": "a", "mime": "image/png", "data": "!!!not base64"}, {"ref": "b"}, 7]);
         assert!(extract_images(&v.to_string()).is_empty());
         assert!(extract_images("{nope").is_empty());
+    }
+
+    fn custom(id: &str) -> crate::model::PlantDef {
+        use crate::model::{PlantCategory, PlantDef, PlantSymbol};
+        PlantDef {
+            id: id.into(),
+            name: "Blue Lupin".into(),
+            category: PlantCategory::Perennial,
+            spread: 450.,
+            height: 900.,
+            symbol: PlantSymbol::Spiky,
+            custom: true,
+            aliases: vec!["lupine".into()],
+        }
+    }
+
+    #[test]
+    fn plants_round_trip_and_are_left_out_when_none() {
+        let d = Document::new("g", 0);
+        let text = to_json_with_extras(&d, &[], &[custom("custom-1")]).unwrap();
+        assert_eq!(extract_plants(&text), vec![custom("custom-1")]);
+        assert!(from_json(&text).is_ok());
+        assert!(
+            !to_json_with_extras(&d, &[], &[])
+                .unwrap()
+                .contains("\"plants\"")
+        );
+    }
+
+    #[test]
+    fn bad_plant_entries_are_skipped() {
+        let mut v: serde_json::Value =
+            serde_json::from_str(&to_json(&Document::new("g", 0)).unwrap()).unwrap();
+        let ok = serde_json::to_value(custom("custom-ok")).unwrap();
+        let mut negative = ok.clone();
+        negative["spread"] = (-1.0).into();
+        negative["id"] = "custom-neg".into();
+        let mut builtin = ok.clone();
+        builtin["id"] = "lavender".into();
+        let mut not_custom = ok.clone();
+        not_custom["id"] = "custom-nc".into();
+        not_custom["custom"] = false.into();
+        v["plants"] = serde_json::json!([ok, negative, builtin, {"id": "custom-x"}, 7, not_custom]);
+        let got = extract_plants(&v.to_string());
+        assert_eq!(
+            got.iter().map(|p| p.id.as_str()).collect::<Vec<_>>(),
+            ["custom-ok", "custom-nc"]
+        );
+        assert!(got.iter().all(|p| p.custom));
+        assert!(extract_plants("{nope").is_empty());
+        // a huge list is cut short
+        let many: Vec<_> = (0..1500)
+            .map(|i| serde_json::to_value(custom(&format!("custom-{i}"))).unwrap())
+            .collect();
+        v["plants"] = serde_json::Value::Array(many);
+        assert_eq!(extract_plants(&v.to_string()).len(), 1000);
+    }
+
+    #[test]
+    fn plant_defs_without_aliases_still_load() {
+        let json = r#"{"id":"custom-a","name":"A","category":"shrub","spread":500.0,"height":500.0,"symbol":"round","custom":true}"#;
+        let p: crate::model::PlantDef = serde_json::from_str(json).unwrap();
+        assert!(p.aliases.is_empty());
+        assert!(!serde_json::to_string(&p).unwrap().contains("aliases"));
     }
 }

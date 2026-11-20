@@ -755,6 +755,7 @@ pub fn catalog() -> Vec<CatalogEntry> {
                     height,
                     symbol,
                     custom: false,
+                    aliases: Vec::new(),
                 }),
             },
         )

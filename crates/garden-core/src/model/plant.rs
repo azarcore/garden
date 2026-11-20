@@ -37,6 +37,9 @@ pub struct PlantDef {
     pub height: f64,
     pub symbol: PlantSymbol,
     pub custom: bool,
+    /// Other names people search for.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub aliases: Vec<String>,
 }
 
 impl PlantDef {
@@ -76,6 +79,7 @@ mod tests {
             height: 500.,
             symbol: PlantSymbol::Spiky,
             custom: false,
+            aliases: Vec::new(),
         };
         let layer = LayerId::new();
         let o = def.place(Point::new(1., 2.), layer);

@@ -91,6 +91,7 @@ fn generate_v1_sample() {
         height: 500.,
         symbol: PlantSymbol::Spiky,
         custom: true,
+        aliases: Vec::new(),
     };
     let objects = vec![
         Object::new(

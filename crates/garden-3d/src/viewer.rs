@@ -423,7 +423,7 @@ fn spawn_plant(
             ));
         };
     match p.category {
-        PlantCategory::Tree => {
+        PlantCategory::Tree | PlantCategory::FruitTree => {
             let trunk_h = 0.35 * h;
             let trunk_w = (0.12 * s).min(0.5);
             part(

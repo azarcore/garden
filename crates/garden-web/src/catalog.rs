@@ -127,8 +127,9 @@ struct Editing {
     store_error: Option<&'static str>,
 }
 
-const KINDS: [PlantCategory; 9] = [
+const KINDS: [PlantCategory; 10] = [
     PlantCategory::Tree,
+    PlantCategory::FruitTree,
     PlantCategory::Shrub,
     PlantCategory::Perennial,
     PlantCategory::Annual,
@@ -149,6 +150,7 @@ const SYMBOLS: [PlantSymbol; 5] = [
 fn kind_key(c: PlantCategory) -> &'static str {
     match c {
         PlantCategory::Tree => "tree",
+        PlantCategory::FruitTree => "fruit_tree",
         PlantCategory::Shrub => "shrub",
         PlantCategory::Perennial => "perennial",
         PlantCategory::Annual => "annual",

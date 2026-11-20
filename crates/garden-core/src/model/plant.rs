@@ -7,6 +7,7 @@ use crate::geometry::Point;
 #[serde(rename_all = "snake_case")]
 pub enum PlantCategory {
     Tree,
+    FruitTree,
     Shrub,
     Perennial,
     Annual,
@@ -68,6 +69,14 @@ impl PlantDef {
 mod tests {
     use super::*;
     use crate::model::{LayerId, ObjectKind};
+
+    #[test]
+    fn fruit_tree_category_round_trips() {
+        let json = serde_json::to_string(&PlantCategory::FruitTree).unwrap();
+        assert_eq!(json, "\"fruit_tree\"");
+        let back: PlantCategory = serde_json::from_str(&json).unwrap();
+        assert_eq!(back, PlantCategory::FruitTree);
+    }
 
     #[test]
     fn placing_a_plant_copies_catalog_values() {

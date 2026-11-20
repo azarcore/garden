@@ -1116,7 +1116,8 @@ button.title-card {
   --sw-edge: #546e46;
 }
 
-.swatch.cat-tree { --sw-fill: #6ea456; --sw-edge: #2f5230; }
+.swatch.cat-tree,
+.swatch.cat-fruit-tree { --sw-fill: #6ea456; --sw-edge: #2f5230; }
 .swatch.cat-shrub { --sw-fill: #8dbf68; --sw-edge: #3c6630; }
 .swatch.cat-perennial { --sw-fill: #b49ad0; --sw-edge: #6e5596; }
 .swatch.cat-annual { --sw-fill: #ee8e7a; --sw-edge: #b0503f; }

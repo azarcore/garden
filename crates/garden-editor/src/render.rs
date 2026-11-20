@@ -104,7 +104,9 @@ pub fn default_style(kind: &ObjectKind) -> (Option<Color>, Option<Color>) {
         ObjectKind::Plant { category, .. } => {
             // (fill, outline): a botanical-plate palette, one hue family per kind of plant
             let (fill, edge) = match category {
-                PlantCategory::Tree => (Color(95, 145, 80, 140), Color(47, 82, 48, 255)),
+                PlantCategory::Tree | PlantCategory::FruitTree => {
+                    (Color(95, 145, 80, 140), Color(47, 82, 48, 255))
+                }
                 PlantCategory::Shrub => (Color(127, 174, 94, 220), Color(60, 102, 48, 255)),
                 PlantCategory::Perennial => (Color(180, 154, 208, 225), Color(110, 85, 150, 255)),
                 PlantCategory::Annual => (Color(238, 142, 122, 225), Color(176, 80, 63, 255)),

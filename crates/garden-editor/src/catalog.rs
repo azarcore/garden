@@ -12,6 +12,7 @@ use crate::tools::{DrawTarget, LineTarget, ToolKind};
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Group {
     Trees,
+    FruitTrees,
     Shrubs,
     Perennials,
     Grasses,
@@ -21,8 +22,9 @@ pub enum Group {
 }
 
 impl Group {
-    pub const ALL: [Group; 7] = [
+    pub const ALL: [Group; 8] = [
         Group::Trees,
+        Group::FruitTrees,
         Group::Shrubs,
         Group::Perennials,
         Group::Grasses,
@@ -34,6 +36,7 @@ impl Group {
     pub fn label(self) -> &'static str {
         match self {
             Group::Trees => EN.grp_trees,
+            Group::FruitTrees => EN.grp_fruit_trees,
             Group::Shrubs => EN.grp_shrubs,
             Group::Perennials => EN.grp_perennials,
             Group::Grasses => EN.grp_grasses,
@@ -83,6 +86,7 @@ pub struct CatalogEntry {
 pub fn group_of(category: C) -> Group {
     match category {
         C::Tree => Group::Trees,
+        C::FruitTree => Group::FruitTrees,
         C::Shrub => Group::Shrubs,
         C::Perennial | C::Annual | C::Other => Group::Perennials,
         C::Grass => Group::Grasses,
@@ -164,7 +168,7 @@ const PLANTS: &[Row] = &[
     (
         "apple",
         "Apple Tree",
-        C::Tree,
+        C::FruitTree,
         4000.,
         4000.,
         S::Round,
@@ -191,7 +195,7 @@ const PLANTS: &[Row] = &[
     (
         "crab_apple",
         "Crab Apple",
-        C::Tree,
+        C::FruitTree,
         4000.,
         5000.,
         S::Round,
@@ -218,11 +222,11 @@ const PLANTS: &[Row] = &[
     (
         "olive",
         "Olive Tree",
-        C::Tree,
+        C::FruitTree,
         3000.,
         4000.,
         S::Leafy,
-        &["olea"],
+        &["olea", "olea europaea", "fruit tree"],
     ),
     ("holly", "Holly", C::Tree, 3000., 6000., S::Spiky, &["ilex"]),
     (
@@ -680,6 +684,246 @@ const PLANTS: &[Row] = &[
         S::Leafy,
         &["sage", "salvia officinalis"],
     ),
+    (
+        "pear",
+        "Pear Tree",
+        C::FruitTree,
+        3500.,
+        5000.,
+        S::Round,
+        &["pyrus", "fruit tree", "european pear"],
+    ),
+    (
+        "asian_pear",
+        "Asian Pear",
+        C::FruitTree,
+        3500.,
+        4500.,
+        S::Round,
+        &["pyrus pyrifolia", "nashi", "fruit tree"],
+    ),
+    (
+        "quince",
+        "Quince",
+        C::FruitTree,
+        3500.,
+        4000.,
+        S::Round,
+        &["cydonia", "fruit tree"],
+    ),
+    (
+        "sweet_cherry",
+        "Sweet Cherry",
+        C::FruitTree,
+        5000.,
+        6000.,
+        S::Round,
+        &["prunus avium", "cherry", "fruit tree"],
+    ),
+    (
+        "sour_cherry",
+        "Sour Cherry",
+        C::FruitTree,
+        3500.,
+        4000.,
+        S::Round,
+        &["prunus cerasus", "morello", "cherry", "fruit tree"],
+    ),
+    (
+        "plum",
+        "Plum Tree",
+        C::FruitTree,
+        4000.,
+        4500.,
+        S::Round,
+        &["prunus domestica", "damson", "greengage", "fruit tree"],
+    ),
+    (
+        "cherry_plum",
+        "Cherry Plum",
+        C::FruitTree,
+        4000.,
+        5000.,
+        S::Round,
+        &["prunus cerasifera", "alycha", "myrobalan", "fruit tree"],
+    ),
+    (
+        "apricot",
+        "Apricot",
+        C::FruitTree,
+        4500.,
+        5000.,
+        S::Round,
+        &["prunus armeniaca", "fruit tree"],
+    ),
+    (
+        "peach",
+        "Peach Tree",
+        C::FruitTree,
+        4000.,
+        4000.,
+        S::Round,
+        &["prunus persica", "fruit tree"],
+    ),
+    (
+        "nectarine",
+        "Nectarine",
+        C::FruitTree,
+        4000.,
+        4000.,
+        S::Round,
+        &["prunus persica nucipersica", "fruit tree"],
+    ),
+    (
+        "fig",
+        "Fig Tree",
+        C::FruitTree,
+        4000.,
+        3500.,
+        S::Leafy,
+        &["ficus carica", "fruit tree"],
+    ),
+    (
+        "pomegranate",
+        "Pomegranate",
+        C::FruitTree,
+        3000.,
+        3500.,
+        S::Leafy,
+        &["punica granatum", "fruit tree"],
+    ),
+    (
+        "persimmon",
+        "Persimmon",
+        C::FruitTree,
+        4500.,
+        6000.,
+        S::Round,
+        &["diospyros kaki", "kaki", "sharon fruit", "fruit tree"],
+    ),
+    (
+        "mulberry",
+        "Mulberry",
+        C::FruitTree,
+        6000.,
+        7000.,
+        S::Round,
+        &["morus", "white mulberry", "black mulberry", "fruit tree"],
+    ),
+    (
+        "medlar",
+        "Medlar",
+        C::FruitTree,
+        4000.,
+        4000.,
+        S::Round,
+        &["mespilus germanica", "fruit tree"],
+    ),
+    (
+        "loquat",
+        "Loquat",
+        C::FruitTree,
+        4000.,
+        5000.,
+        S::Leafy,
+        &["eriobotrya japonica", "japanese medlar", "fruit tree"],
+    ),
+    (
+        "lemon",
+        "Lemon Tree",
+        C::FruitTree,
+        3000.,
+        3500.,
+        S::Round,
+        &["citrus limon", "citrus", "fruit tree"],
+    ),
+    (
+        "orange",
+        "Orange Tree",
+        C::FruitTree,
+        3500.,
+        4500.,
+        S::Round,
+        &["citrus sinensis", "citrus", "fruit tree"],
+    ),
+    (
+        "mandarin",
+        "Mandarin",
+        C::FruitTree,
+        3000.,
+        3500.,
+        S::Round,
+        &[
+            "citrus reticulata",
+            "tangerine",
+            "clementine",
+            "citrus",
+            "fruit tree",
+        ],
+    ),
+    (
+        "feijoa",
+        "Feijoa",
+        C::FruitTree,
+        3000.,
+        3500.,
+        S::Leafy,
+        &["acca sellowiana", "pineapple guava", "fruit tree"],
+    ),
+    (
+        "jujube",
+        "Jujube",
+        C::FruitTree,
+        4000.,
+        6000.,
+        S::Leafy,
+        &["ziziphus jujuba", "chinese date", "fruit tree"],
+    ),
+    (
+        "walnut",
+        "Walnut Tree",
+        C::FruitTree,
+        10000.,
+        15000.,
+        S::Round,
+        &["juglans regia", "nut tree"],
+    ),
+    (
+        "hazelnut",
+        "Hazelnut",
+        C::FruitTree,
+        4000.,
+        5000.,
+        S::Leafy,
+        &["corylus avellana", "filbert", "cobnut", "nut tree"],
+    ),
+    (
+        "almond",
+        "Almond Tree",
+        C::FruitTree,
+        5000.,
+        6000.,
+        S::Round,
+        &["prunus dulcis", "nut tree"],
+    ),
+    (
+        "chestnut",
+        "Sweet Chestnut",
+        C::FruitTree,
+        10000.,
+        15000.,
+        S::Round,
+        &["castanea sativa", "nut tree"],
+    ),
+    (
+        "pistachio",
+        "Pistachio",
+        C::FruitTree,
+        5000.,
+        6000.,
+        S::Leafy,
+        &["pistacia vera", "nut tree"],
+    ),
 ];
 
 fn features() -> Vec<(
@@ -843,6 +1087,45 @@ mod tests {
         "lettuce",
         "basil",
     ];
+
+    #[test]
+    fn fruit_trees_group_is_full() {
+        let c = catalog();
+        let fruit: Vec<_> = c.iter().filter(|e| e.group == Group::FruitTrees).collect();
+        assert!(fruit.len() >= 20, "{}", fruit.len());
+        for e in &fruit {
+            let EntryKind::Plant(p) = &e.kind else {
+                panic!("{} is not a plant", e.id)
+            };
+            assert!(
+                p.is_finite() && p.spread > 0.0 && p.height > 0.0,
+                "{}",
+                e.id
+            );
+            assert_eq!(p.category, C::FruitTree, "{}", e.id);
+            assert!(!e.aliases.is_empty(), "{} has no other names", e.id);
+        }
+        let mut ids: Vec<_> = c.iter().map(|e| e.id.as_str()).collect();
+        ids.sort_unstable();
+        let before = ids.len();
+        ids.dedup();
+        assert_eq!(ids.len(), before, "duplicate ids");
+    }
+
+    #[test]
+    fn search_finds_fruit_by_any_name() {
+        let c = catalog();
+        for q in ["pomegranate", "malus", "fig", "walnut", "persimmon"] {
+            let hits = crate::search::search(&c, q, None);
+            let first = hits.first().map(|&i| &c[i]);
+            assert_eq!(
+                first.map(|e| e.group),
+                Some(Group::FruitTrees),
+                "{q}: {:?}",
+                first.map(|e| &e.name)
+            );
+        }
+    }
 
     #[test]
     fn ids_are_unique_and_old_ids_unchanged() {

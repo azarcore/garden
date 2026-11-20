@@ -100,7 +100,7 @@ fn canopy_marks(center: Point, r: f64, symbol: PlantSymbol, category: PlantCateg
     let mut d = String::new();
     let spokes = match (symbol, category) {
         (PlantSymbol::Conifer, _) => 16,
-        (_, PlantCategory::Tree) => 6,
+        (_, PlantCategory::Tree | PlantCategory::FruitTree) => 6,
         (PlantSymbol::Leafy, _) => 3,
         _ => 0,
     };
@@ -212,7 +212,7 @@ fn material(class: &str) -> Option<&'static str> {
 fn plant_paint(category: PlantCategory, symbol: PlantSymbol) -> &'static str {
     match (category, symbol) {
         (_, PlantSymbol::Conifer) => "url(#pl-conifer)",
-        (PlantCategory::Tree, _) => "url(#pl-tree)",
+        (PlantCategory::Tree | PlantCategory::FruitTree, _) => "url(#pl-tree)",
         (PlantCategory::Shrub, _) => "url(#pl-shrub)",
         (PlantCategory::Grass, _) => "url(#pl-grass)",
         (PlantCategory::Herb, _) => "url(#pl-herb)",
@@ -484,6 +484,7 @@ pub fn plant_swatch(symbol: PlantSymbol, category: PlantCategory) -> impl IntoVi
 pub fn category_key(c: PlantCategory) -> &'static str {
     match c {
         PlantCategory::Tree => "tree",
+        PlantCategory::FruitTree => "fruit-tree",
         PlantCategory::Shrub => "shrub",
         PlantCategory::Perennial => "perennial",
         PlantCategory::Annual => "annual",

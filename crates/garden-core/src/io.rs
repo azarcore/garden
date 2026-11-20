@@ -179,6 +179,43 @@ mod tests {
     use crate::model::{AreaType, Document, Object, ObjectKind};
 
     #[test]
+    fn old_apple_file_loads() {
+        use crate::model::{PlantCategory, PlantSymbol};
+        let mut d = Document::new("g", 5);
+        let layer = d.layers[0].id;
+        d.apply(
+            Command::Insert {
+                object: Object::new(
+                    "Apple Tree",
+                    ObjectKind::Plant {
+                        position: Point::new(0., 0.),
+                        spread: 4000.,
+                        height: 4000.,
+                        symbol: PlantSymbol::Round,
+                        category: PlantCategory::Tree,
+                        catalog_id: Some("apple".into()),
+                    },
+                    layer,
+                ),
+                index: 0,
+            },
+            6,
+        )
+        .unwrap();
+        let json = to_json(&d).unwrap();
+        assert!(json.contains("\"category\": \"tree\"") || json.contains("\"category\":\"tree\""));
+        let back = from_json(&json).unwrap();
+        assert!(matches!(
+            back.objects[0].kind,
+            ObjectKind::Plant {
+                category: PlantCategory::Tree,
+                ..
+            }
+        ));
+        assert_eq!(to_json(&back).unwrap(), json);
+    }
+
+    #[test]
     fn round_trip() {
         let mut d = Document::new("g", 5);
         let l = d.layers[0].id;

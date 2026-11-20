@@ -2,13 +2,13 @@
 
 mod app;
 mod canvas;
+mod catalog;
 mod files;
 mod icons;
 mod inspector;
 mod layers;
 mod library;
 mod plan_art;
-mod plant_picker;
 mod print;
 mod storage;
 mod templates;

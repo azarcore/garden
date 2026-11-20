@@ -172,7 +172,24 @@ pub fn ToolDock() -> impl IntoView {
             })
             .collect_view()
     };
-    view! { <nav class="card dock" aria-label=EN.tools_label>{buttons}</nav> }
+    let crate::catalog::CatalogOpen(catalog_open) = expect_context::<crate::catalog::CatalogOpen>();
+    view! {
+        <nav class="card dock" aria-label=EN.tools_label>
+            <button class="dock-tool" aria-pressed=move || catalog_open.get().to_string() aria-label=EN.catalog
+                data-tip=format!("{}  /", EN.catalog)
+                on:click=move |_| {
+                    if catalog_open.get_untracked() {
+                        catalog_open.set(false);
+                    } else {
+                        crate::catalog::focus_search(catalog_open);
+                    }
+                }>
+                {icon(Icon::Search)}
+            </button>
+            <span class="dock-sep"></span>
+            {buttons}
+        </nav>
+    }
 }
 
 /// What to do next with the current tool, plus Finish / Undo point / Cancel

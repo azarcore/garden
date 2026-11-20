@@ -10,7 +10,6 @@ use wasm_bindgen::JsCast;
 
 use crate::canvas::Canvas;
 use crate::inspector::Inspector;
-use crate::plant_picker::PlantPicker;
 use crate::toolbar::{ControlsCard, HintBar, TitleCard, ToolDock, tool_entries};
 
 /// Milliseconds since the Unix epoch.
@@ -41,15 +40,28 @@ fn typing_in_field(e: &ev::KeyboardEvent) -> bool {
     matches!(el.tag_name().as_str(), "INPUT" | "TEXTAREA" | "SELECT") || el.is_content_editable()
 }
 
+/// The panels and modes the keyboard handler needs to know about.
+#[derive(Clone, Copy)]
+struct Panels {
+    designs_open: RwSignal<bool>,
+    view3d: crate::view3d::View3d,
+    chooser: RwSignal<bool>,
+    catalog_open: RwSignal<bool>,
+}
+
 fn on_key_down(
     e: ev::KeyboardEvent,
     state: RwSignal<EditorState>,
     space: RwSignal<bool>,
     plant: RwSignal<PlantDef>,
-    designs_open: RwSignal<bool>,
-    view3d: crate::view3d::View3d,
-    chooser: RwSignal<bool>,
+    panels: Panels,
 ) {
+    let Panels {
+        designs_open,
+        view3d,
+        chooser,
+        catalog_open,
+    } = panels;
     // The chooser is a dialog: Escape closes it, other shortcuts wait.
     if chooser.get_untracked() {
         if e.key() == "Escape" {
@@ -117,6 +129,11 @@ fn on_key_down(
     if m.alt {
         return;
     }
+    if key == "/" {
+        e.prevent_default();
+        crate::catalog::focus_search(catalog_open);
+        return;
+    }
     if lower == "3" {
         crate::view3d::open_3d(view3d, state);
         return;
@@ -153,6 +170,8 @@ pub fn App() -> impl IntoView {
     crate::library::provide_library(state);
     crate::trace::provide_trace();
     crate::view3d::provide_view3d();
+    let catalog_open = RwSignal::new(false);
+    provide_context(crate::catalog::CatalogOpen(catalog_open));
     let chooser = RwSignal::new(false);
     provide_context(crate::templates::ChooserOpen(chooser));
     let view3d = expect_context::<crate::view3d::View3d>();
@@ -161,7 +180,13 @@ pub fn App() -> impl IntoView {
     let crate::library::DesignsOpen(designs_open) = expect_context::<crate::library::DesignsOpen>();
 
     let down = window_event_listener(ev::keydown, move |e| {
-        on_key_down(e, state, space, plant, designs_open, view3d, chooser)
+        let panels = Panels {
+            designs_open,
+            view3d,
+            chooser,
+            catalog_open,
+        };
+        on_key_down(e, state, space, plant, panels)
     });
     let up = window_event_listener(ev::keyup, move |e| {
         if e.key() == " " {
@@ -189,7 +214,7 @@ pub fn App() -> impl IntoView {
             <crate::print::PrintCard />
             <crate::layers::LayersCard />
             <ControlsCard />
-            <PlantPicker />
+            <crate::catalog::CatalogPanel />
             <Inspector />
             <HintBar />
             <ToolDock />

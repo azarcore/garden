@@ -229,6 +229,11 @@ pub struct Strings {
     pub feat_pergola: &'static str,
     pub feat_raised_bed: &'static str,
     pub feat_seating: &'static str,
+    pub catalog: &'static str,
+    pub search_catalog: &'static str,
+    pub recently_used: &'static str,
+    pub no_matches: &'static str,
+    pub all: &'static str,
 }
 
 pub static EN: Strings = Strings {
@@ -457,6 +462,11 @@ pub static EN: Strings = Strings {
     feat_pergola: "Pergola",
     feat_raised_bed: "Raised bed",
     feat_seating: "Seating",
+    catalog: "Catalog",
+    search_catalog: "Search plants and features",
+    recently_used: "Recently used",
+    no_matches: "No matches — try another name",
+    all: "All",
 };
 
 /// Heading for a group of plants.

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-use super::{BackgroundImage, LayerId, Object, ObjectId, PlantDef};
+use super::{BackgroundImage, LayerId, LogEntry, Object, ObjectId, PlantCare, PlantDef, Product};
 use crate::io::SCHEMA_VERSION;
 use crate::units::UnitSystem;
 
@@ -58,6 +58,16 @@ pub struct Document {
     /// Gravel depth for the garden list (mm); None means the default.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub gravel_depth: Option<f64>,
+    /// Health, notes and photos of plants and hedges, by object id. Kept when
+    /// the object is deleted so its history still reads.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub care: BTreeMap<ObjectId, PlantCare>,
+    /// Jobs done in the garden, in no particular order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub log: Vec<LogEntry>,
+    /// The person's products library.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub products: Vec<Product>,
 }
 
 impl Document {
@@ -77,6 +87,9 @@ impl Document {
             prices: BTreeMap::new(),
             currency: String::new(),
             gravel_depth: None,
+            care: BTreeMap::new(),
+            log: Vec::new(),
+            products: Vec::new(),
         }
     }
 

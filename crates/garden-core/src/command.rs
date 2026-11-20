@@ -3,7 +3,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
-    BackgroundImage, Document, Layer, LayerId, Object, ObjectId, PlantDef, Tombstone,
+    BackgroundImage, Document, Layer, LayerId, LogEntry, LogId, Object, ObjectId, PlantCare,
+    PlantDef, Product, ProductId, Tombstone,
 };
 use crate::units::UnitSystem;
 
@@ -61,6 +62,26 @@ pub enum Command {
     SetGravelDepth {
         depth: Option<f64>,
     },
+    /// Replace a plant's care record; `None` (or an empty record) removes it.
+    /// The object need not exist, so this undoes cleanly after a delete.
+    SetCare {
+        id: ObjectId,
+        care: Option<PlantCare>,
+    },
+    /// Replace the log entry with the same id, or add it.
+    UpsertLogEntry {
+        entry: LogEntry,
+    },
+    RemoveLogEntry {
+        id: LogId,
+    },
+    /// Replace the product with the same id, or add it.
+    UpsertProduct {
+        product: Product,
+    },
+    RemoveProduct {
+        id: ProductId,
+    },
     /// All-or-nothing.
     Batch {
         commands: Vec<Command>,
@@ -81,6 +102,24 @@ pub enum CommandError {
     LastLayer,
     #[error("a number is not finite")]
     InvalidValue,
+}
+
+impl Command {
+    /// True for changes to plant care, the log and the products library, which
+    /// never touch the layout. A batch counts only when it is non-empty and all care.
+    pub fn is_care(&self) -> bool {
+        match self {
+            Command::SetCare { .. }
+            | Command::UpsertLogEntry { .. }
+            | Command::RemoveLogEntry { .. }
+            | Command::UpsertProduct { .. }
+            | Command::RemoveProduct { .. } => true,
+            Command::Batch { commands } => {
+                !commands.is_empty() && commands.iter().all(Command::is_care)
+            }
+            _ => false,
+        }
+    }
 }
 
 impl Document {
@@ -116,6 +155,18 @@ impl Document {
             Command::UpsertCustomPlant { def } => def.is_finite(),
             Command::SetPrice { price: Some(p), .. } => p.is_finite() && *p >= 0.0,
             Command::SetGravelDepth { depth: Some(d) } => d.is_finite() && *d > 0.0,
+            Command::UpsertLogEntry { entry } => {
+                !entry.plants.is_empty()
+                    && entry.plants.len() == entry.plant_names.len()
+                    && entry
+                        .amount
+                        .is_none_or(|a| a.value.is_finite() && a.value > 0.0)
+            }
+            Command::UpsertProduct { product } => {
+                !product.name.trim().is_empty()
+                    && product.reapply_days != Some(0)
+                    && product.max_per_season != Some(0)
+            }
             _ => true,
         };
         if !finite {
@@ -241,6 +292,57 @@ impl Document {
             Command::SetGravelDepth { depth } => Command::SetGravelDepth {
                 depth: std::mem::replace(&mut self.gravel_depth, depth),
             },
+            Command::SetCare { id, care } => {
+                let old = match care.filter(|c| !c.is_empty()) {
+                    Some(c) => self.care.insert(id, c),
+                    None => self.care.remove(&id),
+                };
+                Command::SetCare { id, care: old }
+            }
+            Command::UpsertLogEntry { entry } => {
+                match self.log.iter_mut().find(|e| e.id == entry.id) {
+                    Some(slot) => Command::UpsertLogEntry {
+                        entry: std::mem::replace(slot, entry),
+                    },
+                    None => {
+                        let id = entry.id;
+                        self.log.push(entry);
+                        Command::RemoveLogEntry { id }
+                    }
+                }
+            }
+            Command::RemoveLogEntry { id } => {
+                let i = self
+                    .log
+                    .iter()
+                    .position(|e| e.id == id)
+                    .ok_or(CommandError::NotFound)?;
+                Command::UpsertLogEntry {
+                    entry: self.log.remove(i),
+                }
+            }
+            Command::UpsertProduct { product } => {
+                match self.products.iter_mut().find(|p| p.id == product.id) {
+                    Some(slot) => Command::UpsertProduct {
+                        product: std::mem::replace(slot, product),
+                    },
+                    None => {
+                        let id = product.id;
+                        self.products.push(product);
+                        Command::RemoveProduct { id }
+                    }
+                }
+            }
+            Command::RemoveProduct { id } => {
+                let i = self
+                    .products
+                    .iter()
+                    .position(|p| p.id == id)
+                    .ok_or(CommandError::NotFound)?;
+                Command::UpsertProduct {
+                    product: self.products.remove(i),
+                }
+            }
             Command::Batch { commands } => {
                 let mut inverses = Vec::with_capacity(commands.len());
                 for c in commands {
@@ -500,5 +602,293 @@ mod tests {
         };
         let back: Command = serde_json::from_str(&serde_json::to_string(&c).unwrap()).unwrap();
         assert_eq!(back, c);
+    }
+
+    mod care {
+        use super::*;
+        use crate::date::Date;
+        use crate::model::{
+            Amount, AmountUnit, Health, Job, LogEntry, LogId, Photo, PlantCare, Product, ProductId,
+            ProductKind,
+        };
+
+        fn day(s: &str) -> Date {
+            Date::parse(s).unwrap()
+        }
+
+        pub(super) fn entry(plants: &[ObjectId]) -> LogEntry {
+            LogEntry {
+                id: LogId::new(),
+                date: day("2024-06-01"),
+                job: Job::Harvested,
+                plants: plants.to_vec(),
+                plant_names: plants.iter().map(|_| "Apple".to_string()).collect(),
+                product: None,
+                product_name: String::new(),
+                amount: Some(Amount {
+                    value: 2.5,
+                    unit: AmountUnit::Kg,
+                }),
+                note: "first".into(),
+                created_ms: 10,
+            }
+        }
+
+        pub(super) fn product() -> Product {
+            Product {
+                id: ProductId::new(),
+                name: "Copper".into(),
+                kind: ProductKind::Fungicide,
+                harvest_days: Some(21),
+                reapply_days: Some(14),
+                max_per_season: Some(3),
+                notes: String::new(),
+            }
+        }
+
+        #[test]
+        fn set_care_undoes() {
+            let mut d = Document::new("g", 0);
+            let id = ObjectId::new();
+            let care = PlantCare {
+                health: Health::Watch,
+                notes: "aphids".into(),
+                photos: vec![Photo {
+                    image_ref: "photo-1".into(),
+                    date: day("2024-06-01"),
+                    added_ms: 5,
+                }],
+            };
+            let undo = d
+                .apply(
+                    Command::SetCare {
+                        id,
+                        care: Some(care.clone()),
+                    },
+                    1,
+                )
+                .unwrap();
+            assert_eq!(d.care.get(&id), Some(&care));
+            let redo = d.apply(undo, 2).unwrap();
+            assert!(d.care.is_empty());
+            d.apply(redo, 3).unwrap();
+            assert_eq!(d.care.get(&id), Some(&care));
+            // an empty record is the same as none
+            let undo = d
+                .apply(
+                    Command::SetCare {
+                        id,
+                        care: Some(PlantCare::default()),
+                    },
+                    4,
+                )
+                .unwrap();
+            assert!(d.care.is_empty());
+            d.apply(undo, 5).unwrap();
+            assert_eq!(d.care.get(&id), Some(&care));
+        }
+
+        #[test]
+        fn log_entries_undo() {
+            let mut d = Document::new("g", 0);
+            let first = entry(&[ObjectId::new()]);
+            let undo_add = d
+                .apply(
+                    Command::UpsertLogEntry {
+                        entry: first.clone(),
+                    },
+                    1,
+                )
+                .unwrap();
+            let mut edited = first.clone();
+            edited.note = "edited".into();
+            let undo_edit = d
+                .apply(
+                    Command::UpsertLogEntry {
+                        entry: edited.clone(),
+                    },
+                    2,
+                )
+                .unwrap();
+            assert_eq!(d.log, vec![edited.clone()]);
+            d.apply(undo_edit, 3).unwrap();
+            assert_eq!(d.log, vec![first.clone()]);
+            d.apply(undo_add, 4).unwrap();
+            assert!(d.log.is_empty());
+            // remove, then undo, restores an equal entry
+            d.apply(
+                Command::UpsertLogEntry {
+                    entry: first.clone(),
+                },
+                5,
+            )
+            .unwrap();
+            let undo = d
+                .apply(Command::RemoveLogEntry { id: first.id }, 6)
+                .unwrap();
+            assert!(d.log.is_empty());
+            d.apply(undo, 7).unwrap();
+            assert_eq!(d.log, vec![first.clone()]);
+            assert_eq!(
+                d.apply(Command::RemoveLogEntry { id: LogId::new() }, 8),
+                Err(CommandError::NotFound)
+            );
+        }
+
+        #[test]
+        fn products_undo() {
+            let mut d = Document::new("g", 0);
+            let p = product();
+            let undo_add = d
+                .apply(Command::UpsertProduct { product: p.clone() }, 1)
+                .unwrap();
+            let mut edited = p.clone();
+            edited.harvest_days = Some(7);
+            let undo_edit = d
+                .apply(
+                    Command::UpsertProduct {
+                        product: edited.clone(),
+                    },
+                    2,
+                )
+                .unwrap();
+            assert_eq!(d.products, vec![edited]);
+            d.apply(undo_edit, 3).unwrap();
+            assert_eq!(d.products, vec![p.clone()]);
+            d.apply(undo_add, 4).unwrap();
+            assert!(d.products.is_empty());
+            d.apply(Command::UpsertProduct { product: p.clone() }, 5)
+                .unwrap();
+            let undo = d.apply(Command::RemoveProduct { id: p.id }, 6).unwrap();
+            assert!(d.products.is_empty());
+            d.apply(undo, 7).unwrap();
+            assert_eq!(d.products, vec![p.clone()]);
+            assert_eq!(
+                d.apply(
+                    Command::RemoveProduct {
+                        id: ProductId::new()
+                    },
+                    8
+                ),
+                Err(CommandError::NotFound)
+            );
+        }
+
+        #[test]
+        fn care_rejects_bad_values() {
+            let mut d = Document::new("g", 0);
+            let before = d.clone();
+            let bad = |e: LogEntry| Command::UpsertLogEntry { entry: e };
+            let mut no_plants = entry(&[]);
+            no_plants.plant_names.clear();
+            let mut names_mismatch = entry(&[ObjectId::new()]);
+            names_mismatch.plant_names.push("extra".into());
+            let mut nan = entry(&[ObjectId::new()]);
+            nan.amount = Some(Amount {
+                value: f64::NAN,
+                unit: AmountUnit::Kg,
+            });
+            let mut zero = entry(&[ObjectId::new()]);
+            zero.amount = Some(Amount {
+                value: 0.0,
+                unit: AmountUnit::G,
+            });
+            let mut blank = product();
+            blank.name = "  ".into();
+            let mut zero_reapply = product();
+            zero_reapply.reapply_days = Some(0);
+            let mut zero_max = product();
+            zero_max.max_per_season = Some(0);
+            for cmd in [
+                bad(no_plants),
+                bad(names_mismatch),
+                bad(nan),
+                bad(zero),
+                Command::UpsertProduct { product: blank },
+                Command::UpsertProduct {
+                    product: zero_reapply,
+                },
+                Command::UpsertProduct { product: zero_max },
+            ] {
+                assert_eq!(
+                    d.apply(cmd.clone(), 1),
+                    Err(CommandError::InvalidValue),
+                    "{cmd:?}"
+                );
+            }
+            assert_eq!(d, before);
+            // zero days before harvest is a real label value
+            let mut ok = product();
+            ok.harvest_days = Some(0);
+            assert!(d.apply(Command::UpsertProduct { product: ok }, 2).is_ok());
+        }
+
+        #[test]
+        fn deleting_a_plant_keeps_its_care() {
+            let (mut d, a, _) = super::setup();
+            let care = PlantCare {
+                health: Health::Sick,
+                ..PlantCare::default()
+            };
+            d.apply(
+                Command::SetCare {
+                    id: a.id,
+                    care: Some(care.clone()),
+                },
+                1,
+            )
+            .unwrap();
+            let e = entry(&[a.id]);
+            d.apply(Command::UpsertLogEntry { entry: e.clone() }, 2)
+                .unwrap();
+            d.apply(Command::Delete { id: a.id }, 3).unwrap();
+            assert_eq!(d.care.get(&a.id), Some(&care));
+            assert_eq!(d.log, vec![e]);
+        }
+
+        #[test]
+        fn is_care_sorts_commands() {
+            let care = [
+                Command::SetCare {
+                    id: ObjectId::new(),
+                    care: None,
+                },
+                Command::UpsertLogEntry {
+                    entry: entry(&[ObjectId::new()]),
+                },
+                Command::RemoveLogEntry { id: LogId::new() },
+                Command::UpsertProduct { product: product() },
+                Command::RemoveProduct {
+                    id: ProductId::new(),
+                },
+            ];
+            for c in &care {
+                assert!(c.is_care(), "{c:?}");
+            }
+            assert!(
+                Command::Batch {
+                    commands: care.to_vec()
+                }
+                .is_care()
+            );
+            let layout = Command::Delete {
+                id: ObjectId::new(),
+            };
+            assert!(!layout.is_care());
+            assert!(
+                !Command::SetPrice {
+                    key: "x".into(),
+                    price: None
+                }
+                .is_care()
+            );
+            assert!(!Command::Batch { commands: vec![] }.is_care());
+            assert!(
+                !Command::Batch {
+                    commands: vec![care[0].clone(), layout]
+                }
+                .is_care()
+            );
+        }
     }
 }

@@ -389,4 +389,64 @@ mod tests {
         assert!(p.aliases.is_empty());
         assert!(!serde_json::to_string(&p).unwrap().contains("aliases"));
     }
+
+    #[test]
+    fn care_fields_stay_optional() {
+        let d = Document::new("g", 5);
+        let plain = to_json(&d).unwrap();
+        for key in ["\"care\"", "\"log\"", "\"products\""] {
+            assert!(!plain.contains(key), "{plain}");
+        }
+        assert_eq!(from_json(&plain).unwrap(), d);
+    }
+
+    #[test]
+    fn care_round_trips() {
+        use crate::date::Date;
+        use crate::model::{
+            Amount, AmountUnit, Health, Job, LogEntry, LogId, Photo, PlantCare, Product, ProductId,
+            ProductKind,
+        };
+        let mut d = Document::new("g", 5);
+        let plant = crate::model::ObjectId::new();
+        let product = Product {
+            id: ProductId::new(),
+            name: "Copper".into(),
+            kind: ProductKind::Fungicide,
+            harvest_days: Some(21),
+            reapply_days: None,
+            max_per_season: Some(4),
+            notes: "20 ml / 10 L".into(),
+        };
+        d.care.insert(
+            plant,
+            PlantCare {
+                health: Health::Gone,
+                notes: "frost".into(),
+                photos: vec![Photo {
+                    image_ref: "photo-x".into(),
+                    date: Date::parse("2024-05-02").unwrap(),
+                    added_ms: 9,
+                }],
+            },
+        );
+        d.log.push(LogEntry {
+            id: LogId::new(),
+            date: Date::parse("2024-06-01").unwrap(),
+            job: Job::Sprayed,
+            plants: vec![plant],
+            plant_names: vec!["Apple".into()],
+            product: Some(product.id),
+            product_name: "Copper".into(),
+            amount: Some(Amount {
+                value: 1.5,
+                unit: AmountUnit::L,
+            }),
+            note: "calm day".into(),
+            created_ms: 7,
+        });
+        d.products.push(product);
+        let back = from_json(&to_json(&d).unwrap()).unwrap();
+        assert_eq!(back, d);
+    }
 }

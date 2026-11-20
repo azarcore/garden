@@ -26,3 +26,27 @@ impl LayerId {
         LayerId(Uuid::new_v4())
     }
 }
+
+/// Identity of a product in the products library.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ProductId(pub Uuid);
+
+impl ProductId {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        ProductId(Uuid::new_v4())
+    }
+}
+
+/// Identity of a log entry.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct LogId(pub Uuid);
+
+impl LogId {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        LogId(Uuid::new_v4())
+    }
+}

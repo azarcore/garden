@@ -16,6 +16,7 @@
   --muted: #748077;
   --hover: rgba(28, 36, 30, 0.06);
   --accent: #2f8a55; /* evergreen: active tool, selection */
+  --guide: #e5533d; /* smart guides */
   --accent-strong: #1f6b45;
   --accent-tint: #e3f2e8;
   --plant-tint: #f2ecfb;
@@ -42,6 +43,8 @@
     --muted: #94a298;
     --hover: rgba(230, 236, 228, 0.07);
     --accent: #5cc08a;
+  --guide: #ff7a63;
+    --guide: #ff7a63;
     --accent-strong: #7bd3a2;
     --accent-tint: #1f3a2b;
     --plant-tint: #2c2540;
@@ -1772,4 +1775,26 @@ button.title-card {
 .empty-card span {
   color: var(--muted);
   font-size: 13px;
+}
+
+/* ── Smart guides ─────────────────────────────────────────── */
+.guides {
+  pointer-events: none;
+}
+.guide line,
+.guide path {
+  stroke: var(--guide);
+  stroke-width: 1px;
+  fill: none;
+}
+.guide.align line {
+  stroke-dasharray: 4 3;
+}
+.guide-label rect {
+  fill: var(--guide);
+}
+.guide-label text {
+  fill: #fff;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
 }

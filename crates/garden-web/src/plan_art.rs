@@ -408,7 +408,57 @@ pub fn preview_view(p: Preview, mm_per_px: f64) -> impl IntoView {
                 vector-effect="non-scaling-stroke" />
         }
     });
-    view! { {shapes}{dims}{snap}{marquee} }
+    let guides = p
+        .guides
+        .into_iter()
+        .map(|g| guide_view(g, mm_per_px))
+        .collect_view();
+    view! { {shapes}{dims}{snap}{marquee}<g class="guides">{guides}</g> }
+}
+
+/// A smart guide: a thin coral line; measured gaps get end ticks and a label,
+/// equal gaps a tick across the middle.
+fn guide_view(g: garden_editor::guides::GuideLine, mm_per_px: f64) -> AnyView {
+    use garden_editor::guides::GuideKind;
+    let (a, b) = (g.from, g.to);
+    let d = b - a;
+    let len = d.hypot();
+    if len < 1e-9 {
+        return ().into_any();
+    }
+    // unit vector across the line, for ticks
+    let n = kurbo::Vec2::new(-d.y / len, d.x / len) * (4.0 * mm_per_px);
+    let tick = |p: Point| format!("M{} {}L{} {}", p.x - n.x, p.y - n.y, p.x + n.x, p.y + n.y);
+    let class = match g.kind {
+        GuideKind::Align => "guide align",
+        GuideKind::Distance => "guide distance",
+        GuideKind::Equal => "guide equal",
+    };
+    let mid = a.midpoint(b);
+    let ticks = match g.kind {
+        GuideKind::Align => String::new(),
+        GuideKind::Distance => format!("{}{}", tick(a), tick(b)),
+        GuideKind::Equal => format!("{}{}{}", tick(a), tick(b), tick(mid)),
+    };
+    let label = g.label.map(|text| {
+        let h = 16.0 * mm_per_px;
+        let w = (text.chars().count() as f64 * 6.6 + 10.0) * mm_per_px;
+        view! {
+            <g class="guide-label">
+                <rect x=mid.x - w / 2.0 y=mid.y - h / 2.0 width=w height=h rx=h / 2.0 />
+                <text x=mid.x y=mid.y font-size=11.0 * mm_per_px text-anchor="middle"
+                    dominant-baseline="central">{text}</text>
+            </g>
+        }
+    });
+    view! {
+        <g class=class>
+            <line x1=a.x y1=a.y x2=b.x y2=b.y vector-effect="non-scaling-stroke" />
+            <path d=ticks vector-effect="non-scaling-stroke" />
+            {label}
+        </g>
+    }
+    .into_any()
 }
 
 /// Small stand-alone plant symbol for the picker (viewBox centred on 0,0).

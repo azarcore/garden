@@ -266,8 +266,12 @@ pub fn Canvas() -> impl IntoView {
             let _ = el.set_pointer_capture(e.pointer_id());
         }
         if garden.get_untracked() {
-            // nothing moves in Garden mode: a press is a tap or the start of a pan
-            tap_from.set_value(Some(at));
+            // nothing moves in Garden mode: a press is a tap or the start of a
+            // pan. A second finger while panning is ignored, so the plan
+            // doesn't jump to it.
+            if pan_from.get_untracked().is_none() && tap_from.get_value().is_none() {
+                tap_from.set_value(Some(at));
+            }
             return;
         }
         let m = modifiers(&e);

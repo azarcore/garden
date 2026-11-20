@@ -124,6 +124,24 @@ impl Command {
     }
 }
 
+impl Command {
+    /// True for changes that never touch the layout: plant care, the design's
+    /// name, and the garden list's prices, currency and gravel depth.
+    /// These are the only changes allowed in Garden mode.
+    pub fn is_layout_free(&self) -> bool {
+        match self {
+            Command::Rename { .. }
+            | Command::SetPrice { .. }
+            | Command::SetCurrency { .. }
+            | Command::SetGravelDepth { .. } => true,
+            Command::Batch { commands } => {
+                !commands.is_empty() && commands.iter().all(Command::is_layout_free)
+            }
+            c => c.is_care(),
+        }
+    }
+}
+
 impl Document {
     /// Apply `cmd` and return the command that undoes it.
     /// On error the document is left exactly as it was.

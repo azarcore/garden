@@ -153,16 +153,29 @@ impl EditorState {
     /// Gone plants and anything that isn't a plant or hedge are left out.
     pub fn draft_entry(&self, draft: &LogDraft, now_ms: i64) -> Result<LogEntry, LogError> {
         let doc = self.doc();
+        // when editing, plants and the product already in the entry stay, even
+        // if they have since gone, been removed from the plan or deleted
+        let saved = draft.id.and_then(|id| doc.log.iter().find(|e| e.id == id));
         let mut plants = Vec::new();
         let mut plant_names = Vec::new();
         for id in &draft.plants {
-            if let Some(o) = doc.object(*id)
-                && is_gardenable(o)
-                && self.care_of(*id).health != Health::Gone
-                && !plants.contains(id)
-            {
+            if plants.contains(id) {
+                continue;
+            }
+            let kept = saved.and_then(|e| {
+                let i = e.plants.iter().position(|p| p == id)?;
+                e.plant_names.get(i).cloned()
+            });
+            let current = doc.object(*id).filter(|o| is_gardenable(o));
+            let name = match (current, kept) {
+                (Some(o), Some(_)) => Some(o.name.clone()),
+                (None, Some(saved_name)) => Some(saved_name),
+                (Some(o), None) if self.care_of(*id).health != Health::Gone => Some(o.name.clone()),
+                _ => None,
+            };
+            if let Some(name) = name {
                 plants.push(*id);
-                plant_names.push(o.name.clone());
+                plant_names.push(name);
             }
         }
         if plants.is_empty() {
@@ -170,7 +183,13 @@ impl EditorState {
         }
         let product = draft
             .product
-            .and_then(|id| doc.products.iter().find(|p| p.id == id));
+            .and_then(|id| doc.products.iter().find(|p| p.id == id))
+            .map(|p| (p.id, p.name.clone()))
+            .or_else(|| {
+                let e = saved?;
+                let id = e.product.filter(|p| Some(*p) == draft.product)?;
+                Some((id, e.product_name.clone()))
+            });
         if draft.job == Job::Sprayed && product.is_none() {
             return Err(LogError::ProductRequired);
         }
@@ -182,15 +201,15 @@ impl EditorState {
         if draft.job == Job::Harvested && draft.amount.is_none() {
             return Err(LogError::AmountRequired);
         }
-        let saved = draft.id.and_then(|id| doc.log.iter().find(|e| e.id == id));
+        let (product, product_name) = product.unzip();
         Ok(LogEntry {
             id: draft.id.unwrap_or_else(LogId::new),
             date: draft.date,
             job: draft.job,
             plants,
             plant_names,
-            product: product.map(|p| p.id),
-            product_name: product.map(|p| p.name.clone()).unwrap_or_default(),
+            product,
+            product_name: product_name.unwrap_or_default(),
             amount: draft.amount,
             note: draft.note.trim().to_string(),
             created_ms: saved.map_or(now_ms, |e| e.created_ms),
@@ -465,5 +484,55 @@ mod tests {
                 .is_err()
         );
         assert_eq!(s.doc(), &before);
+    }
+
+    #[test]
+    fn editing_keeps_gone_and_removed_plants() {
+        let (mut s, a, b) = garden();
+        let today = day("2024-06-10");
+        let p = s.save_product(copper(), 1).unwrap();
+        let mut fed = draft(Job::Fed, &[a, b]);
+        fed.product = Some(p);
+        let id = s.save_entry(fed.clone(), today, 2).unwrap();
+        // B goes, then is deleted in Design; the product is deleted too
+        s.set_health(&[b], Health::Gone, 3);
+        s.remove_product(p, 4);
+        s.set_mode(Mode::Design);
+        s.try_execute(Command::Delete { id: b }, 5).unwrap();
+        s.set_mode(Mode::Garden);
+        let mut edit = fed.clone();
+        edit.id = Some(id);
+        edit.note = "fixed typo".into();
+        assert_eq!(s.save_entry(edit, today, 6), Ok(id));
+        let e = &s.doc().log[0];
+        assert_eq!(e.plants, vec![a, b]);
+        assert_eq!(e.plant_names.len(), 2);
+        assert_eq!(e.product, Some(p));
+        assert_eq!(e.product_name, "Copper");
+        assert_eq!(e.note, "fixed typo");
+        // an entry that only covers a gone plant can still be edited
+        let (mut s, a, _) = garden();
+        let id = s.save_entry(draft(Job::Pruned, &[a]), today, 1).unwrap();
+        s.set_health(&[a], Health::Gone, 2);
+        let mut edit = draft(Job::Pruned, &[a]);
+        edit.id = Some(id);
+        edit.note = "late note".into();
+        assert_eq!(s.save_entry(edit, today, 3), Ok(id));
+    }
+
+    #[test]
+    fn garden_mode_keeps_name_and_list_edits() {
+        let (mut s, _, _) = garden();
+        s.rename("Back garden", 1);
+        s.set_price("area:lawn", Some(2.0), 2);
+        s.set_currency("€", 3);
+        s.set_gravel_depth(80.0, 4);
+        assert_eq!(s.doc().name, "Back garden");
+        assert_eq!(s.doc().prices.get("area:lawn"), Some(&2.0));
+        assert_eq!(s.doc().currency, "€");
+        assert_eq!(s.doc().gravel_depth, Some(80.0));
+        assert!(s.can_undo());
+        assert!(s.undo(5));
+        assert_eq!(s.doc().gravel_depth, None);
     }
 }

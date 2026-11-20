@@ -294,7 +294,9 @@ impl EditorState {
             self.cancel_gesture();
             return true;
         }
-        if self.mode == Mode::Garden && !self.editor.next_undo().is_some_and(Command::is_care) {
+        if self.mode == Mode::Garden
+            && !self.editor.next_undo().is_some_and(Command::is_layout_free)
+        {
             return false;
         }
         let done = self.editor.undo(now_ms);
@@ -306,7 +308,9 @@ impl EditorState {
     }
 
     pub fn redo(&mut self, now_ms: i64) -> bool {
-        if self.mode == Mode::Garden && !self.editor.next_redo().is_some_and(Command::is_care) {
+        if self.mode == Mode::Garden
+            && !self.editor.next_redo().is_some_and(Command::is_layout_free)
+        {
             return false;
         }
         let done = self.editor.redo(now_ms);
@@ -329,14 +333,14 @@ impl EditorState {
     pub fn can_undo(&self) -> bool {
         match self.mode {
             Mode::Design => self.editor.can_undo(),
-            Mode::Garden => self.editor.next_undo().is_some_and(Command::is_care),
+            Mode::Garden => self.editor.next_undo().is_some_and(Command::is_layout_free),
         }
     }
 
     pub fn can_redo(&self) -> bool {
         match self.mode {
             Mode::Design => self.editor.can_redo(),
-            Mode::Garden => self.editor.next_redo().is_some_and(Command::is_care),
+            Mode::Garden => self.editor.next_redo().is_some_and(Command::is_layout_free),
         }
     }
 
@@ -563,7 +567,7 @@ impl EditorState {
 
     /// The single path every document change goes through (keeps `changes` honest).
     pub(crate) fn try_execute(&mut self, cmd: Command, now_ms: i64) -> Result<(), CommandError> {
-        if self.mode == Mode::Garden && !cmd.is_care() {
+        if self.mode == Mode::Garden && !cmd.is_layout_free() {
             return Err(CommandError::LayoutLocked);
         }
         self.editor.execute(cmd, now_ms)?;
@@ -1331,8 +1335,6 @@ mod tests {
             s.set_tool(ToolKind::Text);
             click(&mut s, Point::new(5000., 5000.), NO);
             s.set_units(UnitSystem::Imperial, 7);
-            s.rename("other", 8);
-            s.set_price("area:lawn", Some(2.0), 9);
             let mut moved = s.doc().objects[0].clone();
             moved.name = "renamed".into();
             assert!(s.replace_object(moved, 10).is_err());

@@ -717,11 +717,14 @@ pub fn PlantCard() -> impl IntoView {
         }
     });
     let body = move || {
-        changes.track();
-        let ids = selection.get();
+        // while the job form is open, only opening or closing it rebuilds the
+        // card: a product added from the form, or an undo, must not wipe what
+        // was typed
         if let Some(seed) = ui.form.get() {
             return view! { <LogForm seed=seed /> }.into_any();
         }
+        changes.track();
+        let ids = selection.get();
         match ids.as_slice() {
             [] => ().into_any(),
             [id] => single_view(state, ui, *id),

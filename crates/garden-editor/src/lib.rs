@@ -107,6 +107,7 @@ pub(crate) mod test_util {
     }
 }
 pub mod catalog;
+pub mod custom_plants;
 mod draw;
 pub mod guides;
 pub mod handles;

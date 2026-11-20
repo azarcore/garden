@@ -75,7 +75,7 @@ pub struct CatalogEntry {
     pub id: String,
     pub name: String,
     /// Other names people search for.
-    pub aliases: Vec<&'static str>,
+    pub aliases: Vec<String>,
     pub group: Group,
     pub kind: EntryKind,
 }
@@ -745,7 +745,7 @@ pub fn catalog() -> Vec<CatalogEntry> {
             |&(id, name, category, spread, height, symbol, aliases)| CatalogEntry {
                 id: id.into(),
                 name: name.into(),
-                aliases: aliases.to_vec(),
+                aliases: aliases.iter().map(|a| a.to_string()).collect(),
                 group: group_of(category),
                 kind: EntryKind::Plant(PlantDef {
                     id: id.into(),
@@ -767,11 +767,40 @@ pub fn catalog() -> Vec<CatalogEntry> {
             .map(|(f, id, name, aliases)| CatalogEntry {
                 id: format!("feature-{id}"),
                 name: name.into(),
-                aliases: aliases.to_vec(),
+                aliases: aliases.iter().map(|a| a.to_string()).collect(),
                 group: Group::Features,
                 kind: EntryKind::Feature(f),
             }),
     );
+    entries
+}
+
+/// The built-in catalog plus the person's own plants, each placed at the end
+/// of its group (in the order given).
+pub fn catalog_with(custom: &[PlantDef]) -> Vec<CatalogEntry> {
+    let mut entries = catalog();
+    for p in custom {
+        let group = group_of(p.category);
+        let at = entries.iter().rposition(|e| e.group == group).map_or_else(
+            || {
+                entries
+                    .iter()
+                    .position(|e| e.group > group)
+                    .unwrap_or(entries.len())
+            },
+            |i| i + 1,
+        );
+        entries.insert(
+            at,
+            CatalogEntry {
+                id: p.id.clone(),
+                name: p.name.clone(),
+                aliases: p.aliases.clone(),
+                group,
+                kind: EntryKind::Plant(p.clone()),
+            },
+        );
+    }
     entries
 }
 

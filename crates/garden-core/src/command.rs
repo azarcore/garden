@@ -102,6 +102,8 @@ pub enum CommandError {
     LastLayer,
     #[error("a number is not finite")]
     InvalidValue,
+    #[error("the layout can't be changed in Garden mode")]
+    LayoutLocked,
 }
 
 impl Command {

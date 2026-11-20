@@ -76,6 +76,23 @@ fn hit(doc: &Document, p: Point, tolerance: f64, include_locked: bool) -> Option
         .map(|o| o.id)
 }
 
+/// The topmost object at `p` (within `tolerance` mm) that passes `filter`,
+/// on a visible layer. Locks are ignored: for picking things that can't move.
+pub fn hit_test_where(
+    doc: &Document,
+    p: Point,
+    tolerance: f64,
+    filter: impl Fn(&Object) -> bool,
+) -> Option<ObjectId> {
+    doc.objects
+        .iter()
+        .rev()
+        .filter(|o| filter(o))
+        .filter(|o| doc.layer(o.layer).is_some_and(|l| l.visible))
+        .find(|o| hits(o, p, tolerance))
+        .map(|o| o.id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

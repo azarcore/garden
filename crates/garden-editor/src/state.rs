@@ -94,6 +94,14 @@ pub(crate) enum Gesture {
     },
 }
 
+/// Design changes the layout; Garden looks after the plants and never changes the layout.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Mode {
+    #[default]
+    Design,
+    Garden,
+}
+
 pub struct EditorState {
     pub viewport: Viewport,
     pub selection: Vec<ObjectId>,
@@ -113,6 +121,7 @@ pub struct EditorState {
     pub(crate) active: Option<LayerId>,
     /// Successful document changes so far (for autosave).
     changes: u64,
+    pub(crate) mode: Mode,
 }
 
 impl EditorState {
@@ -133,6 +142,7 @@ impl EditorState {
             node: None,
             active: None,
             changes: 0,
+            mode: Mode::Design,
         };
         s.fit_to_content();
         s
@@ -142,12 +152,61 @@ impl EditorState {
         self.editor.doc()
     }
 
+    pub fn mode(&self) -> Mode {
+        self.mode
+    }
+
+    /// Switch between Design and Garden. Abandons any gesture or point editing.
+    /// Entering Garden keeps only plants and hedges selected.
+    pub fn set_mode(&mut self, mode: Mode) {
+        self.tool = ToolKind::Select;
+        self.node = None;
+        self.cancel_gesture();
+        self.mode = mode;
+        if mode == Mode::Garden {
+            let doc = self.editor.doc();
+            self.selection
+                .retain(|id| doc.object(*id).is_some_and(crate::care::is_gardenable));
+        }
+    }
+
+    /// Garden mode: a tap at `p` selects the plant or hedge there (topmost on a
+    /// visible layer, locks ignored). `additive` toggles it in the selection
+    /// instead. A tap on nothing else clears the selection unless additive.
+    pub fn garden_tap(&mut self, p: Point, additive: bool) {
+        if self.mode != Mode::Garden {
+            return;
+        }
+        let tolerance = self.viewport.px_to_mm(self.hit_radius_px);
+        let hit = garden_core::query::hit_test_where(
+            self.editor.doc(),
+            p,
+            tolerance,
+            crate::care::is_gardenable,
+        );
+        match (hit, additive) {
+            (Some(id), true) => {
+                if let Some(i) = self.selection.iter().position(|s| *s == id) {
+                    self.selection.remove(i);
+                } else {
+                    self.selection.push(id);
+                }
+            }
+            (Some(id), false) => self.selection = vec![id],
+            (None, true) => {}
+            (None, false) => self.selection.clear(),
+        }
+    }
+
     pub fn tool(&self) -> &ToolKind {
         &self.tool
     }
 
     /// Switch tools, abandoning any gesture in progress.
     pub fn set_tool(&mut self, tool: ToolKind) {
+        if self.mode == Mode::Garden {
+            return;
+        }
         self.tool = tool;
         self.node = None;
         self.cancel_gesture();
@@ -182,6 +241,9 @@ impl EditorState {
     }
 
     pub fn handle(&mut self, input: Input, now_ms: i64) {
+        if self.mode == Mode::Garden {
+            return;
+        }
         match self.tool {
             ToolKind::Select => self.handle_select(input, now_ms),
             _ => self.handle_draw(input, now_ms),
@@ -232,6 +294,9 @@ impl EditorState {
             self.cancel_gesture();
             return true;
         }
+        if self.mode == Mode::Garden && !self.editor.next_undo().is_some_and(Command::is_care) {
+            return false;
+        }
         let done = self.editor.undo(now_ms);
         if done {
             self.changes += 1;
@@ -241,6 +306,9 @@ impl EditorState {
     }
 
     pub fn redo(&mut self, now_ms: i64) -> bool {
+        if self.mode == Mode::Garden && !self.editor.next_redo().is_some_and(Command::is_care) {
+            return false;
+        }
         let done = self.editor.redo(now_ms);
         if done {
             self.changes += 1;
@@ -259,11 +327,17 @@ impl EditorState {
     }
 
     pub fn can_undo(&self) -> bool {
-        self.editor.can_undo()
+        match self.mode {
+            Mode::Design => self.editor.can_undo(),
+            Mode::Garden => self.editor.next_undo().is_some_and(Command::is_care),
+        }
     }
 
     pub fn can_redo(&self) -> bool {
-        self.editor.can_redo()
+        match self.mode {
+            Mode::Design => self.editor.can_redo(),
+            Mode::Garden => self.editor.next_redo().is_some_and(Command::is_care),
+        }
     }
 
     fn unlocked_selection(&self) -> Vec<&Object> {
@@ -489,6 +563,9 @@ impl EditorState {
 
     /// The single path every document change goes through (keeps `changes` honest).
     pub(crate) fn try_execute(&mut self, cmd: Command, now_ms: i64) -> Result<(), CommandError> {
+        if self.mode == Mode::Garden && !cmd.is_care() {
+            return Err(CommandError::LayoutLocked);
+        }
         self.editor.execute(cmd, now_ms)?;
         self.changes += 1;
         Ok(())
@@ -1197,6 +1274,190 @@ mod tests {
             s.handle(Input::Move(Point::new(2500., 4000.), NO), 1);
             s.handle(Input::Up(Point::new(2500., 4000.), NO), 1);
             assert_eq!(object_bounds(&s.doc().objects[1].kind).x0, 1000.);
+        }
+    }
+
+    mod garden {
+        use super::*;
+        use crate::test_util::lawn_rect;
+        use garden_core::geometry::Shape;
+        use garden_core::model::{Health, LinearKind, PlantCare};
+
+        fn hedge() -> ObjectKind {
+            ObjectKind::Linear {
+                kind: LinearKind::Hedge,
+                shape: Shape::polyline(&[Point::new(0., 8000.), Point::new(6000., 8000.)], false),
+                thickness: 600.,
+                height: 1500.,
+            }
+        }
+
+        fn fence() -> ObjectKind {
+            ObjectKind::Linear {
+                kind: LinearKind::Fence,
+                shape: Shape::polyline(&[Point::new(0., 9500.), Point::new(6000., 9500.)], false),
+                thickness: 100.,
+                height: 1500.,
+            }
+        }
+
+        fn care_change(s: &mut EditorState, id: ObjectId, now: i64) {
+            let cmd = Command::SetCare {
+                id,
+                care: Some(PlantCare {
+                    health: Health::Sick,
+                    ..PlantCare::default()
+                }),
+            };
+            assert!(s.try_execute(cmd, now).is_ok());
+        }
+
+        #[test]
+        fn garden_mode_never_changes_layout() {
+            let mut s = state_with(vec![plant_at(1000., 1000., 600.), lawn_rect()]);
+            let plant = s.doc().objects[0].id;
+            s.set_mode(Mode::Garden);
+            s.garden_tap(Point::new(1000., 1000.), false);
+            assert_eq!(s.selection, vec![plant]);
+            let before = s.doc().clone();
+            let changes = s.change_count();
+            s.handle(Input::Down(Point::new(1000., 1000.), NO), 1);
+            s.handle(Input::Move(Point::new(3000., 1000.), NO), 2);
+            s.handle(Input::Up(Point::new(3000., 1000.), NO), 3);
+            s.handle(Input::Key(Key::Delete, NO), 4);
+            s.delete_selection(5);
+            s.duplicate_selection(6);
+            s.set_tool(ToolKind::Text);
+            click(&mut s, Point::new(5000., 5000.), NO);
+            s.set_units(UnitSystem::Imperial, 7);
+            s.rename("other", 8);
+            s.set_price("area:lawn", Some(2.0), 9);
+            let mut moved = s.doc().objects[0].clone();
+            moved.name = "renamed".into();
+            assert!(s.replace_object(moved, 10).is_err());
+            // even a direct layout command is refused
+            assert!(s.try_execute(Command::Delete { id: plant }, 11).is_err());
+            assert_eq!(s.doc(), &before);
+            assert_eq!(s.change_count(), changes);
+            assert_eq!(s.tool(), &ToolKind::Select);
+        }
+
+        #[test]
+        fn garden_undo_stops_at_layout() {
+            let mut s = state_with(vec![plant_at(1000., 1000., 600.)]);
+            let id = s.doc().objects[0].id;
+            s.handle(Input::Down(Point::new(1000., 1000.), NO), 1);
+            s.handle(Input::Move(Point::new(1500., 1000.), NO), 2);
+            s.handle(Input::Up(Point::new(1500., 1000.), NO), 3);
+            assert_eq!(position(&s, 0), Point::new(1500., 1000.));
+            s.set_mode(Mode::Garden);
+            care_change(&mut s, id, 4);
+            assert!(s.can_undo());
+            assert!(s.undo(5));
+            assert!(s.doc().care.is_empty());
+            assert!(!s.can_undo());
+            assert!(!s.undo(6));
+            assert_eq!(position(&s, 0), Point::new(1500., 1000.));
+            assert!(s.can_redo());
+            assert!(s.redo(7));
+            assert!(!s.doc().care.is_empty());
+            s.set_mode(Mode::Design);
+            assert!(s.undo(8));
+            assert!(s.undo(9));
+            assert_eq!(position(&s, 0), Point::new(1000., 1000.));
+            // the next redo is the move: not offered in Garden mode
+            s.set_mode(Mode::Garden);
+            assert!(!s.can_redo());
+            assert!(!s.redo(10));
+            assert_eq!(position(&s, 0), Point::new(1000., 1000.));
+        }
+
+        #[test]
+        fn taps_pick_plants_and_hedges() {
+            let mut s = state_with(vec![
+                lawn_rect(),
+                plant_at(1000., 1000., 600.),
+                hedge(),
+                fence(),
+                plant_at(9000., 1000., 600.),
+                plant_at(12000., 1000., 600.),
+            ]);
+            let ids: Vec<ObjectId> = s.doc().objects.iter().map(|o| o.id).collect();
+            s.set_mode(Mode::Garden);
+            s.garden_tap(Point::new(1000., 1000.), false);
+            assert_eq!(s.selection, vec![ids[1]]);
+            s.garden_tap(Point::new(3000., 8000.), false);
+            assert_eq!(s.selection, vec![ids[2]]);
+            s.garden_tap(Point::new(1000., 1000.), true);
+            assert_eq!(s.selection, vec![ids[2], ids[1]]);
+            s.garden_tap(Point::new(3000., 8000.), true);
+            assert_eq!(s.selection, vec![ids[1]]);
+            // a lawn, a fence or empty ground clears
+            s.garden_tap(Point::new(3000., 2000.), false);
+            assert!(s.selection.is_empty());
+            s.garden_tap(Point::new(1000., 1000.), false);
+            s.garden_tap(Point::new(3000., 9500.), false);
+            assert!(s.selection.is_empty());
+            // an additive tap on nothing keeps the selection
+            s.garden_tap(Point::new(1000., 1000.), false);
+            s.garden_tap(Point::new(30000., 30000.), true);
+            assert_eq!(s.selection, vec![ids[1]]);
+            // locked objects and locked layers can be tapped, hidden layers can't
+            let layer = s.doc().layers[0].id;
+            let mut locked = s.doc().objects[4].clone();
+            locked.locked = true;
+            s.set_mode(Mode::Design);
+            s.replace_object(locked, 1).unwrap();
+            let hidden = garden_core::model::Layer {
+                id: garden_core::model::LayerId::new(),
+                name: "hidden".into(),
+                visible: false,
+                locked: false,
+            };
+            s.try_execute(
+                Command::UpsertLayer {
+                    layer: hidden.clone(),
+                },
+                2,
+            )
+            .unwrap();
+            let mut on_hidden = s.doc().objects[5].clone();
+            on_hidden.layer = hidden.id;
+            s.replace_object(on_hidden, 3).unwrap();
+            let mut lay = s.doc().layer(layer).unwrap().clone();
+            lay.locked = true;
+            s.try_execute(Command::UpsertLayer { layer: lay }, 4)
+                .unwrap();
+            s.set_mode(Mode::Garden);
+            s.garden_tap(Point::new(9000., 1000.), false);
+            assert_eq!(s.selection, vec![ids[4]]);
+            s.garden_tap(Point::new(12000., 1000.), false);
+            assert!(s.selection.is_empty());
+            // taps do nothing in Design mode
+            s.set_mode(Mode::Design);
+            s.garden_tap(Point::new(9000., 1000.), false);
+            assert!(s.selection.is_empty());
+        }
+
+        #[test]
+        fn entering_garden_drops_layout_selection() {
+            let mut s = state_with(vec![lawn_rect(), plant_at(9000., 1000., 600.)]);
+            let ids: Vec<ObjectId> = s.doc().objects.iter().map(|o| o.id).collect();
+            s.selection = ids.clone();
+            s.set_mode(Mode::Garden);
+            assert_eq!(s.selection, vec![ids[1]]);
+            assert_eq!(s.mode(), Mode::Garden);
+            // a half-drawn polygon is cancelled
+            s.set_mode(Mode::Design);
+            s.set_tool(ToolKind::Polygon(crate::tools::DrawTarget::Area(
+                garden_core::model::AreaType::Bed,
+            )));
+            click(&mut s, Point::new(0., 0.), NO);
+            click(&mut s, Point::new(1000., 0.), NO);
+            assert_eq!(s.points_placed(), 2);
+            s.set_mode(Mode::Garden);
+            assert_eq!(s.points_placed(), 0);
+            assert_eq!(s.tool(), &ToolKind::Select);
         }
     }
 }

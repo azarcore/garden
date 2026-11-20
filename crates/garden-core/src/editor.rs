@@ -59,6 +59,16 @@ impl Editor {
         }
     }
 
+    /// The command the next undo would apply.
+    pub fn next_undo(&self) -> Option<&Command> {
+        self.undo.last()
+    }
+
+    /// The command the next redo would apply.
+    pub fn next_redo(&self) -> Option<&Command> {
+        self.redo.last()
+    }
+
     pub fn can_undo(&self) -> bool {
         !self.undo.is_empty()
     }

@@ -108,7 +108,13 @@ fn listen_for_taps(canvas_selector: &str) {
     else {
         return;
     };
-    let on_tap = |press: bool| {
+    #[derive(Clone, Copy)]
+    enum Kind {
+        Down,
+        Up,
+        Cancel,
+    }
+    let on_tap = |kind: Kind| {
         Closure::<dyn FnMut(web_sys::PointerEvent)>::new(move |e: web_sys::PointerEvent| {
             if e.pointer_type() != "touch" {
                 return;
@@ -121,20 +127,30 @@ fn listen_for_taps(canvas_selector: &str) {
                 e.client_x() as f32,
                 e.client_y() as f32,
             );
-            if press {
-                taps.press(id, t, x, y);
-            } else if taps.release(id, t, x, y) {
-                RESET.store(true, Ordering::SeqCst);
-                wake();
+            match kind {
+                Kind::Down => {
+                    if e.is_primary() {
+                        // no other finger is down: forget any lift we missed
+                        taps.all_lifted();
+                    }
+                    taps.press(id, t, x, y);
+                }
+                Kind::Up => {
+                    if taps.release(id, t, x, y) {
+                        RESET.store(true, Ordering::SeqCst);
+                        wake();
+                    }
+                }
+                Kind::Cancel => taps.cancel(id),
             }
         })
     };
-    for (event, press) in [
-        ("pointerdown", true),
-        ("pointerup", false),
-        ("pointercancel", false),
+    for (event, kind) in [
+        ("pointerdown", Kind::Down),
+        ("pointerup", Kind::Up),
+        ("pointercancel", Kind::Cancel),
     ] {
-        let listener = on_tap(press);
+        let listener = on_tap(kind);
         let _ = canvas.add_event_listener_with_callback(event, listener.as_ref().unchecked_ref());
         listener.forget();
     }

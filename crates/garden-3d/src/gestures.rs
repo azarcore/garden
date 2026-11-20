@@ -104,6 +104,24 @@ impl Taps {
         }
     }
 
+    /// A touch the browser cancelled (system gesture, alert): never a tap,
+    /// and the next tap starts a new pair.
+    pub fn cancel(&mut self, id: u64) {
+        if self.down.is_some_and(|d| d.0 == id) {
+            self.down = None;
+        } else {
+            self.others = self.others.saturating_sub(1);
+        }
+        self.last = None;
+    }
+
+    /// No other finger is down (the browser's primary pointer): forget any
+    /// finger whose lift was never reported.
+    pub fn all_lifted(&mut self) {
+        self.down = None;
+        self.others = 0;
+    }
+
     /// true when this release completes a double tap (then starts afresh)
     pub fn release(&mut self, id: u64, t_ms: f64, x: f32, y: f32) -> bool {
         let Some((_, t0, x0, y0)) = self.down.filter(|d| d.0 == id) else {
@@ -111,13 +129,16 @@ impl Taps {
             return false;
         };
         self.down = None;
-        let tap = t_ms - t0 <= TAP_MS && (x - x0).hypot(y - y0) <= TAP_PX;
+        let tap = (0.0..=TAP_MS).contains(&(t_ms - t0)) && (x - x0).hypot(y - y0) <= TAP_PX;
         if !tap {
             self.last = None;
             return false;
         }
         match self.last.take() {
-            Some((t1, x1, y1)) if t_ms - t1 <= DOUBLE_MS && (x - x1).hypot(y - y1) <= DOUBLE_PX => {
+            Some((t1, x1, y1))
+                if (0.0..=DOUBLE_MS).contains(&(t_ms - t1))
+                    && (x - x1).hypot(y - y1) <= DOUBLE_PX =>
+            {
                 true
             }
             _ => {
@@ -261,5 +282,45 @@ mod tests {
         t.release(3, 60., 0., 0.);
         t.press(4, 100., 0., 0.);
         assert!(!t.release(4, 120., 0., 0.));
+    }
+
+    #[test]
+    fn a_cancelled_touch_is_not_a_tap() {
+        let mut t = Taps::default();
+        t.press(1, 0., 0., 0.);
+        assert!(!t.release(1, 80., 0., 0.));
+        t.press(2, 120., 0., 0.);
+        t.cancel(2);
+        // and it doesn't pair the first tap with a later one either
+        t.press(3, 200., 0., 0.);
+        assert!(!t.release(3, 240., 0., 0.));
+        // a fresh double tap still works
+        t.press(4, 300., 0., 0.);
+        assert!(t.release(4, 340., 0., 0.));
+        // lifting a finger that was never pressed is ignored
+        let mut t = Taps::default();
+        assert!(!t.release(9, 10., 0., 0.));
+        t.cancel(9);
+    }
+
+    #[test]
+    fn a_lost_lift_does_not_break_double_tap_for_good() {
+        let mut t = Taps::default();
+        t.press(1, 0., 0., 0.); // its lift never arrives
+        t.all_lifted();
+        t.press(2, 1000., 0., 0.);
+        assert!(!t.release(2, 1050., 0., 0.));
+        t.all_lifted();
+        t.press(3, 1150., 0., 0.);
+        assert!(t.release(3, 1200., 0., 0.));
+    }
+
+    #[test]
+    fn time_going_backwards_is_not_a_tap() {
+        let mut t = Taps::default();
+        t.press(1, 500., 0., 0.);
+        assert!(!t.release(1, 520., 0., 0.));
+        t.press(2, 100., 0., 0.);
+        assert!(!t.release(2, 120., 0., 0.));
     }
 }

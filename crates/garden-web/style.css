@@ -1711,7 +1711,10 @@ button.title-card {
   background: var(--tag);
   color: var(--tag-ink);
   font-size: 13px;
-  white-space: nowrap;
+  /* one line where it fits; on a phone it wraps inside the screen */
+  width: max-content;
+  max-width: calc(100% - 32px);
+  text-align: center;
   pointer-events: none;
 }
 

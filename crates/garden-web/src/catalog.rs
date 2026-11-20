@@ -123,6 +123,8 @@ struct Editing {
     id: Option<String>,
     form: PlantForm,
     error: Option<FormError>,
+    /// Saving to the browser failed (or isn't possible here).
+    store_error: Option<&'static str>,
 }
 
 const KINDS: [PlantCategory; 9] = [
@@ -281,6 +283,7 @@ pub fn CatalogPanel() -> impl IntoView {
             id: None,
             form,
             error: None,
+            store_error: None,
         }));
     };
     let start_edit = move |p: PlantDef| {
@@ -289,6 +292,7 @@ pub fn CatalogPanel() -> impl IntoView {
             id: Some(p.id),
             form,
             error: None,
+            store_error: None,
         }));
     };
     let save_form = move || {
@@ -302,31 +306,38 @@ pub fn CatalogPanel() -> impl IntoView {
                 }
             }),
             Ok(def) => {
-                let saved = def.clone();
+                // only show the plant once the browser has really kept it
                 leptos::task::spawn_local(async move {
-                    if let Some(store) = lib.store.get_value() {
-                        let _ = store.put_plant(&saved).await;
+                    let result = match lib.store.get_value() {
+                        None => Err(EN.plant_no_storage),
+                        Some(store) => store.put_plant(&def).await.map_err(|_| EN.plant_not_saved),
+                    };
+                    match result {
+                        Err(message) => {
+                            editing.try_update(|x| {
+                                if let Some(x) = x {
+                                    x.store_error = Some(message);
+                                }
+                            });
+                        }
+                        Ok(()) => {
+                            lib.plants
+                                .update(|l| match l.iter_mut().find(|p| p.id == def.id) {
+                                    Some(existing) => *existing = def.clone(),
+                                    None => l.push(def.clone()),
+                                });
+                            editing.try_set(None);
+                            last_plant.set(def.clone());
+                            state.update(|s| s.switch_tool(ToolKind::Plant(def), now()));
+                        }
                     }
                 });
-                lib.plants
-                    .update(|l| match l.iter_mut().find(|p| p.id == def.id) {
-                        Some(existing) => *existing = def.clone(),
-                        None => l.push(def.clone()),
-                    });
-                editing.set(None);
-                last_plant.set(def.clone());
-                state.update(|s| s.switch_tool(ToolKind::Plant(def), now()));
             }
         }
     };
-    let delete_plant = move |id: String| {
-        confirm_delete.set(None);
-        let gone = id.clone();
-        leptos::task::spawn_local(async move {
-            if let Some(store) = lib.store.get_value() {
-                let _ = store.delete_plant(&gone).await;
-            }
-        });
+    let delete_error = RwSignal::new(None::<&'static str>);
+    // after a plant is gone from storage: drop it from the library and the tool
+    let forget_plant = move |id: String| {
         lib.plants.update(|l| l.retain(|p| p.id != id));
         // the plant tool must not keep placing a plant that no longer exists
         if last_plant.with_untracked(|l| l.id == id) {
@@ -337,6 +348,21 @@ pub fn CatalogPanel() -> impl IntoView {
                 state.update(|s| s.switch_tool(ToolKind::Select, now()));
             }
         }
+    };
+    let delete_plant = move |id: String| {
+        leptos::task::spawn_local(async move {
+            let deleted = match lib.store.get_value() {
+                Some(store) => store.delete_plant(&id).await.is_ok(),
+                None => false,
+            };
+            if !deleted {
+                delete_error.try_set(Some(EN.plant_not_deleted));
+                return;
+            }
+            confirm_delete.try_set(None);
+            delete_error.try_set(None);
+            forget_plant(id);
+        });
     };
 
     // `pos` is the row's place in the visible list (an entry can be listed twice:
@@ -389,7 +415,11 @@ pub fn CatalogPanel() -> impl IntoView {
                                     let id = del_id.clone();
                                     move |_| delete_plant(id.clone())
                                 }>{EN.delete_plant}</button>
-                                <button on:click=move |_| confirm_delete.set(None)>{EN.cancel}</button>
+                                <button on:click=move |_| {
+                                    confirm_delete.set(None);
+                                    delete_error.set(None);
+                                }>{EN.cancel}</button>
+                                {move || delete_error.get().map(|m| view! { <span class="error">{m}</span> })}
                             </div>
                         </Show>
                     </div>
@@ -549,6 +579,8 @@ pub fn CatalogPanel() -> impl IntoView {
                     <span>{EN.plant_aliases}</span>
                     <input type="text" prop:value=value(|f| f.aliases.clone()) on:input=field(|f, v| f.aliases = v) />
                 </label>
+                {move || editing.with(|x| x.as_ref().and_then(|x| x.store_error))
+                    .map(|m| view! { <p class="file-message" role="alert">{m}</p> })}
                 <div class="form-actions">
                     <button type="submit" class="trace-primary">{EN.save}</button>
                     <button type="button" on:click=move |_| editing.set(None)>{EN.cancel}</button>

@@ -6,7 +6,7 @@ use garden_core::io;
 use garden_core::model::{Document, PlantDef};
 use idb::{Database, DatabaseEvent, Factory, KeyPath, ObjectStoreParams, TransactionMode};
 use serde::{Deserialize, Serialize};
-use wasm_bindgen::JsValue;
+use wasm_bindgen::{JsCast, JsValue};
 
 const DB_NAME: &str = "garden-planner";
 /// 1: designs. 2: adds the images store (traced photos). 3: adds the plants
@@ -47,12 +47,19 @@ fn classify(e: idb::Error) -> StorageError {
     }
 }
 
-/// Open (and on first use create) the designs database.
-pub async fn open() -> Result<Store, StorageError> {
+/// Open (and on first use create) the designs database. `on_blocked` runs if
+/// an older tab still holds the database open while it needs upgrading;
+/// `on_newer` runs (after this tab lets go of it) when a newer version is
+/// opened elsewhere.
+pub async fn open(
+    on_blocked: impl FnOnce() + 'static,
+    on_newer: impl FnOnce() + 'static,
+) -> Result<Store, StorageError> {
     let factory = Factory::new().map_err(|e| StorageError::Unavailable(e.to_string()))?;
     let mut request = factory
         .open(DB_NAME, Some(DB_VERSION))
         .map_err(|e| StorageError::Unavailable(e.to_string()))?;
+    request.on_blocked(move |_| on_blocked());
     request.on_upgrade_needed(|event| {
         let Ok(db) = event.database() else { return };
         let names = db.store_names();
@@ -71,9 +78,19 @@ pub async fn open() -> Result<Store, StorageError> {
             let _ = db.create_object_store(PLANTS, params);
         }
     });
-    let db = request
+    let mut db = request
         .await
         .map_err(|e| StorageError::Unavailable(e.to_string()))?;
+    // a newer version wants to upgrade: let go so it isn't blocked
+    db.on_version_change(move |event: web_sys::Event| {
+        if let Some(target) = event.target()
+            && let Ok(close) = js_sys::Reflect::get(&target, &JsValue::from_str("close"))
+            && let Ok(close) = close.dyn_into::<js_sys::Function>()
+        {
+            let _ = close.call0(&target);
+        }
+        on_newer();
+    });
     Ok(Store {
         db: std::rc::Rc::new(db),
     })

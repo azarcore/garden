@@ -252,6 +252,12 @@ pub struct Strings {
     pub err_height_invalid: &'static str,
     pub delete_plant_confirm: &'static str,
     pub no_my_plants: &'static str,
+    pub update_blocked: &'static str,
+    pub newer_elsewhere: &'static str,
+    pub plant_not_saved: &'static str,
+    pub plant_no_storage: &'static str,
+    pub plant_not_deleted: &'static str,
+    pub plants_not_saved: &'static str,
 }
 
 pub static EN: Strings = Strings {
@@ -503,6 +509,12 @@ pub static EN: Strings = Strings {
     err_height_invalid: "Height must be a length above zero, e.g. 1.2 m",
     delete_plant_confirm: "Delete this plant? Plants already placed stay.",
     no_my_plants: "No plants of your own yet — add one with New plant",
+    update_blocked: "Close other Garden Planner tabs to finish updating — your designs are safe.",
+    newer_elsewhere: "Garden Planner was updated in another tab. Reload this tab to keep saving.",
+    plant_not_saved: "Couldn't save the plant — storage may be full. Try again or free some space.",
+    plant_no_storage: "Saving isn't available in this browser window, so your own plants can't be kept.",
+    plant_not_deleted: "Couldn't delete the plant. Try again.",
+    plants_not_saved: "Some plants in the file couldn't be saved to your library.",
 };
 
 /// Heading for a group of plants.

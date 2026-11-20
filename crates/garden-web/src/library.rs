@@ -142,10 +142,23 @@ pub fn provide_library(state: RwSignal<EditorState>) -> Library {
         autosave: StoredValue::new_local(Autosave::new(0)),
     };
     provide_context(lib);
-    provide_context(DesignsOpen(RwSignal::new(false)));
+    let designs_open = RwSignal::new(false);
+    provide_context(DesignsOpen(designs_open));
     provide_context(ImportMessage(lib.message));
     spawn_local(async move {
-        let store = match storage::open().await {
+        let on_blocked = move || {
+            lib.message
+                .set(Some(garden_editor::strings::EN.update_blocked));
+            designs_open.set(true);
+        };
+        let on_newer = move || {
+            lib.store.set_value(None);
+            lib.status.set(SaveStatus::Unavailable);
+            lib.message
+                .set(Some(garden_editor::strings::EN.newer_elsewhere));
+            designs_open.set(true);
+        };
+        let store = match storage::open(on_blocked, on_newer).await {
             Ok(store) => store,
             Err(_) => {
                 lib.status.set(SaveStatus::Unavailable);
@@ -153,6 +166,9 @@ pub fn provide_library(state: RwSignal<EditorState>) -> Library {
             }
         };
         lib.store.set_value(Some(store.clone()));
+        if lib.message.get_untracked() == Some(garden_editor::strings::EN.update_blocked) {
+            lib.message.set(None); // the other tab let go; the update finished
+        }
         if let Ok(plants) = store.list_plants().await {
             lib.plants.set(plants);
         }
@@ -352,12 +368,20 @@ pub async fn import_text(
         &io::extract_plants(text),
     );
     if !incoming.is_empty() {
+        // only plants that were really stored join the library
+        let wanted = incoming.len();
+        let mut kept = Vec::new();
         if let Some(store) = lib.store.get_value() {
-            for p in &incoming {
-                let _ = store.put_plant(p).await;
+            for p in incoming {
+                if store.put_plant(&p).await.is_ok() {
+                    kept.push(p);
+                }
             }
         }
-        lib.plants.update(|l| l.extend(incoming));
+        if kept.len() < wanted {
+            message.set(Some(EN.plants_not_saved));
+        }
+        lib.plants.update(|l| l.extend(kept));
     }
     if let Some(store) = lib.store.get_value()
         && store.put(&doc).await.is_err()

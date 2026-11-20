@@ -37,7 +37,10 @@ fn typing_in_field(e: &ev::KeyboardEvent) -> bool {
     else {
         return false;
     };
-    matches!(el.tag_name().as_str(), "INPUT" | "TEXTAREA" | "SELECT") || el.is_content_editable()
+    matches!(el.tag_name().as_str(), "INPUT" | "TEXTAREA" | "SELECT")
+        || el.is_content_editable()
+        // the plant form's own buttons (symbols, Save, Cancel) aren't editor keys
+        || el.closest(".plant-form").ok().flatten().is_some()
 }
 
 /// The panels and modes the keyboard handler needs to know about.

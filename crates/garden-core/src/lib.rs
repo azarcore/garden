@@ -1,5 +1,6 @@
 #![forbid(unsafe_code)]
 pub mod command;
+pub mod date;
 pub mod editor;
 pub mod geometry;
 pub mod io;

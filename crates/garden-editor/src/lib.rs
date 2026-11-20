@@ -114,6 +114,7 @@ pub mod handles;
 pub mod inspector;
 pub mod layers;
 pub mod library;
+pub mod list;
 pub mod objects;
 pub mod print;
 pub mod search;

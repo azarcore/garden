@@ -115,6 +115,7 @@ pub mod layers;
 pub mod library;
 pub mod objects;
 pub mod print;
+pub mod search;
 pub mod state;
 pub mod templates;
 pub mod tools;

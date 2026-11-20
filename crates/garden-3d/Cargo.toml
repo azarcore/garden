@@ -14,6 +14,30 @@ viewer = ["dep:bevy", "dep:wasm-bindgen", "dep:web-sys", "dep:garden-core", "dep
 [dependencies]
 garden-core = { path = "../garden-core", optional = true }
 garden-scene = { path = "../garden-scene", optional = true }
-bevy = { version = "0.20.1", default-features = false, features = ["3d", "webgl2", "tonemapping_luts"], optional = true }
+# Only what the preview draws with: no glTF, animation, scenes, text, picking,
+# gizmos, audio, gamepads or compressed textures (keeps the download small).
+bevy = { version = "0.20.1", default-features = false, features = [
+    "std",
+    "web",
+    "async_executor",
+    "bevy_asset",
+    "bevy_log",
+    "bevy_winit",
+    "bevy_window",
+    "bevy_render",
+    "bevy_core_pipeline",
+    "bevy_pbr",
+    "bevy_camera",
+    "bevy_light",
+    "bevy_mesh",
+    "bevy_color",
+    "bevy_image",
+    "bevy_shader",
+    "bevy_material",
+    "webgl2",
+    "keyboard",
+    "mouse",
+    "touch",
+], optional = true }
 wasm-bindgen = { version = "=0.2.130", optional = true }
 web-sys = { version = "0.3", features = ["Document", "Element", "EventTarget", "PointerEvent", "Window"], optional = true }

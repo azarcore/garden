@@ -22,6 +22,7 @@ opt-level = 2
 
 [profile.release-3d]
 inherits = "release"
-opt-level = 2
-lto = "thin"
-codegen-units = 16
+opt-level = "z"
+lto = "fat"
+codegen-units = 1
+panic = "abort"

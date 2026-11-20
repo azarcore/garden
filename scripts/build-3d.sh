@@ -52,7 +52,7 @@ if [ "$PROFILE" = release-3d ]; then
   if [ -z "$OPT" ]; then
     echo "build-3d: wasm-opt not found; the 3D bundle is not size-optimised" >&2
   else
-    "$OPT" -O2 --enable-bulk-memory --enable-nontrapping-float-to-int \
+    "$OPT" -Oz --enable-bulk-memory --enable-nontrapping-float-to-int \
       -o "$OUT/garden_3d_bg.wasm" "$OUT/garden_3d_bg.wasm"
   fi
 fi

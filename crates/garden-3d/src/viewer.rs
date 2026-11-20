@@ -8,6 +8,7 @@ use std::time::Duration;
 
 use crate::gestures::{Finger, Gesture, Taps, gesture};
 use bevy::asset::RenderAssetUsages;
+use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseScrollUnit};
 use bevy::light::CascadeShadowConfigBuilder;
 use bevy::mesh::{Indices, PrimitiveTopology};
@@ -167,7 +168,7 @@ fn start(canvas_selector: &str) {
     .insert_resource(ClearColor(SKY))
     .insert_resource(GlobalAmbientLight {
         color: Color::WHITE,
-        brightness: 700.0,
+        brightness: 770.0,
         ..default()
     })
     .add_systems(Startup, (setup, remember_waker))
@@ -273,11 +274,18 @@ fn setup(
     };
     let mut t = Transform::default();
     orbit.place(&mut t);
-    commands.spawn((Camera3d::default(), t, orbit));
+    commands.spawn((
+        Camera3d::default(),
+        // the default tone mapper needs lookup-table textures (0.7 MB more to
+        // download); Reinhard with the lights a touch brighter looks the same
+        Tonemapping::Reinhard,
+        t,
+        orbit,
+    ));
     commands.spawn((
         DirectionalLight {
             shadow_maps_enabled: true,
-            illuminance: 9_000.0,
+            illuminance: 9_900.0,
             ..default()
         },
         // low sun from the south-west

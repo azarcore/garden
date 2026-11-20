@@ -99,7 +99,7 @@ async fn add(
     error: RwSignal<Option<&'static str>>,
 ) {
     if file.size() > 40.0 * 1024.0 * 1024.0 {
-        return error.set(Some(EN.photo_too_big));
+        return error.set(Some(EN.plant_photo_too_big));
     }
     let Some(small) = shrink(&file).await else {
         return error.set(Some(EN.photo_failed));

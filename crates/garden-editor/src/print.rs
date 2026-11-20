@@ -93,6 +93,20 @@ pub fn fit_to_page(world: kurbo::Rect, paper: Paper) -> Layout {
     }
 }
 
+/// `world` scaled to fill the printable area of one page in the given
+/// orientation (for an overview page that must match the other pages).
+pub fn fit_in(world: kurbo::Rect, paper: Paper, landscape: bool) -> Layout {
+    let (ww, wh) = (world.width().max(1.0), world.height().max(1.0));
+    let (aw, ah) = printable(paper, landscape);
+    let k = (aw / ww).min(ah / wh);
+    Layout {
+        scale: 1.0 / k,
+        landscape,
+        width_mm: ww * k,
+        height_mm: wh * k,
+    }
+}
+
 /// How much neighbouring pages overlap on paper (mm).
 pub const TILE_OVERLAP_MM: f64 = 10.0;
 /// The most plan pages one print may take.
@@ -363,5 +377,13 @@ mod tests {
         let long = tile(r(200_000., 1_000.), Paper::Letter, 100).unwrap();
         assert_eq!(long.rows, 1);
         assert!(long.tiles.len() <= MAX_TILES);
+    }
+
+    #[test]
+    fn overview_fits_in_a_given_orientation() {
+        let l = fit_in(r(10_000., 60_000.), Paper::A4, true);
+        assert!(l.landscape);
+        let (aw, ah) = printable(Paper::A4, true);
+        assert!(l.width_mm <= aw + 1e-9 && (l.height_mm - ah).abs() < 1e-6);
     }
 }

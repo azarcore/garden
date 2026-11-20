@@ -525,6 +525,35 @@ button.title-card {
   .print-bar {
     margin-top: 3mm;
   }
+
+  /* multi-page prints: one section per sheet */
+  .print-page {
+    break-after: page;
+    page-break-after: always;
+  }
+  .print-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+  .print-sheet {
+    position: relative;
+  }
+  .print-sheet > svg {
+    display: block;
+  }
+  .print-sheet > .print-marks {
+    position: absolute;
+    top: 0;
+    left: 0;
+  }
+  .print-label {
+    color: #1c241e !important;
+    font-weight: 700;
+  }
+}
+
+.print-check {
+  justify-content: flex-start;
 }
 
 /* trace card (right, under the controls) */

@@ -2,7 +2,8 @@
 
 use garden_core::units::format_length;
 use garden_editor::print::{
-    Layout, Paper, STANDARD_SCALES, best_standard_scale, fit_to_page, layout_at,
+    Layout, Paper, STANDARD_SCALES, TILE_OVERLAP_MM, Tiling, best_standard_scale, fit_in,
+    fit_to_page, layout_at, neighbours, tile,
 };
 use garden_editor::state::EditorState;
 use garden_editor::strings::EN;
@@ -66,10 +67,6 @@ fn print_now(state: RwSignal<EditorState>, paper: Paper, layout: Layout) {
     else {
         return;
     };
-    let Some(window) = web_sys::window() else {
-        return;
-    };
-    let Some(doc) = window.document() else { return };
     let (name, units) = state.with_untracked(|s| (s.doc().name.clone(), s.doc().units));
     let date =
         js_sys::Date::new_0().to_locale_date_string("default", &wasm_bindgen::JsValue::UNDEFINED);
@@ -80,6 +77,126 @@ fn print_now(state: RwSignal<EditorState>, paper: Paper, layout: Layout) {
         date = String::from(date),
         bar = scale_bar_svg(layout.scale, units),
     );
+    show_and_print(&html, paper, layout.landscape);
+}
+
+/// Print `tiling` as one page per sheet, after an overview page if asked for.
+fn print_tiled(state: RwSignal<EditorState>, paper: Paper, tiling: &Tiling, overview: bool) {
+    let Some(bounds) = plan_bounds(state) else {
+        return;
+    };
+    let (name, units) = state.with_untracked(|s| (s.doc().name.clone(), s.doc().units));
+    let name = html_escape(&name);
+    let scale = format!("1:{:.0}", tiling.scale);
+    let total = tiling.tiles.len() + usize::from(overview);
+    let mut pages = Vec::with_capacity(total);
+    if overview {
+        let fit = fit_in(bounds, paper, tiling.landscape);
+        if let Some((svg, _, _)) =
+            crate::files::plan_svg(bounds, Some((fit.width_mm, fit.height_mm)))
+        {
+            // the page grid over the plan, in world units (fit.scale world mm per paper mm)
+            let k = fit.scale;
+            let grid: String = tiling
+                .tiles
+                .iter()
+                .map(|t| {
+                    let w = t.world;
+                    format!(
+                        r##"<rect x="{x}" y="{y}" width="{wd}" height="{ht}" fill="none" stroke="#c0392b" stroke-width="{sw}"/><text x="{tx}" y="{ty}" font-size="{fs}" fill="#c0392b" font-weight="700">{label}</text>"##,
+                        x = w.x0, y = w.y0, wd = w.width(), ht = w.height(), sw = 0.4 * k,
+                        tx = w.x0 + 2.0 * k, ty = w.y0 + 6.0 * k, fs = 5.0 * k, label = t.label,
+                    )
+                })
+                .collect();
+            let svg = match svg.rfind("</svg>") {
+                Some(at) => format!(
+                    "{}<g class=\"tile-grid\">{grid}</g>{}",
+                    &svg[..at],
+                    &svg[at..]
+                ),
+                None => svg,
+            };
+            pages.push(format!(
+                r#"<section class="print-page"><header class="print-title"><strong>{name}</strong><span>{overview_title}</span><span>{scale} · {n} {pages_word}</span><span>{page} 1 {of} {total}</span></header>{svg}<footer class="print-bar">{bar}</footer></section>"#,
+                overview_title = EN.overview_title,
+                n = tiling.tiles.len(),
+                pages_word = EN.pages,
+                page = EN.page_word,
+                of = EN.of_word,
+                bar = scale_bar_svg(fit.scale, units),
+            ));
+        }
+    }
+    let (pw, ph) = tiling.page_mm;
+    let o = TILE_OVERLAP_MM;
+    for (i, t) in tiling.tiles.iter().enumerate() {
+        let Some((svg, _, _)) = crate::files::plan_svg(t.world, Some((pw, ph))) else {
+            continue;
+        };
+        let [left, right, up, down] = neighbours(t, tiling);
+        // trim marks where a neighbour overlaps, and the neighbours' labels
+        let mut marks = String::new();
+        let tick = |x1: f64, y1: f64, x2: f64, y2: f64| {
+            format!(
+                r##"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="#1c241e" stroke-width="0.3"/>"##
+            )
+        };
+        let dashed = |x1: f64, y1: f64, x2: f64, y2: f64| {
+            format!(
+                r##"<line x1="{x1}" y1="{y1}" x2="{x2}" y2="{y2}" stroke="#999" stroke-width="0.2" stroke-dasharray="2 2"/>"##
+            )
+        };
+        let tag = |x: f64, y: f64, anchor: &str, text: String| {
+            format!(
+                r##"<text x="{x}" y="{y}" font-size="3.2" text-anchor="{anchor}" fill="#1c241e" font-weight="700" paint-order="stroke" stroke="#fff" stroke-width="1.2">{text}</text>"##
+            )
+        };
+        if let Some(l) = &left {
+            marks += &tick(o, 0.0, o, 5.0);
+            marks += &tick(o, ph - 5.0, o, ph);
+            marks += &dashed(o, 5.0, o, ph - 5.0);
+            marks += &tag(1.5, ph / 2.0, "start", format!("← {l}"));
+        }
+        if let Some(r) = &right {
+            marks += &tick(pw - o, 0.0, pw - o, 5.0);
+            marks += &tick(pw - o, ph - 5.0, pw - o, ph);
+            marks += &dashed(pw - o, 5.0, pw - o, ph - 5.0);
+            marks += &tag(pw - 1.5, ph / 2.0, "end", format!("{r} →"));
+        }
+        if let Some(u) = &up {
+            marks += &tick(0.0, o, 5.0, o);
+            marks += &tick(pw - 5.0, o, pw, o);
+            marks += &dashed(5.0, o, pw - 5.0, o);
+            marks += &tag(pw / 2.0, 4.0, "middle", format!("↑ {u}"));
+        }
+        if let Some(d) = &down {
+            marks += &tick(0.0, ph - o, 5.0, ph - o);
+            marks += &tick(pw - 5.0, ph - o, pw, ph - o);
+            marks += &dashed(5.0, ph - o, pw - 5.0, ph - o);
+            marks += &tag(pw / 2.0, ph - 1.5, "middle", format!("↓ {d}"));
+        }
+        let overlay = format!(
+            r#"<svg class="print-marks" xmlns="http://www.w3.org/2000/svg" width="{pw}mm" height="{ph}mm" viewBox="0 0 {pw} {ph}">{marks}</svg>"#
+        );
+        let n = i + 1 + usize::from(overview);
+        pages.push(format!(
+            r#"<section class="print-page"><header class="print-title"><strong>{name}</strong><span class="print-label">{label}</span><span>{scale}</span><span>{page} {n} {of} {total}</span></header><div class="print-sheet" style="width:{pw}mm;height:{ph}mm">{svg}{overlay}</div><footer class="print-bar">{bar}</footer></section>"#,
+            label = t.label,
+            page = EN.page_word,
+            of = EN.of_word,
+            bar = scale_bar_svg(tiling.scale, units),
+        ));
+    }
+    show_and_print(&pages.concat(), paper, tiling.landscape);
+}
+
+/// Replace the print area with `html`, set the page size and open the print dialog.
+fn show_and_print(html: &str, paper: Paper, landscape: bool) {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let Some(doc) = window.document() else { return };
     let root = match doc.get_element_by_id("print-root") {
         Some(el) => el,
         None => {
@@ -93,7 +210,7 @@ fn print_now(state: RwSignal<EditorState>, paper: Paper, layout: Layout) {
             el
         }
     };
-    root.set_inner_html(&html);
+    root.set_inner_html(html);
     // page size and orientation for this print
     let page = format!(
         "@page {{ size: {} {}; margin: {}mm; }}",
@@ -101,11 +218,7 @@ fn print_now(state: RwSignal<EditorState>, paper: Paper, layout: Layout) {
             Paper::A4 => "A4",
             Paper::Letter => "letter",
         },
-        if layout.landscape {
-            "landscape"
-        } else {
-            "portrait"
-        },
+        if landscape { "landscape" } else { "portrait" },
         garden_editor::print::PRINT_MARGIN_MM
     );
     let style = doc.get_element_by_id("print-page").or_else(|| {
@@ -133,6 +246,7 @@ pub fn PrintCard() -> impl IntoView {
     let PrintOpen(open) = expect_context::<PrintOpen>();
     let paper = RwSignal::new(Paper::A4);
     let choice = RwSignal::new(None::<Choice>);
+    let overview = RwSignal::new(true);
     // the scale actually used: the person's choice, else the best that fits
     let chosen = move || {
         let bounds = plan_bounds(state)?;
@@ -152,7 +266,39 @@ pub fn PrintCard() -> impl IntoView {
             Choice::Fit => Some(fit_to_page(bounds, paper.get())),
         }
     };
+    // a standard scale that doesn't fit one page prints on several
+    let tiling = move || -> Option<Tiling> {
+        if layout().is_some() {
+            return None;
+        }
+        let bounds = plan_bounds(state)?;
+        match chosen()? {
+            Choice::Standard(s) => tile(bounds, paper.get(), s),
+            Choice::Fit => None,
+        }
+    };
+    let paper_name = move || match paper.get() {
+        Paper::A4 => EN.paper_a4,
+        Paper::Letter => EN.paper_letter,
+    };
     let summary = move || -> Option<String> {
+        if let Some(t) = tiling() {
+            return Some(format!(
+                "{} {} {} ({} × {}), {} {}, 1:{:.0}",
+                EN.prints_on,
+                t.tiles.len(),
+                EN.pages,
+                t.cols,
+                t.rows,
+                paper_name(),
+                if t.landscape {
+                    EN.landscape
+                } else {
+                    EN.portrait
+                },
+                t.scale
+            ));
+        }
         let l = layout()?;
         let units = state.with_untracked(|s| s.doc().units);
         let paper_name = match paper.get() {
@@ -177,13 +323,24 @@ pub fn PrintCard() -> impl IntoView {
     };
     let too_big = move || -> Option<String> {
         let bounds = plan_bounds(state)?;
-        if layout().is_some() {
+        if layout().is_some() || tiling().is_some() {
             return None;
         }
-        Some(match best_standard_scale(bounds, paper.get()) {
-            Some(s) => format!("{}{s}", EN.print_too_big),
-            None => EN.fit_page.to_string(),
-        })
+        // more than MAX_TILES pages: suggest the most detailed scale that tiles
+        let chosen_scale = match chosen()? {
+            Choice::Standard(s) => s,
+            Choice::Fit => return None,
+        };
+        Some(
+            match STANDARD_SCALES
+                .into_iter()
+                .filter(|s| *s > chosen_scale)
+                .find(|s| tile(bounds, paper.get(), *s).is_some())
+            {
+                Some(s) => format!("{}{s}", EN.too_many_pages),
+                None => EN.fit_page.to_string(),
+            },
+        )
     };
     let options = move || {
         let current = chosen();
@@ -227,11 +384,20 @@ pub fn PrintCard() -> impl IntoView {
                     }>{options}</select>
                 </label>
                 <p class="print-summary">{summary}</p>
+                <Show when=move || tiling().is_some()>
+                    <label class="print-row print-check">
+                        <input type="checkbox" prop:checked=move || overview.get()
+                            on:change=move |e| overview.set(event_target_checked(&e)) />
+                        <span>{EN.overview_page}</span>
+                    </label>
+                </Show>
                 {move || too_big().map(|m| view! { <p class="file-message" role="alert">{m}</p> })}
-                <button class="trace-primary" disabled=move || layout().is_none()
+                <button class="trace-primary" disabled=move || layout().is_none() && tiling().is_none()
                     on:click=move |_| {
                         if let Some(l) = layout() {
                             print_now(state, paper.get_untracked(), l);
+                        } else if let Some(t) = tiling() {
+                            print_tiled(state, paper.get_untracked(), &t, overview.get_untracked());
                         }
                     }>{EN.print}</button>
             </section>

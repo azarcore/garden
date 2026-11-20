@@ -30,6 +30,8 @@ pub struct Library {
     pub summaries: RwSignal<Vec<DesignSummary>>,
     /// Feedback shown in the My designs panel (import errors, refused switches).
     pub message: RwSignal<Option<&'static str>>,
+    /// The person's own plants (empty when storage is unavailable).
+    pub plants: RwSignal<Vec<garden_core::model::PlantDef>>,
     autosave: StoredValue<Autosave, LocalStorage>,
 }
 
@@ -136,6 +138,7 @@ pub fn provide_library(state: RwSignal<EditorState>) -> Library {
         status: RwSignal::new(SaveStatus::Saved),
         summaries: RwSignal::new(Vec::new()),
         message: RwSignal::new(None),
+        plants: RwSignal::new(Vec::new()),
         autosave: StoredValue::new_local(Autosave::new(0)),
     };
     provide_context(lib);
@@ -150,6 +153,9 @@ pub fn provide_library(state: RwSignal<EditorState>) -> Library {
             }
         };
         lib.store.set_value(Some(store.clone()));
+        if let Ok(plants) = store.list_plants().await {
+            lib.plants.set(plants);
+        }
         let Ok(records) = store.list().await else {
             lib.status.set(SaveStatus::Unavailable);
             return;
@@ -340,6 +346,19 @@ pub async fn import_text(
             }
         }
     }
+    // add the file's own plants the library doesn't have yet
+    let incoming = garden_editor::custom_plants::new_from_import(
+        &lib.plants.get_untracked(),
+        &io::extract_plants(text),
+    );
+    if !incoming.is_empty() {
+        if let Some(store) = lib.store.get_value() {
+            for p in &incoming {
+                let _ = store.put_plant(p).await;
+            }
+        }
+        lib.plants.update(|l| l.extend(incoming));
+    }
     if let Some(store) = lib.store.get_value()
         && store.put(&doc).await.is_err()
     {
@@ -365,7 +384,11 @@ pub async fn download_design(lib: Library, state: RwSignal<EditorState>) {
             bytes: js_sys::Uint8Array::new(&buffer).to_vec(),
         });
     }
-    if let Ok(json) = io::to_json_with_images(&doc, &images) {
+    // and the person's own plants the design uses
+    let plants = lib
+        .plants
+        .with_untracked(|l| garden_editor::custom_plants::plants_used(&doc, l));
+    if let Ok(json) = io::to_json_with_extras(&doc, &images, &plants) {
         let name = garden_editor::library::export_file_name(&doc.name, "garden.json");
         crate::files::download(
             &name,

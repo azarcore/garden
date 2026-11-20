@@ -3,16 +3,18 @@
 //! what a `.garden.json` file contains (so loading always goes through migrations).
 
 use garden_core::io;
-use garden_core::model::Document;
+use garden_core::model::{Document, PlantDef};
 use idb::{Database, DatabaseEvent, Factory, KeyPath, ObjectStoreParams, TransactionMode};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::JsValue;
 
 const DB_NAME: &str = "garden-planner";
-/// 1: designs. 2: adds the images store (traced photos).
-const DB_VERSION: u32 = 2;
+/// 1: designs. 2: adds the images store (traced photos). 3: adds the plants
+/// store (the person's own plants).
+const DB_VERSION: u32 = 3;
 const STORE: &str = "designs";
 const IMAGES: &str = "images";
+const PLANTS: &str = "plants";
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum StorageError {
@@ -62,6 +64,11 @@ pub async fn open() -> Result<Store, StorageError> {
         if !names.iter().any(|n| n == IMAGES) {
             // keys are given explicitly (the image_ref)
             let _ = db.create_object_store(IMAGES, ObjectStoreParams::new());
+        }
+        if !names.iter().any(|n| n == PLANTS) {
+            let mut params = ObjectStoreParams::new();
+            params.key_path(Some(KeyPath::new_single("id")));
+            let _ = db.create_object_store(PLANTS, params);
         }
     });
     let db = request
@@ -138,6 +145,62 @@ impl Store {
             .transaction(&[STORE], TransactionMode::ReadWrite)
             .map_err(classify)?;
         let store = tx.object_store(STORE).map_err(classify)?;
+        store
+            .delete(JsValue::from_str(id))
+            .map_err(classify)?
+            .await
+            .map_err(classify)?;
+        tx.commit().map_err(classify)?.await.map_err(classify)?;
+        Ok(())
+    }
+
+    /// Save (insert or replace) one of the person's own plants.
+    pub async fn put_plant(&self, plant: &PlantDef) -> Result<(), StorageError> {
+        let value =
+            serde_wasm_bindgen::to_value(plant).map_err(|e| StorageError::Other(e.to_string()))?;
+        let tx = self
+            .db
+            .transaction(&[PLANTS], TransactionMode::ReadWrite)
+            .map_err(classify)?;
+        let store = tx.object_store(PLANTS).map_err(classify)?;
+        store
+            .put(&value, None)
+            .map_err(classify)?
+            .await
+            .map_err(classify)?;
+        tx.commit().map_err(classify)?.await.map_err(classify)?;
+        Ok(())
+    }
+
+    /// The person's own plants, by name. Unreadable records are skipped.
+    pub async fn list_plants(&self) -> Result<Vec<PlantDef>, StorageError> {
+        let tx = self
+            .db
+            .transaction(&[PLANTS], TransactionMode::ReadOnly)
+            .map_err(classify)?;
+        let store = tx.object_store(PLANTS).map_err(classify)?;
+        let values: Vec<JsValue> = store
+            .get_all(None, None)
+            .map_err(classify)?
+            .await
+            .map_err(classify)?;
+        let mut plants: Vec<PlantDef> = values
+            .into_iter()
+            .filter_map(|v| serde_wasm_bindgen::from_value::<PlantDef>(v).ok())
+            .filter(|p| p.is_finite() && p.spread > 0.0 && p.height > 0.0)
+            .map(|p| PlantDef { custom: true, ..p })
+            .collect();
+        plants.sort_by_key(|p| p.name.to_lowercase());
+        Ok(plants)
+    }
+
+    #[allow(dead_code)] // used by the catalog (next commit)
+    pub async fn delete_plant(&self, id: &str) -> Result<(), StorageError> {
+        let tx = self
+            .db
+            .transaction(&[PLANTS], TransactionMode::ReadWrite)
+            .map_err(classify)?;
+        let store = tx.object_store(PLANTS).map_err(classify)?;
         store
             .delete(JsValue::from_str(id))
             .map_err(classify)?

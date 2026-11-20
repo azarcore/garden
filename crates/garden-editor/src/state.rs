@@ -1319,6 +1319,7 @@ mod tests {
             s.set_mode(Mode::Garden);
             s.garden_tap(Point::new(1000., 1000.), false);
             assert_eq!(s.selection, vec![plant]);
+            assert!(s.handles().is_empty(), "no resize or rotate handles");
             let before = s.doc().clone();
             let changes = s.change_count();
             s.handle(Input::Down(Point::new(1000., 1000.), NO), 1);

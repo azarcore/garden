@@ -4,6 +4,7 @@ mod app;
 mod canvas;
 mod catalog;
 mod files;
+mod garden;
 mod icons;
 mod inspector;
 mod layers;

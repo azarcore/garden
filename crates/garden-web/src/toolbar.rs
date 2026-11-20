@@ -328,20 +328,26 @@ pub fn ControlsCard() -> impl IntoView {
     let crate::list::ListOpen(list_open) = expect_context::<crate::list::ListOpen>();
     let crate::layers::LayersOpen(layers_open) = expect_context::<crate::layers::LayersOpen>();
     let view3d = expect_context::<crate::view3d::View3d>();
+    let design = Memo::new(move |_| state.with(|s| s.mode() == garden_editor::state::Mode::Design));
 
     view! {
             <div class="card controls" role="toolbar" aria-label=EN.actions_label>
+                <crate::garden::ModeSwitch />
+                <span class="card-sep"></span>
                 <button class="icon-btn" data-tip=EN.undo aria-label=EN.undo disabled=move || !can_undo.get()
                     on:click=move |_| state.update(|s| { s.undo(now()); })>{icon(Icon::Undo)}</button>
                 <button class="icon-btn" data-tip=EN.redo aria-label=EN.redo disabled=move || !can_redo.get()
                     on:click=move |_| state.update(|s| { s.redo(now()); })>{icon(Icon::Redo)}</button>
+                <Show when=move || design.get()>
                 <span class="card-sep"></span>
                 <button class="icon-btn" data-tip=EN.duplicate aria-label=EN.duplicate disabled=move || !has_selection.get()
                     on:click=move |_| state.update(|s| s.duplicate_selection(now()))>{icon(Icon::Duplicate)}</button>
                 <button class="icon-btn" data-tip=EN.delete aria-label=EN.delete disabled=move || !has_selection.get()
                     on:click=move |_| state.update(|s| s.delete_selection(now()))>{icon(Icon::Delete)}</button>
+                </Show>
                 <button class="icon-btn" data-tip=EN.fit aria-label=EN.fit
                     on:click=move |_| state.update(|s| s.fit_to_content())>{icon(Icon::Fit)}</button>
+                <Show when=move || design.get()>
                 <span class="card-sep"></span>
                 <button class="icon-btn toggle" data-tip=EN.snap_grid aria-label=EN.snap_grid
                     aria-pressed=move || snap_grid.get().to_string()
@@ -353,6 +359,7 @@ pub fn ControlsCard() -> impl IntoView {
     <button class="icon-btn toggle" data-tip=EN.tool_trace aria-label=EN.tool_trace
                     aria-pressed=move || trace.open.get().to_string()
                     on:click=move |_| trace.open.update(|o| *o = !*o)>{icon(Icon::Photo)}</button>
+                </Show>
             <button class="icon-btn toggle" data-tip=EN.print aria-label=EN.print
                 aria-pressed=move || print_open.get().to_string()
                 on:click=move |_| print_open.update(|o| *o = !*o)>{icon(Icon::Printer)}</button>
@@ -360,11 +367,14 @@ pub fn ControlsCard() -> impl IntoView {
             <button class="icon-btn" data-tip=EN.list_title aria-label=EN.list_title
                 aria-pressed=move || list_open.get().to_string()
                 on:click=move |_| list_open.update(|o| *o = !*o)>{icon(Icon::List)}</button>
+            <Show when=move || design.get()>
             <button class="icon-btn toggle" data-tip=EN.layers aria-label=EN.layers
                 aria-pressed=move || layers_open.get().to_string()
                 on:click=move |_| layers_open.update(|o| *o = !*o)>{icon(Icon::Layers)}</button>
+            </Show>
             <button class="icon-btn" data-tip=format!("{}  3", EN.view_3d) aria-label=EN.view_3d
                 on:click=move |_| crate::view3d::open_3d(view3d, state)>{icon(Icon::Cube)}</button>
+                <Show when=move || design.get()>
                 <span class="card-sep"></span>
                             <div class="segmented" role="group">
                     <button aria-pressed=move || (units.get() == UnitSystem::Metric).to_string()
@@ -372,6 +382,7 @@ pub fn ControlsCard() -> impl IntoView {
                     <button aria-pressed=move || (units.get() == UnitSystem::Imperial).to_string()
                         on:click=move |_| set_units(UnitSystem::Imperial)>{EN.units_imperial}</button>
                 </div>
+                </Show>
             </div>
         }
 }

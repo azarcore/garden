@@ -3,7 +3,7 @@
 use garden_core::geometry::Point;
 use garden_core::units::{UnitSystem, format_length};
 use garden_editor::render::scene;
-use garden_editor::state::EditorState;
+use garden_editor::state::{EditorState, Mode};
 use garden_editor::tools::{Input, Modifiers, ToolKind};
 use garden_editor::viewport::Viewport;
 use leptos::ev;
@@ -38,6 +38,9 @@ fn modifiers(e: &ev::MouseEvent) -> Modifiers {
         ctrl: e.ctrl_key() || e.meta_key(),
     }
 }
+
+/// Garden mode: pointer travel (px) after which a press pans instead of tapping.
+const GARDEN_TAP_PX: f64 = 4.0;
 
 /// A "nice" scale-bar length (mm) that is at most `max_px` wide on screen.
 fn scale_bar_length(scale: f64, units: UnitSystem, max_px: f64) -> f64 {
@@ -184,6 +187,10 @@ pub fn Canvas() -> impl IntoView {
     let svg_ref = NodeRef::<leptos::svg::Svg>::new();
     // Last screen position while panning.
     let pan_from = RwSignal::new(None::<Point>);
+    // Garden mode: where a press started, until it moves far enough to pan.
+    let tap_from = StoredValue::new(None::<Point>);
+    let garden = Memo::new(move |_| state.with(|s| s.mode() == Mode::Garden));
+    let crate::garden::SelectSeveral(several) = expect_context::<crate::garden::SelectSeveral>();
 
     // Keep the viewport in step with the element's size (window resizes,
     // the plant picker opening, ...).
@@ -258,6 +265,11 @@ pub fn Canvas() -> impl IntoView {
         if let Some(el) = svg_ref.get_untracked() {
             let _ = el.set_pointer_capture(e.pointer_id());
         }
+        if garden.get_untracked() {
+            // nothing moves in Garden mode: a press is a tap or the start of a pan
+            tap_from.set_value(Some(at));
+            return;
+        }
         let m = modifiers(&e);
         state.update(|s| {
             let w = s.viewport.screen_to_world(at);
@@ -266,6 +278,12 @@ pub fn Canvas() -> impl IntoView {
     };
     let on_move = move |e: ev::PointerEvent| {
         let at = screen_point(e.client_x(), e.client_y());
+        if let Some(start) = tap_from.get_value()
+            && start.distance(at) > GARDEN_TAP_PX
+        {
+            tap_from.set_value(None);
+            pan_from.set(Some(start));
+        }
         if let Some(from) = pan_from.get_untracked() {
             state.update(|s| s.viewport.pan_by(at - from));
             pan_from.set(Some(at));
@@ -275,7 +293,9 @@ pub fn Canvas() -> impl IntoView {
         state.update(|s| {
             let w = s.viewport.screen_to_world(at);
             cursor.set(Some(w));
-            s.handle(Input::Move(w, m), now());
+            if !garden.get_untracked() {
+                s.handle(Input::Move(w, m), now());
+            }
         });
     };
     let on_up = move |e: ev::PointerEvent| {
@@ -288,6 +308,15 @@ pub fn Canvas() -> impl IntoView {
         }
         let at = screen_point(e.client_x(), e.client_y());
         let m = modifiers(&e);
+        if let Some(start) = tap_from.get_value() {
+            tap_from.set_value(None);
+            let additive = m.shift || m.ctrl || several.get_untracked();
+            state.update(|s| {
+                let w = s.viewport.screen_to_world(start);
+                s.garden_tap(w, additive);
+            });
+            return;
+        }
         state.update(|s| {
             let w = s.viewport.screen_to_world(at);
             s.handle(Input::Up(w, m), now());
@@ -297,6 +326,7 @@ pub fn Canvas() -> impl IntoView {
     // stop panning and abandon whatever was being drawn.
     let on_cancel = move |_e: ev::PointerEvent| {
         pan_from.set(None);
+        tap_from.set_value(None);
         state.update(|s| {
             s.handle(
                 Input::Key(garden_editor::tools::Key::Escape, Modifiers::default()),
@@ -342,6 +372,9 @@ pub fn Canvas() -> impl IntoView {
             return;
         };
         if file.type_().starts_with("image/") {
+            if garden.get_untracked() {
+                return; // tracing a photo changes the design
+            }
             let blob: web_sys::Blob = file.into();
             leptos::task::spawn_local(async move {
                 crate::trace::add_photo(lib, state, cache, trace, blob).await;
@@ -430,6 +463,8 @@ pub fn Canvas() -> impl IntoView {
             "plan panning"
         } else if space.get() {
             "plan can-pan"
+        } else if garden.get() {
+            "plan garden"
         } else if drawing.get() {
             "plan drawing"
         } else {
@@ -446,6 +481,7 @@ pub fn Canvas() -> impl IntoView {
                 {grid}
                 {photo}
                 <g class="plan-content">{content}</g>
+                {crate::garden::marks_view(state)}
                 {preview}
                 {tag}
                 {handles}

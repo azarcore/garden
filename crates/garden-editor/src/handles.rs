@@ -129,6 +129,9 @@ impl EditorState {
 
     /// Handles for the single selected, unlocked object.
     pub fn handles(&self) -> Vec<Handle> {
+        if self.mode == crate::state::Mode::Garden {
+            return Vec::new();
+        }
         let Some(o) = self.handle_target() else {
             return Vec::new();
         };

@@ -1,7 +1,7 @@
 use garden_core::geometry::Point;
 use garden_core::model::{Document, PlantDef};
 use garden_editor::catalog::builtin_plants;
-use garden_editor::state::EditorState;
+use garden_editor::state::{EditorState, Mode};
 use garden_editor::strings::EN;
 use garden_editor::tools::{Input, Key, Modifiers};
 use leptos::ev;
@@ -43,6 +43,9 @@ fn typing_in_field(e: &ev::KeyboardEvent) -> bool {
         || el.closest(".plant-form").ok().flatten().is_some()
         // nor are the garden list's buttons
         || el.closest(".list-card").ok().flatten().is_some()
+        // nor the plant card's and products library's
+        || el.closest(".plant-card").ok().flatten().is_some()
+        || el.closest(".products-card").ok().flatten().is_some()
 }
 
 /// The panels and modes the keyboard handler needs to know about.
@@ -88,6 +91,10 @@ fn on_key_down(
     }
     // With My designs open, Escape just closes the panel (it must not cancel a drawing).
     if e.key() == "Escape" && designs_open.get_untracked() {
+        return;
+    }
+    if state.with_untracked(|s| s.mode()) == Mode::Garden {
+        garden_key(&e, state, view3d);
         return;
     }
     let m = Modifiers {
@@ -155,6 +162,32 @@ fn on_key_down(
     }
 }
 
+/// Garden mode keys: undo/redo of care changes, Escape, Space to pan and 3 for 3D.
+/// Nothing that edits the layout.
+fn garden_key(e: &ev::KeyboardEvent, state: RwSignal<EditorState>, view3d: crate::view3d::View3d) {
+    let key = e.key();
+    let lower = key.to_ascii_lowercase();
+    let ctrl = e.ctrl_key() || e.meta_key();
+    match (ctrl, lower.as_str()) {
+        (true, "z") if e.shift_key() => state.update(|s| {
+            s.redo(now());
+        }),
+        (true, "z") => state.update(|s| {
+            s.undo(now());
+        }),
+        (true, "y") => state.update(|s| {
+            s.redo(now());
+        }),
+        (false, "escape") => state.update(|s| s.selection.clear()),
+        (false, "3") if !e.alt_key() => {
+            crate::view3d::open_3d(view3d, state);
+            return;
+        }
+        _ => return,
+    }
+    e.prevent_default();
+}
+
 #[component]
 pub fn App() -> impl IntoView {
     let state = RwSignal::new(EditorState::new(
@@ -162,6 +195,8 @@ pub fn App() -> impl IntoView {
         1000.,
         700.,
     ));
+    state.update(|s| s.set_mode(crate::garden::saved_mode()));
+    provide_context(crate::garden::SelectSeveral(RwSignal::new(false)));
     let space = RwSignal::new(false);
     let default_plant = builtin_plants()
         .into_iter()
@@ -185,6 +220,7 @@ pub fn App() -> impl IntoView {
     provide_context(crate::layers::LayersOpen(RwSignal::new(false)));
     let crate::library::DesignsOpen(designs_open) = expect_context::<crate::library::DesignsOpen>();
 
+    let design = move || state.with(|s| s.mode() == Mode::Design);
     let down = window_event_listener(ev::keydown, move |e| {
         let panels = Panels {
             designs_open,
@@ -216,15 +252,17 @@ pub fn App() -> impl IntoView {
             </main>
             <TitleCard />
             <crate::library::MyDesigns />
-            <crate::trace::TraceCard />
+            <Show when=design><crate::trace::TraceCard /></Show>
             <crate::print::PrintCard />
             <crate::list::ListCard />
-            <crate::layers::LayersCard />
+            <Show when=design><crate::layers::LayersCard /></Show>
             <ControlsCard />
-            <crate::catalog::CatalogPanel />
-            <Inspector />
-            <HintBar />
-            <ToolDock />
+            <Show when=design>
+                <crate::catalog::CatalogPanel />
+                <Inspector />
+                <HintBar />
+                <ToolDock />
+            </Show>
             <crate::templates::EmptyPlanPrompt />
             </div>
             <crate::templates::TemplateChooser />

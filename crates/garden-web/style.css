@@ -24,6 +24,8 @@
   --tag: #1c241e;
   --tag-ink: #ffffff;
   --error: #b3261e;
+  --watch: #d98e04;
+  --sick: #c8372d;
   --plan-filter: none;
   --font: "Onest", system-ui, -apple-system, "Segoe UI", sans-serif;
   color-scheme: light;
@@ -868,6 +870,69 @@ button.title-card {
   background: var(--card);
   color: var(--text);
   box-shadow: 0 1px 3px rgba(20, 32, 22, 0.15);
+}
+
+/* garden mode */
+.mode-switch button[aria-pressed="true"] {
+  color: var(--accent-strong);
+}
+
+.plan.garden {
+  cursor: pointer;
+}
+
+.garden-marks .mark {
+  fill: none;
+  stroke-width: 3px;
+}
+
+.garden-marks .mark.open {
+  stroke-width: 5px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.75;
+}
+
+.garden-marks .mark-watch {
+  stroke: var(--watch);
+}
+
+.garden-marks .mark-sick {
+  stroke: var(--sick);
+}
+
+.garden-marks .mark-gone {
+  fill: var(--plot);
+  fill-opacity: 0.7;
+  stroke: var(--muted);
+  stroke-dasharray: 4 3;
+  stroke-width: 1.5px;
+}
+
+.garden-marks .mark-gone.open {
+  fill: none;
+  stroke: var(--plot);
+  stroke-dasharray: none;
+  stroke-width: 7px;
+  opacity: 0.8;
+}
+
+.garden-marks .mark-cross {
+  stroke: var(--muted);
+  stroke-width: 2px;
+  stroke-linecap: round;
+}
+
+.mark-badge circle {
+  fill: var(--watch);
+  stroke: var(--card);
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+}
+
+.mark-badge text {
+  fill: #fff;
+  font-weight: 700;
 }
 
 /* tool dock (bottom-centre) */

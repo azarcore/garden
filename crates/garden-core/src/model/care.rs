@@ -1,9 +1,11 @@
 //! Looking after the garden: each plant's health, notes and photos, the log of
 //! jobs done, and the products library with label intervals typed in by the person.
 
+use std::collections::BTreeMap;
+
 use serde::{Deserialize, Serialize};
 
-use super::{LogId, ObjectId, ProductId};
+use super::{LogId, ObjectId, PlantCategory, ProductId, TaskId};
 use crate::date::Date;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -116,4 +118,47 @@ pub struct LogEntry {
     #[serde(default)]
     pub note: String,
     pub created_ms: i64,
+}
+
+/// What a repeating job covers.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Target {
+    /// These plants or hedges.
+    Plants { ids: Vec<ObjectId> },
+    /// Every plant placed from this catalog entry, including ones added later.
+    Kind { catalog_id: String, name: String },
+    /// Every plant of this category, including ones added later.
+    Category { category: PlantCategory },
+}
+
+/// How a repeating job repeats.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum Repeat {
+    /// Every so many days after it was last done.
+    Every { days: u32 },
+    /// Once in each season (the months), or every 365 days without months.
+    Yearly,
+}
+
+/// A job that repeats, set up by the person.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CareTask {
+    pub id: TaskId,
+    pub job: Job,
+    pub product: Option<ProductId>,
+    #[serde(default)]
+    pub product_name: String,
+    #[serde(default)]
+    pub note: String,
+    pub target: Target,
+    pub repeat: Repeat,
+    /// (from, to) months 1..=12; from > to wraps past the year end.
+    pub months: Option<(u32, u32)>,
+    /// When it is first due for a plant that has never had it done.
+    pub first_due: Date,
+    /// The last skipped due date, per plant.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub skips: BTreeMap<ObjectId, Date>,
 }

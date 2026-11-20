@@ -3,8 +3,8 @@
 use serde::{Deserialize, Serialize};
 
 use crate::model::{
-    BackgroundImage, Document, Layer, LayerId, LogEntry, LogId, Object, ObjectId, PlantCare,
-    PlantDef, Product, ProductId, Tombstone,
+    BackgroundImage, CareTask, Document, Layer, LayerId, LogEntry, LogId, Object, ObjectId,
+    PlantCare, PlantDef, Product, ProductId, TaskId, Tombstone,
 };
 use crate::units::UnitSystem;
 
@@ -82,6 +82,13 @@ pub enum Command {
     RemoveProduct {
         id: ProductId,
     },
+    /// Replace the repeating job with the same id, or add it.
+    UpsertTask {
+        task: CareTask,
+    },
+    RemoveTask {
+        id: TaskId,
+    },
     /// All-or-nothing.
     Batch {
         commands: Vec<Command>,
@@ -115,7 +122,9 @@ impl Command {
             | Command::UpsertLogEntry { .. }
             | Command::RemoveLogEntry { .. }
             | Command::UpsertProduct { .. }
-            | Command::RemoveProduct { .. } => true,
+            | Command::RemoveProduct { .. }
+            | Command::UpsertTask { .. }
+            | Command::RemoveTask { .. } => true,
             Command::Batch { commands } => {
                 !commands.is_empty() && commands.iter().all(Command::is_care)
             }
@@ -181,6 +190,19 @@ impl Document {
                     && entry
                         .amount
                         .is_none_or(|a| a.value.is_finite() && a.value > 0.0)
+            }
+            Command::UpsertTask { task } => {
+                let repeat_ok = match task.repeat {
+                    crate::model::Repeat::Every { days } => (1..=2555).contains(&days),
+                    crate::model::Repeat::Yearly => true,
+                };
+                let months_ok = task
+                    .months
+                    .is_none_or(|(a, b)| (1..=12).contains(&a) && (1..=12).contains(&b));
+                let target_ok =
+                    !matches!(&task.target, crate::model::Target::Plants { ids } if ids.is_empty());
+                let product_ok = task.job != crate::model::Job::Sprayed || task.product.is_some();
+                repeat_ok && months_ok && target_ok && product_ok
             }
             Command::UpsertProduct { product } => {
                 !product.name.trim().is_empty()
@@ -361,6 +383,26 @@ impl Document {
                     .ok_or(CommandError::NotFound)?;
                 Command::UpsertProduct {
                     product: self.products.remove(i),
+                }
+            }
+            Command::UpsertTask { task } => match self.tasks.iter_mut().find(|t| t.id == task.id) {
+                Some(slot) => Command::UpsertTask {
+                    task: std::mem::replace(slot, task),
+                },
+                None => {
+                    let id = task.id;
+                    self.tasks.push(task);
+                    Command::RemoveTask { id }
+                }
+            },
+            Command::RemoveTask { id } => {
+                let i = self
+                    .tasks
+                    .iter()
+                    .position(|t| t.id == id)
+                    .ok_or(CommandError::NotFound)?;
+                Command::UpsertTask {
+                    task: self.tasks.remove(i),
                 }
             }
             Command::Batch { commands } => {
@@ -866,6 +908,86 @@ mod tests {
             assert_eq!(d.log, vec![e]);
         }
 
+        pub(super) fn task() -> crate::model::CareTask {
+            crate::model::CareTask {
+                id: TaskId::new(),
+                job: Job::Fed,
+                product: None,
+                product_name: String::new(),
+                note: "half dose".into(),
+                target: crate::model::Target::Kind {
+                    catalog_id: "apple".into(),
+                    name: "Apple Tree".into(),
+                },
+                repeat: crate::model::Repeat::Every { days: 28 },
+                months: Some((4, 9)),
+                first_due: day("2026-04-01"),
+                skips: Default::default(),
+            }
+        }
+
+        #[test]
+        fn tasks_undo() {
+            let mut d = Document::new("g", 0);
+            let t = task();
+            let undo_add = d.apply(Command::UpsertTask { task: t.clone() }, 1).unwrap();
+            let mut edited = t.clone();
+            edited.months = None;
+            let undo_edit = d
+                .apply(
+                    Command::UpsertTask {
+                        task: edited.clone(),
+                    },
+                    2,
+                )
+                .unwrap();
+            assert_eq!(d.tasks, vec![edited]);
+            d.apply(undo_edit, 3).unwrap();
+            assert_eq!(d.tasks, vec![t.clone()]);
+            d.apply(undo_add, 4).unwrap();
+            assert!(d.tasks.is_empty());
+            d.apply(Command::UpsertTask { task: t.clone() }, 5).unwrap();
+            let undo = d.apply(Command::RemoveTask { id: t.id }, 6).unwrap();
+            assert!(d.tasks.is_empty());
+            d.apply(undo, 7).unwrap();
+            assert_eq!(d.tasks, vec![t]);
+            assert_eq!(
+                d.apply(Command::RemoveTask { id: TaskId::new() }, 8),
+                Err(CommandError::NotFound)
+            );
+        }
+
+        #[test]
+        fn tasks_reject_bad_values() {
+            use crate::model::{Repeat, Target};
+            let mut d = Document::new("g", 0);
+            let before = d.clone();
+            let mut zero = task();
+            zero.repeat = Repeat::Every { days: 0 };
+            let mut huge = task();
+            huge.repeat = Repeat::Every { days: 2556 };
+            let mut month0 = task();
+            month0.months = Some((0, 5));
+            let mut month13 = task();
+            month13.months = Some((4, 13));
+            let mut empty = task();
+            empty.target = Target::Plants { ids: vec![] };
+            let mut spray = task();
+            spray.job = Job::Sprayed;
+            for t in [zero, huge, month0, month13, empty, spray] {
+                assert_eq!(
+                    d.apply(Command::UpsertTask { task: t.clone() }, 1),
+                    Err(CommandError::InvalidValue),
+                    "{t:?}"
+                );
+            }
+            assert_eq!(d, before);
+            let mut wraps = task();
+            wraps.months = Some((11, 2));
+            wraps.repeat = Repeat::Yearly;
+            assert!(d.apply(Command::UpsertTask { task: wraps }, 2).is_ok());
+        }
+
         #[test]
         fn is_care_sorts_commands() {
             let care = [
@@ -881,6 +1003,8 @@ mod tests {
                 Command::RemoveProduct {
                     id: ProductId::new(),
                 },
+                Command::UpsertTask { task: task() },
+                Command::RemoveTask { id: TaskId::new() },
             ];
             for c in &care {
                 assert!(c.is_care(), "{c:?}");

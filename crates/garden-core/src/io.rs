@@ -449,4 +449,59 @@ mod tests {
         let back = from_json(&to_json(&d).unwrap()).unwrap();
         assert_eq!(back, d);
     }
+
+    #[test]
+    fn tasks_stay_optional() {
+        let d = Document::new("g", 5);
+        let plain = to_json(&d).unwrap();
+        assert!(!plain.contains("\"tasks\""), "{plain}");
+        assert_eq!(from_json(&plain).unwrap(), d);
+    }
+
+    #[test]
+    fn tasks_round_trip() {
+        use crate::date::Date;
+        use crate::model::{
+            CareTask, Job, ObjectId, PlantCategory, ProductId, Repeat, Target, TaskId,
+        };
+        let day = |s| Date::parse(s).unwrap();
+        let plant = ObjectId::new();
+        let base = CareTask {
+            id: TaskId::new(),
+            job: Job::Sprayed,
+            product: Some(ProductId::new()),
+            product_name: "Copper".into(),
+            note: "leaf fall".into(),
+            target: Target::Plants { ids: vec![plant] },
+            repeat: Repeat::Yearly,
+            months: Some((11, 2)),
+            first_due: day("2026-11-01"),
+            skips: [(plant, day("2026-11-01"))].into_iter().collect(),
+        };
+        let kind = CareTask {
+            id: TaskId::new(),
+            job: Job::Fed,
+            product: None,
+            target: Target::Kind {
+                catalog_id: "apple".into(),
+                name: "Apple Tree".into(),
+            },
+            repeat: Repeat::Every { days: 28 },
+            months: None,
+            skips: Default::default(),
+            ..base.clone()
+        };
+        let cat = CareTask {
+            id: TaskId::new(),
+            job: Job::Pruned,
+            target: Target::Category {
+                category: PlantCategory::FruitTree,
+            },
+            ..kind.clone()
+        };
+        let mut d = Document::new("g", 5);
+        d.tasks = vec![base, kind, cat];
+        let back = from_json(&to_json(&d).unwrap()).unwrap();
+        assert_eq!(back, d);
+    }
 }

@@ -50,3 +50,15 @@ impl LogId {
         LogId(Uuid::new_v4())
     }
 }
+
+/// Identity of a repeating care job.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct TaskId(pub Uuid);
+
+impl TaskId {
+    #[allow(clippy::new_without_default)]
+    pub fn new() -> Self {
+        TaskId(Uuid::new_v4())
+    }
+}

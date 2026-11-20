@@ -2,7 +2,9 @@ use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use uuid::Uuid;
 
-use super::{BackgroundImage, LayerId, LogEntry, Object, ObjectId, PlantCare, PlantDef, Product};
+use super::{
+    BackgroundImage, CareTask, LayerId, LogEntry, Object, ObjectId, PlantCare, PlantDef, Product,
+};
 use crate::io::SCHEMA_VERSION;
 use crate::units::UnitSystem;
 
@@ -68,6 +70,9 @@ pub struct Document {
     /// The person's products library.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub products: Vec<Product>,
+    /// Repeating care jobs.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub tasks: Vec<CareTask>,
 }
 
 impl Document {
@@ -90,6 +95,7 @@ impl Document {
             care: BTreeMap::new(),
             log: Vec::new(),
             products: Vec::new(),
+            tasks: Vec::new(),
         }
     }
 

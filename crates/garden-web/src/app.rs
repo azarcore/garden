@@ -41,6 +41,8 @@ fn typing_in_field(e: &ev::KeyboardEvent) -> bool {
         || el.is_content_editable()
         // the plant form's own buttons (symbols, Save, Cancel) aren't editor keys
         || el.closest(".plant-form").ok().flatten().is_some()
+        // nor are the garden list's buttons
+        || el.closest(".list-card").ok().flatten().is_some()
 }
 
 /// The panels and modes the keyboard handler needs to know about.
@@ -179,6 +181,7 @@ pub fn App() -> impl IntoView {
     provide_context(crate::templates::ChooserOpen(chooser));
     let view3d = expect_context::<crate::view3d::View3d>();
     provide_context(crate::print::PrintOpen(RwSignal::new(false)));
+    provide_context(crate::list::ListOpen(RwSignal::new(false)));
     provide_context(crate::layers::LayersOpen(RwSignal::new(false)));
     let crate::library::DesignsOpen(designs_open) = expect_context::<crate::library::DesignsOpen>();
 
@@ -215,6 +218,7 @@ pub fn App() -> impl IntoView {
             <crate::library::MyDesigns />
             <crate::trace::TraceCard />
             <crate::print::PrintCard />
+            <crate::list::ListCard />
             <crate::layers::LayersCard />
             <ControlsCard />
             <crate::catalog::CatalogPanel />

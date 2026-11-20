@@ -193,7 +193,7 @@ fn print_tiled(state: RwSignal<EditorState>, paper: Paper, tiling: &Tiling, over
 }
 
 /// Replace the print area with `html`, set the page size and open the print dialog.
-fn show_and_print(html: &str, paper: Paper, landscape: bool) {
+pub(crate) fn show_and_print(html: &str, paper: Paper, landscape: bool) {
     let Some(window) = web_sys::window() else {
         return;
     };

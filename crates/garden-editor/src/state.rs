@@ -383,6 +383,36 @@ impl EditorState {
         }
     }
 
+    /// Set or clear a garden list price (per metric unit, undoable).
+    /// Negative or non-finite prices are ignored.
+    pub fn set_price(&mut self, key: &str, price: Option<f64>, now_ms: i64) {
+        if price.is_some_and(|p| !p.is_finite() || p < 0.0)
+            || self.doc().prices.get(key).copied() == price
+        {
+            return;
+        }
+        self.execute(
+            Command::SetPrice {
+                key: key.to_string(),
+                price,
+            },
+            now_ms,
+        );
+    }
+
+    /// What the garden list's prices are in (undoable).
+    pub fn set_currency(&mut self, currency: &str, now_ms: i64) {
+        let currency = currency.trim();
+        if currency != self.doc().currency {
+            self.execute(
+                Command::SetCurrency {
+                    currency: currency.to_string(),
+                },
+                now_ms,
+            );
+        }
+    }
+
     pub fn set_units(&mut self, units: UnitSystem, now_ms: i64) {
         if self.doc().units != units {
             self.execute(Command::SetUnits { units }, now_ms);
@@ -696,6 +726,29 @@ mod tests {
             ObjectKind::Plant { position, .. } => position,
             _ => panic!("not a plant"),
         }
+    }
+
+    #[test]
+    fn prices_and_currency_undo() {
+        let mut s = state_with(vec![]);
+        s.set_price("area:lawn", Some(3.0), 1);
+        s.set_currency(" € ", 2);
+        assert_eq!(s.doc().prices.get("area:lawn"), Some(&3.0));
+        assert_eq!(s.doc().currency, "€");
+        // the same value again is not another undo step
+        s.set_price("area:lawn", Some(3.0), 3);
+        s.undo(4);
+        assert_eq!(s.doc().currency, "");
+        s.undo(5);
+        assert!(s.doc().prices.is_empty());
+        s.redo(6);
+        assert_eq!(s.doc().prices.get("area:lawn"), Some(&3.0));
+        // bad values are ignored
+        s.set_price("area:lawn", Some(f64::NAN), 7);
+        s.set_price("area:lawn", Some(-2.0), 8);
+        assert_eq!(s.doc().prices.get("area:lawn"), Some(&3.0));
+        s.set_price("area:lawn", None, 9);
+        assert!(s.doc().prices.is_empty());
     }
 
     #[test]

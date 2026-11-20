@@ -8,6 +8,7 @@ mod icons;
 mod inspector;
 mod layers;
 mod library;
+mod list;
 mod plan_art;
 mod print;
 mod storage;

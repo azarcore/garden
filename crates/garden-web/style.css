@@ -455,6 +455,123 @@ button.title-card {
   }
 }
 
+/* garden list card */
+.list-card {
+  top: 76px;
+  right: 16px;
+  width: 380px;
+  max-height: calc(100vh - 100px);
+  padding: 12px 14px 14px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+}
+.list-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+.list-settings input {
+  width: 110px;
+  min-width: 0;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: var(--tile);
+}
+.list-settings .invalid input,
+.list-price.invalid input {
+  outline: 2px solid var(--error);
+}
+.list-body {
+  overflow-y: auto;
+  min-height: 0;
+  margin: 0 -4px;
+  padding: 0 4px;
+}
+.list-heading {
+  margin: 12px 0 4px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--muted);
+}
+.list-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.list-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 2px 10px;
+  padding: 6px 0;
+  border-top: 1px solid var(--line);
+}
+.list-item {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.list-label {
+  overflow-wrap: anywhere;
+}
+.list-item small,
+.list-price small {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+.list-qty {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+.list-price {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.list-price input {
+  width: 84px;
+  min-width: 0;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: var(--tile);
+  font-variant-numeric: tabular-nums;
+}
+.list-cost {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+.list-total {
+  margin: 10px 0 8px;
+  font-weight: 650;
+  text-align: right;
+}
+.list-actions {
+  display: flex;
+  gap: 6px;
+}
+.list-actions button {
+  flex: 1;
+  padding: 9px 12px;
+  border-radius: 11px;
+}
+.list-actions .trace-secondary {
+  background: var(--tile);
+  font-weight: 600;
+}
+@media (max-width: 768px) {
+  .list-card {
+    top: 118px;
+    left: 10px;
+    right: 10px;
+    width: auto;
+    max-height: calc(100vh - 140px);
+  }
+}
+
 /* print card */
 .print-card {
   top: 76px;
@@ -566,6 +683,35 @@ button.title-card {
   .print-label {
     color: #1c241e !important;
     font-weight: 700;
+  }
+  .print-list table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 10.5pt;
+  }
+  .print-list td,
+  .print-list th {
+    padding: 1.6mm 2mm;
+    border-bottom: 0.2mm solid #ccc;
+    text-align: left;
+    vertical-align: top;
+  }
+  .print-list .list-section th {
+    padding-top: 4mm;
+    border-bottom: 0.3mm solid #1c241e;
+  }
+  .print-list small {
+    display: block;
+    color: #666;
+    font-size: 8.5pt;
+  }
+  .print-list .num {
+    text-align: right;
+    white-space: nowrap;
+  }
+  .print-list tfoot th {
+    border-bottom: none;
+    text-align: right;
   }
 }
 

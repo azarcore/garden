@@ -325,6 +325,7 @@ pub fn ControlsCard() -> impl IntoView {
     let set_units = move |u: UnitSystem| state.update(|s| s.set_units(u, now()));
     let trace = expect_context::<crate::trace::Trace>();
     let crate::print::PrintOpen(print_open) = expect_context::<crate::print::PrintOpen>();
+    let crate::list::ListOpen(list_open) = expect_context::<crate::list::ListOpen>();
     let crate::layers::LayersOpen(layers_open) = expect_context::<crate::layers::LayersOpen>();
     let view3d = expect_context::<crate::view3d::View3d>();
 
@@ -355,6 +356,10 @@ pub fn ControlsCard() -> impl IntoView {
             <button class="icon-btn toggle" data-tip=EN.print aria-label=EN.print
                 aria-pressed=move || print_open.get().to_string()
                 on:click=move |_| print_open.update(|o| *o = !*o)>{icon(Icon::Printer)}</button>
+            // not a .toggle: the list stays reachable on phones (at the garden centre)
+            <button class="icon-btn" data-tip=EN.list_title aria-label=EN.list_title
+                aria-pressed=move || list_open.get().to_string()
+                on:click=move |_| list_open.update(|o| *o = !*o)>{icon(Icon::List)}</button>
             <button class="icon-btn toggle" data-tip=EN.layers aria-label=EN.layers
                 aria-pressed=move || layers_open.get().to_string()
                 on:click=move |_| layers_open.update(|o| *o = !*o)>{icon(Icon::Layers)}</button>

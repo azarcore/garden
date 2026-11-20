@@ -194,7 +194,6 @@ impl Store {
         Ok(plants)
     }
 
-    #[allow(dead_code)] // used by the catalog (next commit)
     pub async fn delete_plant(&self, id: &str) -> Result<(), StorageError> {
         let tx = self
             .db

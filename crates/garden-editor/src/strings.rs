@@ -250,6 +250,8 @@ pub struct Strings {
     pub err_name_too_long: &'static str,
     pub err_spread_invalid: &'static str,
     pub err_height_invalid: &'static str,
+    pub delete_plant_confirm: &'static str,
+    pub no_my_plants: &'static str,
 }
 
 pub static EN: Strings = Strings {
@@ -499,6 +501,8 @@ pub static EN: Strings = Strings {
     err_name_too_long: "Keep the name under 60 characters",
     err_spread_invalid: "Spread must be a length above zero, e.g. 60 cm",
     err_height_invalid: "Height must be a length above zero, e.g. 1.2 m",
+    delete_plant_confirm: "Delete this plant? Plants already placed stay.",
+    no_my_plants: "No plants of your own yet — add one with New plant",
 };
 
 /// Heading for a group of plants.

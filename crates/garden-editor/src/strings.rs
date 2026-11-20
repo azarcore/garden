@@ -432,7 +432,7 @@ pub static EN: Strings = Strings {
     list_empty: "Nothing to list yet. Draw or place something on the plan first.",
     list_currency: "Currency",
     list_gravel_depth: "Gravel depth",
-    list_bad_price: "A price is a number, like 12.50.",
+    list_bad_price: "Type a price like 12.50 or 12,50. For thousands, write 1500.",
     list_price_hint: "Add prices to see a total.",
     list_csv: "Export CSV",
     cat_shrub: "Shrubs",

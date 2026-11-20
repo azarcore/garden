@@ -55,6 +55,9 @@ pub struct Document {
     /// What the prices are in, as the person typed it (e.g. "€").
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub currency: String,
+    /// Gravel depth for the garden list (mm); None means the default.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub gravel_depth: Option<f64>,
 }
 
 impl Document {
@@ -73,6 +76,7 @@ impl Document {
             custom_plants: Vec::new(),
             prices: BTreeMap::new(),
             currency: String::new(),
+            gravel_depth: None,
         }
     }
 

@@ -93,7 +93,7 @@ pub fn garden_list(doc: &Document, gravel_depth_mm: f64) -> Vec<Row> {
                 }
             }
             ObjectKind::Area { area_type, shape } => {
-                let a = pos(shape.area());
+                let a = pos(shape.filled_area());
                 if *area_type == AreaType::Gravel {
                     gravel += a;
                 } else {
@@ -108,7 +108,7 @@ pub fn garden_list(doc: &Document, gravel_depth_mm: f64) -> Vec<Row> {
             ObjectKind::Linear { kind, shape, .. } => {
                 *lengths.entry(linear_order(*kind)).or_default() += pos(shape.length());
             }
-            ObjectKind::PlotBoundary { shape } => plot += pos(shape.area()),
+            ObjectKind::PlotBoundary { shape } => plot += pos(shape.filled_area()),
             ObjectKind::Structure { kind, .. } => {
                 *structures.entry(structure_order(*kind)).or_default() += 1.0;
             }
@@ -309,7 +309,7 @@ pub fn to_csv(
         let price = prices
             .get(&r.key)
             .filter(|_| r.priceable)
-            .map(|p| format!("{:.2}", price_to_display(*p, r.unit, system)))
+            .map(|p| price_text(*p, r.unit, system))
             .unwrap_or_default();
         let cost = cost(r, prices)
             .map(|c| format!("{c:.2}"))
@@ -443,6 +443,142 @@ fn structure_label(k: StructureKind) -> &'static str {
         StructureKind::Furniture => EN.kind_furniture,
         StructureKind::Other => EN.kind_structure,
     }
+}
+
+/// A price as the person typed it: blank clears it. A comma is the decimal
+/// point ("4,50") unless the text also has a dot ("1,234.50"); "1,500" is
+/// refused because it could mean either.
+pub fn parse_price(text: &str) -> Result<Option<f64>, PriceError> {
+    let t: String = text.chars().filter(|c| !c.is_whitespace()).collect();
+    if t.is_empty() {
+        return Ok(None);
+    }
+    let normal = if t.contains('.') {
+        t.replace(',', "")
+    } else {
+        let parts: Vec<&str> = t.split(',').collect();
+        match parts.as_slice() {
+            [_] => t.clone(),
+            // one comma: the decimal point, unless exactly 3 digits follow
+            [whole, frac] if frac.len() != 3 => format!("{whole}.{frac}"),
+            _ => return Err(PriceError),
+        }
+    };
+    if !normal
+        .chars()
+        .all(|c| c.is_ascii_digit() || c == '.' || c == '-')
+    {
+        return Err(PriceError);
+    }
+    match normal.parse::<f64>() {
+        Ok(p) if (0.0..1e12).contains(&p) => Ok(Some(p + 0.0)),
+        _ => Err(PriceError),
+    }
+}
+
+/// A price couldn't be read.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct PriceError;
+
+/// A price per metric unit as shown in `system`: up to 4 decimals, no trailing zeros.
+pub fn price_text(per_metric: f64, unit: Unit, system: UnitSystem) -> String {
+    let t = format!("{:.4}", price_to_display(per_metric, unit, system));
+    t.trim_end_matches('0').trim_end_matches('.').to_string()
+}
+
+/// A money amount with two decimals and the currency, e.g. "€ 12.50".
+pub fn money(amount: f64, currency: &str) -> String {
+    let currency = currency.trim();
+    if currency.is_empty() {
+        format!("{amount:.2}")
+    } else {
+        format!("{currency} {amount:.2}")
+    }
+}
+
+fn escape(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+}
+
+/// "per m²", "per ft²", "each".
+pub fn per_unit(unit: Unit, system: UnitSystem) -> String {
+    match unit {
+        Unit::Each => EN.list_each.to_string(),
+        u => format!("{} {}", EN.list_per, unit_label(u, system)),
+    }
+}
+
+/// The list as a printable page (HTML, everything escaped).
+pub fn print_html(
+    name: &str,
+    date: &str,
+    rows: &[Row],
+    prices: &BTreeMap<String, f64>,
+    system: UnitSystem,
+    currency: &str,
+) -> String {
+    let priced = total(rows, prices).is_some();
+    let mut body = String::new();
+    let mut section = None;
+    for r in rows {
+        if section != Some(r.section) {
+            section = Some(r.section);
+            body += &format!(
+                r#"<tr class="list-section"><th colspan="{}">{}</th></tr>"#,
+                if priced { 4 } else { 2 },
+                escape(section_label(r.section))
+            );
+        }
+        let detail = if r.detail.is_empty() {
+            String::new()
+        } else {
+            format!("<small>{}</small>", escape(&r.detail))
+        };
+        let money_cells = if priced {
+            let price = prices
+                .get(&r.key)
+                .filter(|_| r.priceable)
+                .map(|p| {
+                    let shown = price_text(*p, r.unit, system);
+                    let shown = if currency.trim().is_empty() {
+                        shown
+                    } else {
+                        format!("{} {shown}", currency.trim())
+                    };
+                    escape(&format!("{shown} {}", per_unit(r.unit, system)))
+                })
+                .unwrap_or_default();
+            let c = cost(r, prices)
+                .map(|c| escape(&money(c, currency)))
+                .unwrap_or_default();
+            format!(r#"<td>{price}</td><td class="num">{c}</td>"#)
+        } else {
+            String::new()
+        };
+        body += &format!(
+            r#"<tr><td>{}{detail}</td><td class="num">{}</td>{money_cells}</tr>"#,
+            escape(&r.label),
+            escape(&quantity_display(r, system)),
+        );
+    }
+    let foot = total(rows, prices)
+        .map(|t| {
+            format!(
+                r#"<tfoot><tr><th colspan="3">{}</th><th class="num">{}</th></tr></tfoot>"#,
+                escape(EN.list_total),
+                escape(&money(t, currency))
+            )
+        })
+        .unwrap_or_default();
+    format!(
+        r#"<section class="print-page print-list"><header class="print-title"><strong>{}</strong><span>{}</span><span>{}</span></header><table>{body}{foot}</table></section>"#,
+        escape(name),
+        escape(EN.list_title),
+        escape(date),
+    )
 }
 
 #[cfg(test)]
@@ -658,6 +794,9 @@ mod tests {
                 r.quantity
             );
         }
+        // the figure-eight bed counts both loops: 2 × 0.25 m²
+        let rows = garden_list(&d, 50.);
+        assert!((row(&rows, "area:bed").quantity - 0.5).abs() < 1e-6);
         assert!(
             garden_list(&d, f64::NAN)
                 .iter()
@@ -737,5 +876,91 @@ mod tests {
             priced.starts_with("Section,Item,Quantity,Unit,Price,Cost"),
             "{priced}"
         );
+    }
+
+    #[test]
+    fn printed_list_escapes_everything() {
+        let mut d = Document::new("<b>Mine</b>", 0);
+        add(
+            &mut d,
+            "<script>x</script>",
+            plant(None, PlantCategory::Shrub),
+        );
+        let rows = garden_list(&d, 50.);
+        let prices = BTreeMap::from([(rows[0].key.clone(), 2.0)]);
+        let html = print_html(
+            &d.name,
+            "1/1/2026",
+            &rows,
+            &prices,
+            UnitSystem::Metric,
+            "<img src=x onerror=alert(1)>",
+        );
+        assert!(
+            !html.contains("<img") && !html.contains("<script") && !html.contains("<b>"),
+            "{html}"
+        );
+        assert!(
+            html.contains("&lt;img src=x onerror=alert(1)&gt; 2.00"),
+            "{html}"
+        );
+        assert!(html.contains("&lt;b&gt;Mine&lt;/b&gt;"), "{html}");
+    }
+
+    #[test]
+    fn prices_read_as_people_type_them() {
+        assert_eq!(parse_price(""), Ok(None));
+        assert_eq!(parse_price("  "), Ok(None));
+        assert_eq!(parse_price("12.50"), Ok(Some(12.5)));
+        assert_eq!(parse_price("4,50"), Ok(Some(4.5)));
+        assert_eq!(parse_price("4,5"), Ok(Some(4.5)));
+        assert_eq!(parse_price("1,234.50"), Ok(Some(1234.5)));
+        assert_eq!(parse_price("1 500"), Ok(Some(1500.0)));
+        assert_eq!(parse_price("1500"), Ok(Some(1500.0)));
+        assert_eq!(
+            parse_price("1,500"),
+            Err(PriceError),
+            "could be 1.5 or 1500"
+        );
+        assert_eq!(parse_price("-0"), Ok(Some(0.0)));
+        assert!(parse_price("-0").unwrap().unwrap().is_sign_positive());
+        for bad in ["abc", "-3", "1e400", "NaN", "inf", "1.2.3"] {
+            assert_eq!(parse_price(bad), Err(PriceError), "{bad}");
+        }
+    }
+
+    #[test]
+    fn shown_prices_multiply_out() {
+        // 4.5 per m² is 0.41806… per ft²: shown with enough decimals everywhere
+        assert_eq!(
+            price_text(4.5, Unit::SquareMetre, UnitSystem::Imperial),
+            "0.4181"
+        );
+        assert_eq!(
+            price_text(4.5, Unit::SquareMetre, UnitSystem::Metric),
+            "4.5"
+        );
+        assert_eq!(price_text(6.0, Unit::Each, UnitSystem::Imperial), "6");
+        assert_eq!(money(12.5, ""), "12.50");
+        assert_eq!(money(12.5, "€"), "€ 12.50");
+        let lawn = Row {
+            key: "area:lawn".into(),
+            section: Section::Areas,
+            label: "Lawn".into(),
+            quantity: 50.,
+            unit: Unit::SquareMetre,
+            detail: String::new(),
+            priceable: true,
+        };
+        let prices = BTreeMap::from([("area:lawn".to_string(), 4.5)]);
+        let csv = to_csv(
+            std::slice::from_ref(&lawn),
+            &prices,
+            UnitSystem::Imperial,
+            "",
+        );
+        assert!(csv.contains(",0.4181,225.00"), "{csv}");
+        let html = print_html("g", "d", &[lawn], &prices, UnitSystem::Imperial, "");
+        assert!(html.contains("0.4181"), "{html}");
     }
 }

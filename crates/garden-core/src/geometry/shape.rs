@@ -266,6 +266,72 @@ impl Shape {
         finite(kurbo::Shape::area(&self.to_bez_path()).abs())
     }
 
+    /// Area covered by a closed shape, counting every loop of one whose
+    /// edges cross (a figure-eight bed); 0 for open shapes.
+    pub fn filled_area(&self) -> f64 {
+        if !self.closed || self.segments.is_empty() {
+            return 0.0;
+        }
+        // flatten to a polygon (0.5 mm tolerance)
+        let mut pts: Vec<Point> = Vec::new();
+        kurbo::flatten(self.to_bez_path(), 0.5, |el| match el {
+            kurbo::PathEl::MoveTo(p) | kurbo::PathEl::LineTo(p) => pts.push(p),
+            _ => {}
+        });
+        if pts.len() > 1 && pts.first() == pts.last() {
+            pts.pop();
+        }
+        if pts.len() < 3 || pts.iter().any(|p| !p.x.is_finite() || !p.y.is_finite()) {
+            return 0.0;
+        }
+        let edges: Vec<(Point, Point)> = (0..pts.len())
+            .map(|i| (pts[i], pts[(i + 1) % pts.len()]))
+            .collect();
+        // between consecutive "event" heights no edges cross, so the covered
+        // width changes linearly and width-at-middle × height is exact
+        let mut ys: Vec<f64> = pts.iter().map(|p| p.y).collect();
+        for (i, a) in edges.iter().enumerate() {
+            for b in &edges[i + 1..] {
+                if let Some(y) = crossing_y(*a, *b) {
+                    ys.push(y);
+                }
+            }
+        }
+        if ys.len() == pts.len() {
+            // no edges cross: the exact (curve-aware) area
+            return self.area();
+        }
+        ys.sort_by(f64::total_cmp);
+        ys.dedup();
+        let mut area = 0.0;
+        for w in ys.windows(2) {
+            let (y0, y1) = (w[0], w[1]);
+            if y1 - y0 <= 1e-9 {
+                continue;
+            }
+            let ym = (y0 + y1) / 2.0;
+            let mut xs: Vec<(f64, i32)> = edges
+                .iter()
+                .filter(|(a, b)| (a.y < ym) != (b.y < ym))
+                .map(|(a, b)| {
+                    let t = (ym - a.y) / (b.y - a.y);
+                    (a.x + t * (b.x - a.x), if b.y > a.y { 1 } else { -1 })
+                })
+                .collect();
+            xs.sort_by(|a, b| a.0.total_cmp(&b.0));
+            let mut winding = 0;
+            let mut covered = 0.0;
+            for pair in xs.windows(2) {
+                winding += pair[0].1;
+                if winding != 0 {
+                    covered += pair[1].0 - pair[0].0;
+                }
+            }
+            area += covered * (y1 - y0);
+        }
+        finite(area)
+    }
+
     pub fn bounding_box(&self) -> Rect {
         if self.segments.is_empty() {
             return Rect::from_points(self.start, self.start);
@@ -320,12 +386,75 @@ fn finite(v: f64) -> f64 {
     if v.is_finite() { v } else { 0.0 }
 }
 
+/// Height at which two straight edges cross, if they do (not at a shared end).
+fn crossing_y(a: (Point, Point), b: (Point, Point)) -> Option<f64> {
+    let d1 = a.1 - a.0;
+    let d2 = b.1 - b.0;
+    let den = d1.x * d2.y - d1.y * d2.x;
+    if den.abs() < 1e-12 {
+        return None;
+    }
+    let w = b.0 - a.0;
+    let t = (w.x * d2.y - w.y * d2.x) / den;
+    let u = (w.x * d1.y - w.y * d1.x) / den;
+    let inside = |v: f64| v > 1e-9 && v < 1.0 - 1e-9;
+    (inside(t) && inside(u)).then_some(a.0.y + t * d1.y)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     fn approx(a: f64, b: f64) -> bool {
         (a - b).abs() < 1e-2
+    }
+
+    #[test]
+    fn filled_area_counts_every_loop() {
+        let bow_tie = Shape::polyline(
+            &[
+                Point::new(0., 0.),
+                Point::new(1000., 1000.),
+                Point::new(1000., 0.),
+                Point::new(0., 1000.),
+            ],
+            true,
+        );
+        // two triangles of 250 000 mm² each; the net signed area is 0
+        assert!(
+            (bow_tie.filled_area() - 500_000.).abs() < 1.0,
+            "{}",
+            bow_tie.filled_area()
+        );
+        let rect = Shape::rect(Point::new(0., 0.), 10_000., 5000.);
+        assert!((rect.filled_area() - 50_000_000.).abs() < 1.0);
+        let reversed = Shape::polyline(
+            &[
+                Point::new(0., 0.),
+                Point::new(0., 5000.),
+                Point::new(10_000., 5000.),
+                Point::new(10_000., 0.),
+            ],
+            true,
+        );
+        assert!((reversed.filled_area() - 50_000_000.).abs() < 1.0);
+        let ellipse = Shape::ellipse(Point::new(3., 4.), 4000., 2500.);
+        assert_eq!(
+            ellipse.filled_area(),
+            ellipse.area(),
+            "simple shapes keep the exact area"
+        );
+        let circle = Shape::circle(Point::new(0., 0.), 1000.);
+        let exact = std::f64::consts::PI * 1e6;
+        assert!(
+            (circle.filled_area() - exact).abs() / exact < 0.002,
+            "{}",
+            circle.filled_area()
+        );
+        let open = Shape::polyline(&[Point::new(0., 0.), Point::new(1000., 0.)], false);
+        assert_eq!(open.filled_area(), 0.0);
+        let flat = Shape::polyline(&[Point::new(0., 0.), Point::new(1000., 0.)], true);
+        assert_eq!(flat.filled_area(), 0.0);
     }
 
     #[test]

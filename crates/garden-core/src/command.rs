@@ -57,6 +57,10 @@ pub enum Command {
     SetCurrency {
         currency: String,
     },
+    /// Gravel depth for the garden list (mm, > 0); `None` means the default.
+    SetGravelDepth {
+        depth: Option<f64>,
+    },
     /// All-or-nothing.
     Batch {
         commands: Vec<Command>,
@@ -111,6 +115,7 @@ impl Document {
             } => b.is_finite(),
             Command::UpsertCustomPlant { def } => def.is_finite(),
             Command::SetPrice { price: Some(p), .. } => p.is_finite() && *p >= 0.0,
+            Command::SetGravelDepth { depth: Some(d) } => d.is_finite() && *d > 0.0,
             _ => true,
         };
         if !finite {
@@ -233,6 +238,9 @@ impl Document {
             Command::SetCurrency { currency } => Command::SetCurrency {
                 currency: std::mem::replace(&mut self.currency, currency),
             },
+            Command::SetGravelDepth { depth } => Command::SetGravelDepth {
+                depth: std::mem::replace(&mut self.gravel_depth, depth),
+            },
             Command::Batch { commands } => {
                 let mut inverses = Vec::with_capacity(commands.len());
                 for c in commands {
@@ -282,6 +290,31 @@ mod tests {
         assert_eq!(d.currency, "€");
         d.apply(undo, 9).unwrap();
         assert_eq!(d.currency, "");
+    }
+
+    #[test]
+    fn gravel_depth_is_saved_and_undoes() {
+        let mut d = Document::new("g", 0);
+        assert_eq!(d.gravel_depth, None);
+        let undo = d
+            .apply(Command::SetGravelDepth { depth: Some(80.0) }, 1)
+            .unwrap();
+        assert_eq!(d.gravel_depth, Some(80.0));
+        d.apply(undo, 2).unwrap();
+        assert_eq!(d.gravel_depth, None);
+        for bad in [0.0, -5.0, f64::NAN] {
+            assert_eq!(
+                d.apply(Command::SetGravelDepth { depth: Some(bad) }, 3),
+                Err(CommandError::InvalidValue),
+                "{bad}"
+            );
+        }
+        let json = crate::io::to_json(&d).unwrap();
+        assert!(!json.contains("gravel_depth"), "unset depth is not written");
+        d.apply(Command::SetGravelDepth { depth: Some(80.0) }, 4)
+            .unwrap();
+        let back = crate::io::from_json(&crate::io::to_json(&d).unwrap()).unwrap();
+        assert_eq!(back.gravel_depth, Some(80.0));
     }
 
     #[test]

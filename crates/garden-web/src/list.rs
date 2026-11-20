@@ -5,8 +5,8 @@ use std::collections::BTreeMap;
 
 use garden_core::units::{UnitSystem, format_length, parse_length};
 use garden_editor::list::{
-    Row, Section, Unit, cost, garden_list, price_from_display, price_to_display, quantity_display,
-    section_label, to_csv, total, unit_label,
+    Row, Section, cost, garden_list, money, parse_price, per_unit, price_from_display, price_text,
+    print_html, quantity_display, section_label, to_csv, total,
 };
 use garden_editor::print::Paper;
 use garden_editor::state::EditorState;
@@ -20,45 +20,10 @@ use crate::icons::{Icon, icon};
 #[derive(Clone, Copy)]
 pub struct ListOpen(pub RwSignal<bool>);
 
-/// Gravel depth used when nothing else is set (mm).
+/// Gravel depth used when the design doesn't set one (mm).
 const DEFAULT_GRAVEL_DEPTH: f64 = 50.0;
 
-/// A money amount with two decimals and the currency, e.g. "€ 12.50".
-fn money(amount: f64, currency: &str) -> String {
-    if currency.is_empty() {
-        format!("{amount:.2}")
-    } else {
-        format!("{currency} {amount:.2}")
-    }
-}
-
-/// Price as typed: blank clears it; a comma works as the decimal point.
-fn parse_price(text: &str) -> Result<Option<f64>, ()> {
-    let t = text.trim();
-    if t.is_empty() {
-        return Ok(None);
-    }
-    match t.replace(',', ".").parse::<f64>() {
-        Ok(p) if p.is_finite() && p >= 0.0 => Ok(Some(p)),
-        _ => Err(()),
-    }
-}
-
-/// "per m²", "per ft²", "each".
-fn per_unit(unit: Unit, units: UnitSystem) -> String {
-    match unit {
-        Unit::Each => EN.list_each.to_string(),
-        u => format!("{} {}", EN.list_per, unit_label(u, units)),
-    }
-}
-
-fn escape(text: &str) -> String {
-    text.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-}
-
-/// The list as a printable table.
+/// The list as a printable page.
 fn print_list(
     name: &str,
     rows: &[Row],
@@ -68,63 +33,7 @@ fn print_list(
 ) {
     let date =
         js_sys::Date::new_0().to_locale_date_string("default", &wasm_bindgen::JsValue::UNDEFINED);
-    let priced = total(rows, prices).is_some();
-    let mut body = String::new();
-    let mut section = None;
-    for r in rows {
-        if section != Some(r.section) {
-            section = Some(r.section);
-            body += &format!(
-                r#"<tr class="list-section"><th colspan="{}">{}</th></tr>"#,
-                if priced { 4 } else { 2 },
-                escape(section_label(r.section))
-            );
-        }
-        let detail = if r.detail.is_empty() {
-            String::new()
-        } else {
-            format!(r#"<small>{}</small>"#, escape(&r.detail))
-        };
-        let money_cells = if priced {
-            let price = prices
-                .get(&r.key)
-                .filter(|_| r.priceable)
-                .map(|p| {
-                    format!(
-                        "{} {}",
-                        money(price_to_display(*p, r.unit, units), currency),
-                        escape(&per_unit(r.unit, units))
-                    )
-                })
-                .unwrap_or_default();
-            let c = cost(r, prices)
-                .map(|c| money(c, currency))
-                .unwrap_or_default();
-            format!("<td>{price}</td><td class=\"num\">{c}</td>")
-        } else {
-            String::new()
-        };
-        body += &format!(
-            r#"<tr><td>{}{detail}</td><td class="num">{}</td>{money_cells}</tr>"#,
-            escape(&r.label),
-            escape(&quantity_display(r, units)),
-        );
-    }
-    let foot = total(rows, prices)
-        .map(|t| {
-            format!(
-                r#"<tfoot><tr><th colspan="3">{}</th><th class="num">{}</th></tr></tfoot>"#,
-                EN.list_total,
-                money(t, currency)
-            )
-        })
-        .unwrap_or_default();
-    let html = format!(
-        r#"<section class="print-page print-list"><header class="print-title"><strong>{name}</strong><span>{list}</span><span>{date}</span></header><table>{body}{foot}</table></section>"#,
-        name = escape(name),
-        list = EN.list_title,
-        date = String::from(date),
-    );
+    let html = print_html(name, &String::from(date), rows, prices, units, currency);
     crate::print::show_and_print(&html, Paper::A4, false);
 }
 
@@ -133,7 +42,8 @@ fn print_list(
 pub fn ListCard() -> impl IntoView {
     let state = expect_context::<RwSignal<EditorState>>();
     let ListOpen(open) = expect_context::<ListOpen>();
-    let depth = RwSignal::new(DEFAULT_GRAVEL_DEPTH);
+    let depth =
+        Memo::new(move |_| state.with(|s| s.doc().gravel_depth.unwrap_or(DEFAULT_GRAVEL_DEPTH)));
     let depth_error = RwSignal::new(false);
     // a price that couldn't be read, by row key
     let bad_price = RwSignal::new(None::<String>);
@@ -185,12 +95,7 @@ pub fn ListCard() -> impl IntoView {
             move || {
                 prices
                     .with(|p| p.get(&key).copied())
-                    .map(|p| {
-                        let v = price_to_display(p, unit, units.get());
-                        // enough decimals that re-typing what's shown keeps the cost
-                        let t = format!("{v:.4}");
-                        t.trim_end_matches('0').trim_end_matches('.').to_string()
-                    })
+                    .map(|p| price_text(p, unit, units.get()))
                     .unwrap_or_default()
             }
         };
@@ -198,11 +103,15 @@ pub fn ListCard() -> impl IntoView {
             let key = key.clone();
             move |e: leptos::ev::Event| match parse_price(&event_target_value(&e)) {
                 Ok(p) => {
-                    bad_price.set(None);
                     let per_metric = p.map(|p| price_from_display(p, unit, units.get_untracked()));
+                    if per_metric.is_some_and(|p| !p.is_finite()) {
+                        bad_price.set(Some(key.clone()));
+                        return;
+                    }
+                    bad_price.set(None);
                     state.update(|s| s.set_price(&key, per_metric, now()));
                 }
-                Err(()) => bad_price.set(Some(key.clone())),
+                Err(_) => bad_price.set(Some(key.clone())),
             }
         };
         let row_cost = {
@@ -279,9 +188,9 @@ pub fn ListCard() -> impl IntoView {
                                 <input class="list-depth" type="text"
                                     prop:value=move || format_length(depth.get(), units.get())
                                     on:change=move |e| match parse_length(&event_target_value(&e), units.get_untracked()) {
-                                        Ok(mm) if mm > 0.0 => {
+                                        Ok(mm) if mm > 0.0 && mm.is_finite() => {
                                             depth_error.set(false);
-                                            depth.set(mm);
+                                            state.update(|s| s.set_gravel_depth(mm, now()));
                                         }
                                         _ => depth_error.set(true),
                                     } />

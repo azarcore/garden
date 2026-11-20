@@ -400,6 +400,18 @@ impl EditorState {
         );
     }
 
+    /// Gravel depth for the garden list (mm, undoable); bad values are ignored.
+    pub fn set_gravel_depth(&mut self, depth_mm: f64, now_ms: i64) {
+        if depth_mm.is_finite() && depth_mm > 0.0 && self.doc().gravel_depth != Some(depth_mm) {
+            self.execute(
+                Command::SetGravelDepth {
+                    depth: Some(depth_mm),
+                },
+                now_ms,
+            );
+        }
+    }
+
     /// What the garden list's prices are in (undoable).
     pub fn set_currency(&mut self, currency: &str, now_ms: i64) {
         let currency = currency.trim();

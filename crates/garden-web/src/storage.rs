@@ -261,7 +261,21 @@ impl Store {
         Ok(value.and_then(|v| v.dyn_into::<web_sys::Blob>().ok()))
     }
 
-    #[allow(dead_code)] // kept for a later clean-up of unused photos
+    /// The references of every stored image (traced photos and plant photos).
+    pub async fn list_image_keys(&self) -> Result<Vec<String>, StorageError> {
+        let tx = self
+            .db
+            .transaction(&[IMAGES], TransactionMode::ReadOnly)
+            .map_err(classify)?;
+        let store = tx.object_store(IMAGES).map_err(classify)?;
+        let keys: Vec<JsValue> = store
+            .get_all_keys(None, None)
+            .map_err(classify)?
+            .await
+            .map_err(classify)?;
+        Ok(keys.into_iter().filter_map(|k| k.as_string()).collect())
+    }
+
     pub async fn delete_image(&self, image_ref: &str) -> Result<(), StorageError> {
         let tx = self
             .db

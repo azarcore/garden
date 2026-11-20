@@ -2549,3 +2549,137 @@ button.title-card {
     max-height: 58vh;
   }
 }
+
+/* plant photos */
+.photo-strip {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+  overflow-x: auto;
+}
+
+.photo-strip:empty {
+  display: none;
+}
+
+.photo-strip li {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex: none;
+}
+
+.photo-strip small {
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.photo-thumb {
+  width: 72px;
+  height: 72px;
+  padding: 0;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--tile);
+}
+
+.photo-thumb .thumb {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.photo-missing {
+  display: grid;
+  place-items: center;
+  height: 100%;
+  padding: 4px;
+  color: var(--muted);
+  font-size: 10.5px;
+  line-height: 1.2;
+  text-align: center;
+}
+
+.add-photo {
+  display: inline-flex;
+  align-items: center;
+  padding: 7px 12px;
+  border-radius: 10px;
+  background: var(--tile);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.add-photo:focus-within {
+  box-shadow: inset 0 0 0 1.5px var(--accent);
+}
+
+.add-photo input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+}
+
+.photos .care-empty {
+  margin-top: 6px;
+  font-size: 12px;
+}
+
+.photo-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgba(10, 14, 11, 0.72);
+}
+
+.photo-viewer figure {
+  margin: 0;
+  max-width: min(960px, 100%);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.photo-viewer .large {
+  max-width: 100%;
+  max-height: calc(100vh - 110px);
+  border-radius: 12px;
+  object-fit: contain;
+}
+
+.photo-viewer .photo-missing.large {
+  min-width: 240px;
+  min-height: 160px;
+  border-radius: 12px;
+  background: var(--card);
+}
+
+.photo-viewer figcaption {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #fff;
+  font-size: 14px;
+}
+
+.photo-viewer figcaption span {
+  margin-right: auto;
+}
+
+.photo-viewer figcaption button {
+  padding: 7px 14px;
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--text);
+  font-weight: 600;
+}

@@ -177,6 +177,11 @@ pub fn provide_library(state: RwSignal<EditorState>) -> Library {
             return;
         };
         lib.summaries.set(summaries_of(&records));
+        spawn_local(crate::photos::clean_up(
+            store.clone(),
+            records.clone(),
+            state,
+        ));
         // Only replace the blank start-up design if nothing has been drawn yet.
         let untouched = state.with_untracked(|s| s.change_count() == 0);
         if let Some(doc) = records.iter().find_map(|r| parse(r).ok())

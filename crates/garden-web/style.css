@@ -1858,3 +1858,17 @@ button.title-card {
   color: var(--muted);
   font-size: 13px;
 }
+
+/* the catalog's header, search and chips stay put; only the results scroll */
+.picker.catalog {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.catalog-results {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin: 0 -4px;
+  padding: 0 4px 4px;
+}

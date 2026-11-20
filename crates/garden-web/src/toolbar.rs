@@ -173,13 +173,16 @@ pub fn ToolDock() -> impl IntoView {
             .collect_view()
     };
     let crate::catalog::CatalogOpen(catalog_open) = expect_context::<crate::catalog::CatalogOpen>();
+    // the panel also shows while the plant tool is on
+    let catalog_shown =
+        move || catalog_open.get() || state.with(|s| matches!(s.tool(), ToolKind::Plant(_)));
     view! {
         <nav class="card dock" aria-label=EN.tools_label>
-            <button class="dock-tool" aria-pressed=move || catalog_open.get().to_string() aria-label=EN.catalog
+            <button class="dock-tool" aria-pressed=move || catalog_shown().to_string() aria-label=EN.catalog
                 data-tip=format!("{}  /", EN.catalog)
                 on:click=move |_| {
-                    if catalog_open.get_untracked() {
-                        catalog_open.set(false);
+                    if catalog_shown() {
+                        crate::catalog::close_catalog(catalog_open, state);
                     } else {
                         crate::catalog::focus_search(catalog_open);
                     }

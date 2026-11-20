@@ -63,6 +63,31 @@ fn feature_icon(f: FeatureId) -> Icon {
     }
 }
 
+/// Close the catalog; it also shows while the plant tool is on, so that goes
+/// back to the select tool.
+pub fn close_catalog(open: RwSignal<bool>, state: RwSignal<EditorState>) {
+    open.set(false);
+    if state.with_untracked(|s| matches!(s.tool(), ToolKind::Plant(_))) {
+        state.update(|s| s.switch_tool(ToolKind::Select, now()));
+    }
+}
+
+/// Scroll the highlighted row into view (after the DOM has updated).
+fn reveal_highlight() {
+    request_animation_frame(|| {
+        let Some(el) = web_sys::window().and_then(|w| w.document()).and_then(|d| {
+            d.query_selector(".catalog .specimen.highlight")
+                .ok()
+                .flatten()
+        }) else {
+            return;
+        };
+        let opts = web_sys::ScrollIntoViewOptions::new();
+        opts.set_block(web_sys::ScrollLogicalPosition::Nearest);
+        el.scroll_into_view_with_scroll_into_view_options(&opts);
+    });
+}
+
 /// Open the catalog and put the cursor in its search box.
 pub fn focus_search(open: RwSignal<bool>) {
     open.set(true);
@@ -134,6 +159,7 @@ pub fn CatalogPanel() -> impl IntoView {
         let entry: CatalogEntry = entries.with_value(|all| all[i].clone());
         recent.update(|r| *r = remember(r, &entry.id, RECENT_MAX));
         save_recent(&recent.get_untracked());
+        highlight.set(0); // the list just changed (recent picks): start again at the top
         match entry.kind {
             EntryKind::Plant(def) => {
                 last_plant.set(def.clone());
@@ -145,22 +171,19 @@ pub fn CatalogPanel() -> impl IntoView {
             }
         }
     };
-    let close = move || {
-        open.set(false);
-        if plant_tool.get_untracked() {
-            state.update(|s| s.switch_tool(ToolKind::Select, now()));
-        }
-    };
+    let close = move || close_catalog(open, state);
     let on_key = move |e: leptos::ev::KeyboardEvent| {
         let count = flat.with_untracked(Vec::len);
         match e.key().as_str() {
             "ArrowDown" if count > 0 => {
                 e.prevent_default();
                 highlight.update(|h| *h = (*h + 1).min(count - 1));
+                reveal_highlight();
             }
             "ArrowUp" => {
                 e.prevent_default();
                 highlight.update(|h| *h = h.saturating_sub(1));
+                reveal_highlight();
             }
             "Enter" => {
                 if let Some(i) = flat.with_untracked(|f| f.get(highlight.get_untracked()).copied())
@@ -173,15 +196,18 @@ pub fn CatalogPanel() -> impl IntoView {
                     close();
                 } else {
                     query.set(String::new());
+                    highlight.set(0);
                 }
             }
             _ => {}
         }
     };
 
-    let row = move |i: usize| {
+    // `pos` is the row's place in the visible list (an entry can be listed twice:
+    // under Recently used and in its group)
+    let row = move |pos: usize, i: usize| {
         let entry = entries.with_value(|all| all[i].clone());
-        let is_hl = move || flat.with(|f| f.get(highlight.get()) == Some(&i));
+        let is_hl = move || highlight.get() == pos;
         match &entry.kind {
             EntryKind::Plant(p) => {
                 let id = p.id.clone();
@@ -239,21 +265,31 @@ pub fn CatalogPanel() -> impl IntoView {
                     on:input=move |e| { query.set(event_target_value(&e)); highlight.set(0); }
                     on:keydown=on_key />
                 <div class="chips" role="group">{chips}</div>
+                <div class="catalog-results">
                 {move || {
                     let secs = sections.get();
                     if secs.iter().all(|(_, ids)| ids.is_empty()) {
                         return view! { <p class="no-matches">{EN.no_matches}</p> }.into_any();
                     }
-                    secs.into_iter()
-                        .map(|(heading, ids)| view! {
+                    let mut start = 0;
+                    let mut views = Vec::new();
+                    for (heading, ids) in secs {
+                        let rows = ids
+                            .iter()
+                            .enumerate()
+                            .map(|(k, &i)| row(start + k, i))
+                            .collect_view();
+                        start += ids.len();
+                        views.push(view! {
                             <section class="plant-group">
                                 {heading.map(|h| view! { <h3>{h}</h3> })}
-                                <div class="specimens">{ids.into_iter().map(row).collect_view()}</div>
+                                <div class="specimens">{rows}</div>
                             </section>
-                        })
-                        .collect_view()
-                        .into_any()
+                        });
+                    }
+                    views.collect_view().into_any()
                 }}
+                </div>
             </aside>
         </Show>
     }

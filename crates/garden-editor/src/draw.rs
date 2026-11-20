@@ -17,9 +17,6 @@ const DEFAULT_LABEL_SIZE: f64 = 300.0;
 /// How far a new dimension line sits from what it measures (mm).
 const DEFAULT_DIMENSION_OFFSET: f64 = 600.0;
 
-/// Height given to new structures (mm).
-const DEFAULT_STRUCTURE_HEIGHT: f64 = 2200.0;
-
 pub(crate) fn handle(s: &mut EditorState, input: Input, now_ms: i64) {
     match s.tool.clone() {
         ToolKind::Rect(target) => drag_shape(s, input, now_ms, &target, false),
@@ -71,7 +68,7 @@ fn closed_kind(target: &DrawTarget, shape: Shape) -> ObjectKind {
         DrawTarget::Structure(kind) => ObjectKind::Structure {
             kind: *kind,
             footprint: shape,
-            height: DEFAULT_STRUCTURE_HEIGHT,
+            height: crate::catalog::structure_height(*kind),
         },
     }
 }
@@ -825,5 +822,20 @@ mod tests {
         s.handle(Input::Key(Key::Escape, NO), 1);
         assert!(s.preview().dims.is_empty());
         assert_eq!(s.tool(), &ToolKind::Measure);
+    }
+
+    #[test]
+    fn structures_get_their_own_height() {
+        use crate::catalog::{FeatureId, feature_tool};
+        use garden_core::model::StructureKind;
+        let mut s = state_with(vec![]);
+        s.set_tool(feature_tool(FeatureId::Greenhouse));
+        s.handle(Input::Down(Point::new(0., 0.), NO), 1);
+        s.handle(Input::Move(Point::new(2000., 3000.), NO), 1);
+        s.handle(Input::Up(Point::new(2000., 3000.), NO), 1);
+        assert!(matches!(
+            s.doc().objects[0].kind,
+            ObjectKind::Structure { kind: StructureKind::Greenhouse, height, .. } if height == 2400.
+        ));
     }
 }

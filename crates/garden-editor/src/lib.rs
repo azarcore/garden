@@ -110,6 +110,7 @@ pub mod care;
 pub mod catalog;
 pub mod custom_plants;
 mod draw;
+pub mod garden;
 pub mod guides;
 pub mod handles;
 pub mod inspector;

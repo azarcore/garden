@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 use uuid::Uuid;
 
 use super::{BackgroundImage, LayerId, Object, ObjectId, PlantDef};
@@ -48,6 +49,12 @@ pub struct Document {
     pub tombstones: Vec<Tombstone>,
     pub background: Option<BackgroundImage>,
     pub custom_plants: Vec<PlantDef>,
+    /// Prices for the garden list, per metric unit, by list row key.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub prices: BTreeMap<String, f64>,
+    /// What the prices are in, as the person typed it (e.g. "€").
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub currency: String,
 }
 
 impl Document {
@@ -64,6 +71,8 @@ impl Document {
             tombstones: Vec::new(),
             background: None,
             custom_plants: Vec::new(),
+            prices: BTreeMap::new(),
+            currency: String::new(),
         }
     }
 

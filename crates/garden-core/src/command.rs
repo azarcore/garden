@@ -49,6 +49,14 @@ pub enum Command {
     Rename {
         name: String,
     },
+    /// A garden list price (per metric unit); `None` removes it.
+    SetPrice {
+        key: String,
+        price: Option<f64>,
+    },
+    SetCurrency {
+        currency: String,
+    },
     /// All-or-nothing.
     Batch {
         commands: Vec<Command>,
@@ -102,6 +110,7 @@ impl Document {
                 background: Some(b),
             } => b.is_finite(),
             Command::UpsertCustomPlant { def } => def.is_finite(),
+            Command::SetPrice { price: Some(p), .. } => p.is_finite() && *p >= 0.0,
             _ => true,
         };
         if !finite {
@@ -214,6 +223,16 @@ impl Document {
             Command::Rename { name } => Command::Rename {
                 name: std::mem::replace(&mut self.name, name),
             },
+            Command::SetPrice { key, price } => {
+                let old = match price {
+                    Some(p) => self.prices.insert(key.clone(), p),
+                    None => self.prices.remove(&key),
+                };
+                Command::SetPrice { key, price: old }
+            }
+            Command::SetCurrency { currency } => Command::SetCurrency {
+                currency: std::mem::replace(&mut self.currency, currency),
+            },
             Command::Batch { commands } => {
                 let mut inverses = Vec::with_capacity(commands.len());
                 for c in commands {
@@ -231,6 +250,52 @@ mod tests {
     use super::*;
     use crate::geometry::Point;
     use crate::model::ObjectKind;
+
+    #[test]
+    fn set_price_undoes() {
+        let mut d = Document::new("g", 0);
+        let set = |price| Command::SetPrice {
+            key: "area:lawn".into(),
+            price,
+        };
+        let undo = d.apply(set(Some(2.5)), 1).unwrap();
+        assert_eq!(d.prices.get("area:lawn"), Some(&2.5));
+        let redo = d.apply(undo, 2).unwrap();
+        assert!(d.prices.is_empty());
+        d.apply(redo, 3).unwrap();
+        assert_eq!(d.prices.get("area:lawn"), Some(&2.5));
+        let undo = d.apply(set(Some(4.0)), 4).unwrap();
+        d.apply(undo, 5).unwrap();
+        assert_eq!(d.prices.get("area:lawn"), Some(&2.5));
+        let undo = d.apply(set(None), 6).unwrap();
+        assert!(d.prices.is_empty());
+        d.apply(undo, 7).unwrap();
+        assert_eq!(d.prices.get("area:lawn"), Some(&2.5));
+        let undo = d
+            .apply(
+                Command::SetCurrency {
+                    currency: "€".into(),
+                },
+                8,
+            )
+            .unwrap();
+        assert_eq!(d.currency, "€");
+        d.apply(undo, 9).unwrap();
+        assert_eq!(d.currency, "");
+    }
+
+    #[test]
+    fn set_price_rejects_bad_values() {
+        let mut d = Document::new("g", 0);
+        for bad in [f64::NAN, f64::INFINITY, -1.0] {
+            let cmd = Command::SetPrice {
+                key: "k".into(),
+                price: Some(bad),
+            };
+            assert_eq!(d.apply(cmd, 1), Err(CommandError::InvalidValue), "{bad}");
+        }
+        assert!(d.prices.is_empty());
+    }
 
     fn setup() -> (Document, Object, Object) {
         let mut d = Document::new("g", 0);

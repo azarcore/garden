@@ -179,6 +179,36 @@ mod tests {
     use crate::model::{AreaType, Document, Object, ObjectKind};
 
     #[test]
+    fn prices_round_trip_and_stay_optional() {
+        let mut d = Document::new("g", 5);
+        let plain = to_json(&d).unwrap();
+        assert!(
+            !plain.contains("prices") && !plain.contains("currency"),
+            "{plain}"
+        );
+        // an old file without the fields loads
+        assert_eq!(from_json(&plain).unwrap(), d);
+        d.apply(
+            Command::SetPrice {
+                key: "plant:apple".into(),
+                price: Some(30.0),
+            },
+            6,
+        )
+        .unwrap();
+        d.apply(
+            Command::SetCurrency {
+                currency: "₼".into(),
+            },
+            7,
+        )
+        .unwrap();
+        let back = from_json(&to_json(&d).unwrap()).unwrap();
+        assert_eq!(back.prices.get("plant:apple"), Some(&30.0));
+        assert_eq!(back.currency, "₼");
+    }
+
+    #[test]
     fn old_apple_file_loads() {
         use crate::model::{PlantCategory, PlantSymbol};
         let mut d = Document::new("g", 5);

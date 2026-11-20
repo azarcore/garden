@@ -31,6 +31,9 @@ pub struct MoveGuides {
     pub lines: Vec<GuideLine>,
     pub aligned_x: bool,
     pub aligned_y: bool,
+    /// Snapped to equal gaps on this axis.
+    pub spaced_x: bool,
+    pub spaced_y: bool,
 }
 
 /// One axis of a rectangle: (min, max).
@@ -192,8 +195,10 @@ pub fn move_guides(moving: Rect, others: &[Rect], tol: f64) -> MoveGuides {
         ));
         if vertical_axis {
             g.shift.y += d;
+            g.spaced_y = true;
         } else {
             g.shift.x += d;
+            g.spaced_x = true;
         }
     }
     let m = moving + g.shift;

@@ -402,6 +402,30 @@ impl EditorState {
         self.viewport.fit(bounds, 40.0);
     }
 
+    /// Whether smart guides apply: they follow "snap to objects", and Alt turns them off.
+    pub(crate) fn guides_on(&self, m: Modifiers) -> bool {
+        self.snap_objects && !m.alt
+    }
+
+    /// Bounds of every object on a visible layer except `exclude`, and the plot's bounds.
+    pub(crate) fn guide_context(&self, exclude: &[ObjectId]) -> (Vec<Rect>, Option<Rect>) {
+        let doc = self.doc();
+        let mut plot = None;
+        let others = doc
+            .objects
+            .iter()
+            .filter(|o| !exclude.contains(&o.id) && doc.layer(o.layer).is_some_and(|l| l.visible))
+            .map(|o| {
+                let b = object_bounds(&o.kind);
+                if matches!(o.kind, garden_core::model::ObjectKind::PlotBoundary { .. }) {
+                    plot = Some(b);
+                }
+                b
+            })
+            .collect();
+        (others, plot)
+    }
+
     pub(crate) fn snap_point(&self, p: Point, m: Modifiers, exclude: &[ObjectId]) -> SnapResult {
         if m.alt {
             return SnapResult {
@@ -594,9 +618,40 @@ impl EditorState {
         match self.gesture.clone() {
             Gesture::Moving { start, anchor, .. } => {
                 // Snap where the grabbed corner would land, not the cursor.
-                let snapped = self.snap_point(anchor + (p - start), m, &self.selection);
-                let delta = snapped.point - anchor;
+                let raw = anchor + (p - start);
+                let snapped = self.snap_point(raw, m, &self.selection);
+                let mut delta = snapped.point - anchor;
+                let mut guides = Vec::new();
+                let moving = self
+                    .unlocked_selection()
+                    .iter()
+                    .map(|o| object_bounds(&o.kind))
+                    .reduce(|a, b| a.union(b));
+                if let Some(moving) = moving.filter(|_| self.guides_on(m)) {
+                    let (others, plot) = self.guide_context(&self.selection);
+                    // a snap to an object's corner or edge wins over alignment
+                    if !matches!(snapped.kind, SnapKind::Vertex | SnapKind::Edge) {
+                        let raw_delta = raw - anchor;
+                        let tol = self.viewport.px_to_mm(self.snap_radius_px);
+                        let g = crate::guides::move_guides(moving + raw_delta, &others, tol);
+                        // alignment and equal spacing win over the grid on their axis
+                        if g.aligned_x || g.spaced_x {
+                            delta.x = raw_delta.x + g.shift.x;
+                        }
+                        if g.aligned_y || g.spaced_y {
+                            delta.y = raw_delta.y + g.shift.y;
+                        }
+                        guides = g.lines;
+                    }
+                    guides.extend(crate::guides::distance_guides(
+                        moving + delta,
+                        &others,
+                        plot,
+                        self.doc().units,
+                    ));
+                }
                 self.preview = Preview {
+                    guides,
                     shapes: self
                         .unlocked_selection()
                         .iter()
@@ -921,5 +976,106 @@ mod tests {
         s.selection = vec![ids[2]];
         s.reorder_selection(ZOrder::Forward, 6);
         assert_eq!(order(&s), vec![ids[0], ids[1], ids[3], ids[2]]);
+    }
+
+    mod smart_guides {
+        use super::*;
+        use crate::guides::GuideKind;
+        use crate::tools::DrawTarget;
+        use garden_core::geometry::Shape;
+        use garden_core::model::AreaType;
+
+        fn bed_at(x: f64, y: f64, w: f64, h: f64) -> ObjectKind {
+            ObjectKind::Area {
+                area_type: AreaType::Bed,
+                shape: Shape::rect(Point::new(x, y), w, h),
+            }
+        }
+
+        #[test]
+        fn moving_aligns_and_shows_distances() {
+            let mut s = state_with(vec![
+                bed_at(1000., 0., 2000., 1000.),
+                plant_at(1530., 3000., 600.),
+            ]);
+            s.handle(Input::Down(Point::new(1530., 3000.), NO), 1);
+            s.handle(Input::Move(Point::new(1300., 3020.), NO), 1);
+            assert!(
+                s.preview()
+                    .guides
+                    .iter()
+                    .any(|g| g.kind == GuideKind::Align)
+            );
+            assert!(
+                s.preview()
+                    .guides
+                    .iter()
+                    .any(|g| g.kind == GuideKind::Distance)
+            );
+            s.handle(Input::Up(Point::new(1300., 3020.), NO), 2);
+            assert_eq!(object_bounds(&s.doc().objects[1].kind).x0, 1000.);
+            assert!(s.undo(3));
+            assert!(!s.can_undo());
+        }
+
+        #[test]
+        fn alignment_beats_the_grid() {
+            // plant left edge would land at 1040 on the grid; the bed's left edge (1000) is within reach
+            let mut s = state_with(vec![
+                bed_at(1000., 0., 2000., 1000.),
+                plant_at(1530., 3000., 600.),
+            ]);
+            s.handle(Input::Down(Point::new(1530., 3000.), NO), 1);
+            s.handle(Input::Move(Point::new(1340., 3000.), NO), 1);
+            s.handle(Input::Up(Point::new(1340., 3000.), NO), 2);
+            assert_eq!(object_bounds(&s.doc().objects[1].kind).x0, 1000.);
+        }
+
+        #[test]
+        fn alt_or_the_toggle_turns_guides_off() {
+            let mut s = state_with(vec![
+                bed_at(1000., 0., 2000., 1000.),
+                plant_at(1530., 3000., 600.),
+            ]);
+            let alt = Modifiers { alt: true, ..NO };
+            s.handle(Input::Down(Point::new(1530., 3000.), alt), 1);
+            s.handle(Input::Move(Point::new(1340., 3000.), alt), 1);
+            assert!(s.preview().guides.is_empty());
+            s.handle(Input::Key(Key::Escape, NO), 1);
+            s.snap_objects = false;
+            s.handle(Input::Down(Point::new(1530., 3000.), NO), 1);
+            s.handle(Input::Move(Point::new(1340., 3000.), NO), 1);
+            assert!(s.preview().guides.is_empty());
+        }
+
+        #[test]
+        fn a_vertex_snap_beats_alignment_and_stays_put() {
+            let a = bed_at(0., 0., 2000., 1000.);
+            let b = bed_at(5000., 3000., 1000., 1000.);
+            // a third bed whose left edge (2080) would pull B off A's corner if alignment won
+            let c = bed_at(2080., 6000., 500., 500.);
+            let mut s = state_with(vec![a, b, c]);
+            s.handle(Input::Down(Point::new(5000., 3000.), NO), 1);
+            s.handle(Input::Move(Point::new(2030., 1020.), NO), 1);
+            let first = s.preview().shapes.clone();
+            s.handle(Input::Move(Point::new(2040., 1010.), NO), 1);
+            assert_eq!(s.preview().shapes, first);
+            s.handle(Input::Up(Point::new(2040., 1010.), NO), 2);
+            let bb = object_bounds(&s.doc().objects[1].kind);
+            assert_eq!((bb.x0, bb.y0), (2000., 1000.));
+        }
+
+        #[test]
+        fn drawing_aligns_the_cursor() {
+            let mut s = state_with(vec![bed_at(1000., 0., 2000., 1000.)]);
+            s.set_tool(ToolKind::Rect(DrawTarget::Area(AreaType::Bed)));
+            s.snap_grid = false;
+            s.handle(Input::Move(Point::new(1050., 3000.), NO), 1);
+            assert!(!s.preview().guides.is_empty());
+            s.handle(Input::Down(Point::new(1050., 3000.), NO), 1);
+            s.handle(Input::Move(Point::new(2500., 4000.), NO), 1);
+            s.handle(Input::Up(Point::new(2500., 4000.), NO), 1);
+            assert_eq!(object_bounds(&s.doc().objects[1].kind).x0, 1000.);
+        }
     }
 }

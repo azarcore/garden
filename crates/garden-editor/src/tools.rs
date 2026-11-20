@@ -78,6 +78,8 @@ pub struct Preview {
     pub dims: Vec<(Point, String)>,
     pub snap: Option<SnapResult>,
     pub marquee: Option<kurbo::Rect>,
+    /// Smart guides (alignment, spacing, distances) to draw.
+    pub guides: Vec<crate::guides::GuideLine>,
 }
 
 /// One line telling the person what to do next with `tool`.

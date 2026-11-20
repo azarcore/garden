@@ -93,7 +93,23 @@ pub(crate) fn insert_new(s: &mut EditorState, kind: ObjectKind, now_ms: i64, bac
 pub(crate) fn snapped(s: &mut EditorState, p: Point, m: Modifiers) -> Point {
     let r = s.snap_point(p, m, &[]);
     s.preview.snap = Some(r).filter(|r| r.kind != SnapKind::None);
-    r.point
+    s.preview.guides.clear();
+    let mut point = r.point;
+    // line up with other objects' edges and centres, unless already on a corner/edge
+    if s.guides_on(m) && matches!(r.kind, SnapKind::None | SnapKind::Grid) {
+        let (others, _) = s.guide_context(&[]);
+        let tol = s.viewport.px_to_mm(s.snap_radius_px);
+        let (aligned, lines) = crate::guides::point_guides(p, &others, tol);
+        for l in &lines {
+            if l.from.x == l.to.x {
+                point.x = aligned.x; // a vertical guide: x lined up
+            } else {
+                point.y = aligned.y;
+            }
+        }
+        s.preview.guides = lines;
+    }
+    point
 }
 
 /// The rectangle dragged from `start` to `current`; Shift makes it square.
@@ -158,6 +174,7 @@ fn drag_shape(s: &mut EditorState, input: Input, now_ms: i64, target: &DrawTarge
             }
             let units = s.doc().units;
             let snap = s.preview.snap;
+            let guides = std::mem::take(&mut s.preview.guides);
             s.preview = Preview {
                 shapes: if big_enough {
                     vec![outline(&closed_kind(
@@ -177,6 +194,7 @@ fn drag_shape(s: &mut EditorState, input: Input, now_ms: i64, target: &DrawTarge
                 )],
                 snap,
                 marquee: None,
+                guides,
             };
         }
         Input::Key(Key::Escape, _) => s.cancel_gesture(),
@@ -237,11 +255,13 @@ fn two_points(s: &mut EditorState, input: Input, now_ms: i64, store: bool) {
     };
     let line_preview = |s: &mut EditorState, a: Point, b: Point| {
         let snap = s.preview.snap;
+        let guides = std::mem::take(&mut s.preview.guides);
         s.preview = Preview {
             shapes: vec![crate::render::RenderShape::Line { from: a, to: b }],
             dims: vec![(a.midpoint(b), format_length(a.distance(b), s.doc().units))],
             snap,
             marquee: None,
+            guides,
         };
     };
     match input {
@@ -331,11 +351,13 @@ fn poly_preview(s: &mut EditorState, points: &[Point], cursor: Point) {
         .into_iter()
         .collect();
     let snap = s.preview.snap;
+    let guides = std::mem::take(&mut s.preview.guides);
     s.preview = Preview {
         shapes,
         dims,
         snap,
         marquee: None,
+        guides,
     };
 }
 

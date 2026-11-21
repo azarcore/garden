@@ -71,8 +71,7 @@ unless you export them.
 
 - Designs, photos and settings are stored **in your browser on your device** (IndexedDB). There is no account and no
   server; nothing is uploaded.
-- Move a design between devices with **Download .loma.json** and **Import**. Files from the app's earlier name
-  (`.garden.json`) still open.
+- Move a design between devices with **Download .loma.json** and **Import**.
 - The page loads its typeface (Onest) from Google Fonts; nothing else is fetched from third parties.
 
 ## Run it yourself
@@ -122,3 +121,11 @@ files — is covered by fast native tests, while the browser layer stays thin.
 
 Gardens are the start. The same plan-to-scale, see-it-in-3D, keep-it-up-to-date idea fits a whole home: room
 layouts, furniture, and the planning around a house. Loma's name and structure are chosen to grow that way.
+
+## Licence
+
+Copyright © 2026 azarcore
+
+Licensed under the [Apache License, Version 2.0](LICENSE). You may use, change and share Loma — including in your
+own products — as long as you keep the copyright notice and the licence, and note any changes you make. It comes
+**without any warranty**; see the [licence](LICENSE) for the details.

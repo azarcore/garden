@@ -1,7 +1,7 @@
 #!/bin/sh
-# Build the 3D preview bundle (crates/garden-3d) and put it next to the app as
-# garden3d/garden_3d.js + garden3d/garden_3d_bg.wasm. Run by Trunk after each
-# build (see crates/garden-web/Trunk.toml); the app downloads it only when
+# Build the 3D preview bundle (crates/loma-3d) and put it next to the app as
+# loma3d/loma_3d.js + loma3d/loma_3d_bg.wasm. Run by Trunk after each
+# build (see crates/loma-web/Trunk.toml); the app downloads it only when
 # someone opens the 3D view.
 set -eu
 
@@ -13,7 +13,7 @@ if [ "${TRUNK_PROFILE:-debug}" = "release" ]; then
 else
   PROFILE=dev-3d
 fi
-OUT="${TRUNK_STAGING_DIR:-$ROOT/crates/garden-web/dist}/garden3d"
+OUT="${TRUNK_STAGING_DIR:-$ROOT/crates/loma-web/dist}/loma3d"
 
 # wasm-bindgen's CLI must match the library version in Cargo.lock exactly.
 WANT=$(awk '/^name = "wasm-bindgen"$/ { getline; gsub(/version = |"/, ""); print; exit }' "$ROOT/Cargo.lock")
@@ -38,14 +38,14 @@ if [ -z "$BINDGEN" ]; then
   exit 1
 fi
 
-cargo build --manifest-path "$ROOT/Cargo.toml" -p garden-3d --features viewer \
+cargo build --manifest-path "$ROOT/Cargo.toml" -p loma-3d --features viewer \
   --target wasm32-unknown-unknown --profile "$PROFILE"
 
 TARGET_DIR=$(cargo metadata --manifest-path "$ROOT/Cargo.toml" --format-version 1 --no-deps \
   | sed -n 's/.*"target_directory":"\([^"]*\)".*/\1/p')
 mkdir -p "$OUT"
 "$BINDGEN" --target web --no-typescript --out-dir "$OUT" \
-  "$TARGET_DIR/wasm32-unknown-unknown/$PROFILE/garden_3d.wasm"
+  "$TARGET_DIR/wasm32-unknown-unknown/$PROFILE/loma_3d.wasm"
 
 if [ "$PROFILE" = release-3d ]; then
   OPT=$(find_tool wasm-opt "wasm-opt-version_*" "")
@@ -53,6 +53,6 @@ if [ "$PROFILE" = release-3d ]; then
     echo "build-3d: wasm-opt not found; the 3D bundle is not size-optimised" >&2
   else
     "$OPT" -Oz --enable-bulk-memory --enable-nontrapping-float-to-int \
-      -o "$OUT/garden_3d_bg.wasm" "$OUT/garden_3d_bg.wasm"
+      -o "$OUT/loma_3d_bg.wasm" "$OUT/loma_3d_bg.wasm"
   fi
 fi

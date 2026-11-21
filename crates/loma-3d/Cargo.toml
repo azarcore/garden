@@ -1,0 +1,43 @@
+[package]
+name = "loma-3d"
+version = "0.1.0"
+edition.workspace = true
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[features]
+# The Bevy viewer. Off by default so native workspace builds and tests never
+# compile Bevy; `scripts/build-3d.sh` turns it on for the browser bundle.
+viewer = ["dep:bevy", "dep:wasm-bindgen", "dep:web-sys", "dep:loma-core", "dep:loma-scene"]
+
+[dependencies]
+loma-core = { path = "../loma-core", optional = true }
+loma-scene = { path = "../loma-scene", optional = true }
+# Only what the preview draws with: no glTF, animation, scenes, text, picking,
+# gizmos, audio, gamepads or compressed textures (keeps the download small).
+bevy = { version = "0.20.1", default-features = false, features = [
+    "std",
+    "web",
+    "async_executor",
+    "bevy_asset",
+    "bevy_log",
+    "bevy_winit",
+    "bevy_window",
+    "bevy_render",
+    "bevy_core_pipeline",
+    "bevy_pbr",
+    "bevy_camera",
+    "bevy_light",
+    "bevy_mesh",
+    "bevy_color",
+    "bevy_image",
+    "bevy_shader",
+    "bevy_material",
+    "webgl2",
+    "keyboard",
+    "mouse",
+    "touch",
+], optional = true }
+wasm-bindgen = { version = "=0.2.130", optional = true }
+web-sys = { version = "0.3", features = ["Document", "Element", "EventTarget", "PointerEvent", "Window"], optional = true }

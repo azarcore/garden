@@ -1,10 +1,10 @@
 #!/bin/sh
 # Write cache-list.js next to sw.js: every file the app needs offline, and a
 # version that changes whenever any of them changes (the 3D bundle included).
-# Run by Trunk after the build, after build-3d.sh (see crates/garden-web/Trunk.toml).
+# Run by Trunk after the build, after build-3d.sh (see crates/loma-web/Trunk.toml).
 set -eu
 
-DIR="${TRUNK_STAGING_DIR:-$(cd "$(dirname "$0")/.." && pwd)/crates/garden-web/dist}"
+DIR="${TRUNK_STAGING_DIR:-$(cd "$(dirname "$0")/.." && pwd)/crates/loma-web/dist}"
 cd "$DIR"
 
 if command -v shasum >/dev/null 2>&1; then
@@ -28,7 +28,7 @@ app=""
 lazy=""
 for f in $LIST; do
   case "$f" in
-    garden3d/*) lazy="${lazy:+$lazy,}$(quote "$f")" ;;
+    loma3d/*) lazy="${lazy:+$lazy,}$(quote "$f")" ;;
     *) app="${app:+$app,}$(quote "$f")" ;;
   esac
 done

@@ -2883,68 +2883,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "garden-3d"
-version = "0.1.0"
-dependencies = [
- "bevy",
- "garden-core",
- "garden-scene",
- "wasm-bindgen",
- "web-sys",
-]
-
-[[package]]
-name = "garden-core"
-version = "0.1.0"
-dependencies = [
- "base64 0.23.1",
- "kurbo",
- "serde",
- "serde_json",
- "thiserror 2.0.21",
- "uuid",
-]
-
-[[package]]
-name = "garden-editor"
-version = "0.1.0"
-dependencies = [
- "garden-core",
- "kurbo",
- "serde",
- "uuid",
-]
-
-[[package]]
-name = "garden-scene"
-version = "0.1.0"
-dependencies = [
- "earcutr",
- "garden-core",
- "garden-editor",
- "kurbo",
-]
-
-[[package]]
-name = "garden-web"
-version = "0.1.0"
-dependencies = [
- "console_error_panic_hook",
- "garden-core",
- "garden-editor",
- "idb",
- "js-sys",
- "kurbo",
- "leptos",
- "serde",
- "serde-wasm-bindgen",
- "uuid",
- "wasm-bindgen",
- "wasm-bindgen-futures",
- "web-sys",
-]
-
-[[package]]
 name = "generic-array"
 version = "0.14.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3897,6 +3835,68 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "52d3a9855747c17eaf4383823f135220716ab49bea5fbea7dd42cc9a92f8aa31"
 dependencies = [
  "logos-codegen",
+]
+
+[[package]]
+name = "loma-3d"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "loma-core",
+ "loma-scene",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
+name = "loma-core"
+version = "0.1.0"
+dependencies = [
+ "base64 0.23.1",
+ "kurbo",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "uuid",
+]
+
+[[package]]
+name = "loma-editor"
+version = "0.1.0"
+dependencies = [
+ "kurbo",
+ "loma-core",
+ "serde",
+ "uuid",
+]
+
+[[package]]
+name = "loma-scene"
+version = "0.1.0"
+dependencies = [
+ "earcutr",
+ "kurbo",
+ "loma-core",
+ "loma-editor",
+]
+
+[[package]]
+name = "loma-web"
+version = "0.1.0"
+dependencies = [
+ "console_error_panic_hook",
+ "idb",
+ "js-sys",
+ "kurbo",
+ "leptos",
+ "loma-core",
+ "loma-editor",
+ "serde",
+ "serde-wasm-bindgen",
+ "uuid",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]

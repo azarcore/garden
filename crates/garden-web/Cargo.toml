@@ -7,7 +7,7 @@ edition.workspace = true
 garden-core = { path = "../garden-core" }
 garden-editor = { path = "../garden-editor" }
 leptos = { version = "0.8.23", features = ["csr"] }
-web-sys = { version = "0.3", features = ["DomRect", "Element", "HtmlElement", "MouseEvent", "PointerEvent", "WheelEvent", "KeyboardEvent", "EventTarget", "Window", "HtmlInputElement", "ResizeObserver", "Document", "Blob", "BlobPropertyBag", "Url", "HtmlAnchorElement", "File", "FileList", "HtmlCanvasElement", "CanvasRenderingContext2d", "HtmlImageElement", "XmlSerializer", "CssStyleSheet", "StyleSheetList", "StyleSheet", "CssRuleList", "CssRule", "NodeList", "Node", "DragEvent", "DataTransfer", "Storage", "ScrollIntoViewOptions", "ScrollLogicalPosition", "MediaQueryList"] }
+web-sys = { version = "0.3", features = ["DomRect", "Element", "HtmlElement", "MouseEvent", "PointerEvent", "WheelEvent", "KeyboardEvent", "EventTarget", "Window", "HtmlInputElement", "ResizeObserver", "Document", "Blob", "BlobPropertyBag", "Url", "HtmlAnchorElement", "File", "FileList", "HtmlCanvasElement", "CanvasRenderingContext2d", "HtmlImageElement", "XmlSerializer", "CssStyleSheet", "StyleSheetList", "StyleSheet", "CssRuleList", "CssRule", "NodeList", "Node", "DragEvent", "DataTransfer", "Storage", "ScrollIntoViewOptions", "ScrollLogicalPosition", "MediaQueryList", "Navigator", "ServiceWorkerContainer", "ServiceWorkerRegistration", "ServiceWorker", "ServiceWorkerState", "CacheStorage", "Cache", "Response", "ResponseInit", "Headers", "Notification", "NotificationPermission", "Location", "History", "VisibilityState", "Event"] }
 js-sys = "0.3"
 wasm-bindgen = "0.2"
 console_error_panic_hook = "0.1.7"

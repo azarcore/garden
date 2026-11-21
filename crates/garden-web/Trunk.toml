@@ -1,9 +1,14 @@
-# The 3D preview is a separate bundle, built after the app and served from
-# garden3d/ (downloaded only when someone opens 3D).
+# Relative URLs, so the built folder works at a domain root or in a sub-folder.
+[build]
+public_url = "./"
+
+# After the build: the 3D preview (a separate bundle served from garden3d/,
+# downloaded only when someone opens 3D), then the offline cache's file list,
+# which must see the 3D files, so both run in one hook, in this order.
 [[hooks]]
 stage = "post_build"
 command = "sh"
-command_arguments = ["-c", "sh \"$TRUNK_SOURCE_DIR/../../scripts/build-3d.sh\""]
+command_arguments = ["-c", "sh \"$TRUNK_SOURCE_DIR/../../scripts/build-3d.sh\" && sh \"$TRUNK_SOURCE_DIR/../../scripts/sw-cache-list.sh\""]
 
 # Rebuild when the app or any of its local crates change (the 3D crates too).
 [watch]

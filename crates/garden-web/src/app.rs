@@ -200,6 +200,7 @@ pub fn App() -> impl IntoView {
     state.update(|s| s.set_mode(crate::garden::saved_mode()));
     provide_context(crate::garden::SelectSeveral(RwSignal::new(false)));
     crate::care::provide_care_ui();
+    crate::pwa::provide_pwa();
     crate::photos::provide_photos();
     let space = RwSignal::new(false);
     let default_plant = builtin_plants()

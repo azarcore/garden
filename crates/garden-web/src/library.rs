@@ -518,6 +518,7 @@ pub fn MyDesigns() -> impl IntoView {
     let state = expect_context::<RwSignal<EditorState>>();
     let lib = expect_context::<Library>();
     let DesignsOpen(open) = expect_context::<DesignsOpen>();
+    let install = expect_context::<crate::pwa::InstallPrompt>();
     let crate::templates::ChooserOpen(chooser) = expect_context::<crate::templates::ChooserOpen>();
     let name = Memo::new(move |_| state.with(|s| s.doc().name.clone()));
     let ImportMessage(message) = expect_context::<ImportMessage>();
@@ -549,6 +550,11 @@ pub fn MyDesigns() -> impl IntoView {
                     open.set(false);
                     chooser.set(true);
                 }>{crate::icons::icon(crate::icons::Icon::Leaf)}{EN.new_design}</button>
+                {move || install.0.get().is_some().then(|| view! {
+                    <button class="install-app" on:click=move |_| crate::pwa::install(install)>
+                        {crate::icons::icon(crate::icons::Icon::Plus)}{EN.install_app}
+                    </button>
+                })}
                 <h3>{EN.my_designs}</h3>
                 <ul class="design-list">{rows}</ul>
                 <div class="file-actions">

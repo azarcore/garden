@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Loma</title>
+    <meta name="theme-color" content="#2f8a55" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="Loma" />
+    <link rel="manifest" href="manifest.webmanifest" />
+    <link rel="icon" type="image/png" href="icons/icon-192.png" />
+    <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700&display=swap"
+    />
+    
+<script type="module">
+import init, * as bindings from './loma-web-aa3da8606d1c5125.js';
+
+const wasm = await init({ module_or_path: './loma-web-59d6d27eb5dc6476_bg.wasm' });
+
+
+window.wasmBindings = bindings;
+
+
+dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
+
+</script>
+    <link rel="stylesheet" href="./style-dfea999434c1d098.css" integrity="sha384-AZA1W4AcBx08rANLtt9c8rMcohCLB/tuYyVn50Ty/k7v6PT4Ny/aNAHQU33TcQ3Q"/>
+    
+    
+    
+  <link rel="modulepreload" href="./loma-web-aa3da8606d1c5125.js" crossorigin="anonymous" integrity="sha384-kf8xcox6PDFA6g6n7Sn6wcvnVXoFoorifV5B/fy2HfaQ7KVHK2mqEia/YBnjDPH4"><link rel="modulepreload" href="./snippets/loma-web-35183b500e06a4f0/inline0.js" crossorigin="anonymous" integrity="sha384-1ucNQpauzjDSOTPi5iPlMhrsD8DQOMW6lTTkpkHOFineEdv813XyaN2dDIgWf6WR"><link rel="preload" href="./loma-web-59d6d27eb5dc6476_bg.wasm" crossorigin="anonymous" integrity="sha384-1xOfvNEgdNTBGr8r/DhL6IoheObC8a6Ewhm/qTulkFv5QILNL+YB06ibI5UwWszG" as="fetch" type="application/wasm"></head>
+  <body></body>
+</html>

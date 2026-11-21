@@ -1,0 +1,1 @@
+export function import_module(url) { return import(url); }

@@ -170,7 +170,10 @@ impl EditorState {
     }
 
     /// Record each plant's current due date as skipped, as one undo step.
-    pub fn skip_task(&mut self, id: TaskId, plants: &[ObjectId], now_ms: i64) {
+    /// Each plant's due date as seen today is recorded as skipped; for a
+    /// repeat that was missed several times, the last missed one, so a single
+    /// Skip clears them all.
+    pub fn skip_task(&mut self, id: TaskId, plants: &[ObjectId], today: Date, now_ms: i64) {
         if !self.in_garden() || plants.is_empty() {
             return;
         }
@@ -178,7 +181,13 @@ impl EditorState {
             return;
         };
         for p in plants {
-            let due = crate::calendar::plant_due(self.doc(), &task, *p).date;
+            let mut due = crate::calendar::plant_due_on(self.doc(), &task, *p, today).date;
+            if let Repeat::Every { days } = task.repeat
+                && due < today
+            {
+                let missed = today.days_since(due) / days as i32;
+                due = due.add_days(missed * days as i32);
+            }
             task.skips.insert(*p, due);
         }
         self.execute(Command::UpsertTask { task }, now_ms);
@@ -693,7 +702,7 @@ mod tests {
         let id = s
             .save_task(feed_every(28, Target::Plants { ids: vec![a] }), 1)
             .unwrap();
-        s.skip_task(id, &[a], 2);
+        s.skip_task(id, &[a], day("2026-06-01"), 2);
         let skips = s.doc().tasks[0].skips.clone();
         assert_eq!(skips.get(&a), Some(&day("2026-06-01")));
         let mut edit = feed_every(14, Target::Plants { ids: vec![a] });
@@ -716,7 +725,7 @@ mod tests {
             .save_task(feed_every(28, Target::Plants { ids: vec![a, b] }), 1)
             .unwrap();
         let before = s.doc().tasks[0].clone();
-        s.skip_task(id, &[a], 2);
+        s.skip_task(id, &[a], day("2026-06-01"), 2);
         let t = s.doc().tasks[0].clone();
         assert_eq!(plant_due(s.doc(), &t, a).date, day("2026-06-29"));
         assert_eq!(plant_due(s.doc(), &t, b).date, day("2026-06-01"));
@@ -738,8 +747,22 @@ mod tests {
             s.save_task(feed_every(7, Target::Plants { ids: vec![a] }), 2)
                 .is_err()
         );
-        s.skip_task(id, &[a], 3);
+        s.skip_task(id, &[a], day("2026-06-10"), 3);
         s.remove_task(id, 4);
         assert_eq!(s.doc(), &before);
+    }
+
+    #[test]
+    fn skip_clears_every_missed_repeat() {
+        use crate::calendar::plant_due_on;
+        let (mut s, a, _) = garden();
+        let mut d = feed_every(14, Target::Plants { ids: vec![a] });
+        d.first_due = day("2026-05-04");
+        let id = s.save_task(d, 1).unwrap();
+        let today = day("2026-06-10");
+        s.skip_task(id, &[a], today, 2);
+        let t = s.doc().tasks[0].clone();
+        assert_eq!(t.skips.get(&a), Some(&day("2026-06-01")));
+        assert_eq!(plant_due_on(s.doc(), &t, a, today).date, day("2026-06-15"));
     }
 }

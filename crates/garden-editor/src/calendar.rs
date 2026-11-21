@@ -161,11 +161,10 @@ fn last_application(doc: &Document, product: ProductId, plant: ObjectId) -> Opti
         .max()
 }
 
-/// When `task` is next due for `plant`.
-pub fn plant_due(doc: &Document, task: &CareTask, plant: ObjectId) -> PlantDue {
-    let done = done_dates(doc, task, plant);
-    let mut date = match (task.repeat, task.months) {
-        (Repeat::Yearly, Some(months)) => yearly_due(task, months, &done),
+/// The due date from the repeat and the months alone, before label limits.
+fn base_date(task: &CareTask, done: &[Date]) -> Date {
+    match (task.repeat, task.months) {
+        (Repeat::Yearly, Some(months)) => yearly_due(task, months, done),
         (repeat, months) => {
             let days = match repeat {
                 Repeat::Every { days } => days,
@@ -177,7 +176,12 @@ pub fn plant_due(doc: &Document, task: &CareTask, plant: ObjectId) -> PlantDue {
                 .map_or(task.first_due, |d| d.add_days(days as i32));
             into_months(months, base)
         }
-    };
+    }
+}
+
+/// Move `date` later for the product label: the gap between applications,
+/// then the yearly maximum. The months still apply after each move.
+fn apply_label(doc: &Document, task: &CareTask, plant: ObjectId, mut date: Date) -> PlantDue {
     let mut hold = None;
     let product = task
         .product
@@ -189,7 +193,7 @@ pub fn plant_due(doc: &Document, task: &CareTask, plant: ObjectId) -> PlantDue {
         {
             let allowed = last.add_days(gap as i32);
             if allowed > date {
-                date = allowed;
+                date = into_months(task.months, allowed);
                 hold = Some(Hold::NotBefore {
                     product: p.name.clone(),
                     date: allowed,
@@ -209,6 +213,47 @@ pub fn plant_due(doc: &Document, task: &CareTask, plant: ObjectId) -> PlantDue {
         }
     }
     PlantDue { plant, date, hold }
+}
+
+/// When `task` is next due for `plant`, by the rules alone (no "today").
+pub fn plant_due(doc: &Document, task: &CareTask, plant: ObjectId) -> PlantDue {
+    let done = done_dates(doc, task, plant);
+    apply_label(doc, task, plant, base_date(task, &done))
+}
+
+/// Whether some month from the one after `from` up to `to`'s month is outside `months`.
+fn left_months(months: (u32, u32), from: Date, to: Date) -> bool {
+    let mut m = next_month_start(from);
+    while m <= to {
+        if !in_months(months, m) {
+            return true;
+        }
+        m = next_month_start(m);
+    }
+    false
+}
+
+/// When `task` is due for `plant` as seen on `today`: a missed job whose
+/// season (its months) has ended waits for the next season instead.
+pub fn plant_due_on(doc: &Document, task: &CareTask, plant: ObjectId, today: Date) -> PlantDue {
+    let done = done_dates(doc, task, plant);
+    let mut base = base_date(task, &done);
+    if let Some(months) = task.months
+        && base < today
+        && left_months(months, base, today)
+    {
+        base = match task.repeat {
+            Repeat::Yearly => {
+                let from_today = CareTask {
+                    first_due: today,
+                    ..task.clone()
+                };
+                yearly_due(&from_today, months, &done)
+            }
+            Repeat::Every { .. } => into_months(Some(months), today),
+        };
+    }
+    apply_label(doc, task, plant, base)
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
@@ -254,7 +299,7 @@ pub struct TaskLine {
 fn line(doc: &Document, task: &CareTask, today: Date) -> TaskLine {
     let dues: Vec<PlantDue> = covered(doc, task)
         .into_iter()
-        .map(|p| plant_due(doc, task, p))
+        .map(|p| plant_due_on(doc, task, p, today))
         .collect();
     let due = dues.iter().map(|d| d.date).min();
     let section = due.map_or(Section::Later, |d| section_of(d, today));
@@ -288,7 +333,7 @@ pub fn plan_dots(doc: &Document, today: Date) -> Vec<ObjectId> {
     let mut out: Vec<ObjectId> = Vec::new();
     for task in &doc.tasks {
         for p in covered(doc, task) {
-            if !out.contains(&p) && plant_due(doc, task, p).date <= today {
+            if !out.contains(&p) && plant_due_on(doc, task, p, today).date <= today {
                 out.push(p);
             }
         }
@@ -305,7 +350,6 @@ pub struct ComingUp {
 
 /// The next (at most 3) jobs due for `plant`, soonest first.
 pub fn coming_up(doc: &Document, plant: ObjectId, today: Date) -> Vec<ComingUp> {
-    let _ = today;
     let mut out: Vec<ComingUp> = doc
         .tasks
         .iter()
@@ -313,7 +357,7 @@ pub fn coming_up(doc: &Document, plant: ObjectId, today: Date) -> Vec<ComingUp> 
         .map(|t| ComingUp {
             task: t.id,
             job: t.job,
-            date: plant_due(doc, t, plant).date,
+            date: plant_due_on(doc, t, plant, today).date,
         })
         .collect();
     out.sort_by_key(|c| c.date);
@@ -328,6 +372,14 @@ fn month_span((from, to): (u32, u32)) -> String {
     } else {
         format!("{}–{}", name(from), name(to))
     }
+}
+
+/// A catalog kind's name (built-in or the person's own plants).
+pub fn kind_name(doc: &Document, catalog_id: &str) -> Option<String> {
+    crate::catalog::catalog_with(&doc.custom_plants)
+        .into_iter()
+        .find(|e| e.id == catalog_id)
+        .map(|e| e.name)
 }
 
 /// "every 4 weeks, Apr–Sep", "every 10 days", "once a year, Nov–Feb".
@@ -795,5 +847,78 @@ mod tests {
             "2026-01-01",
         );
         assert_eq!(target_text(&fx.doc, &two), "2 plants");
+    }
+
+    #[test]
+    fn label_respects_months() {
+        let mut fx = fixture();
+        let (a, copper) = (fx.a, fx.copper);
+        let mut t = task(apples(), Job::Sprayed, every(7), Some((4, 9)), "2026-04-01");
+        t.product = Some(copper);
+        log(&mut fx, Job::Sprayed, "2026-09-20", &[a], Some(copper));
+        let due = plant_due(&fx.doc, &t, a);
+        assert_eq!(due.date, day("2027-04-01"));
+        assert_eq!(
+            due.hold,
+            Some(Hold::NotBefore {
+                product: "Copper".into(),
+                date: day("2026-10-04")
+            })
+        );
+    }
+
+    #[test]
+    fn missed_jobs_move_on() {
+        let mut fx = fixture();
+        let a = fx.a;
+        // Apr–Sep feed missed in September waits for April once September is over
+        let summer = task(apples(), Job::Fed, every(28), Some((4, 9)), "2026-04-01");
+        log(&mut fx, Job::Fed, "2026-08-20", &[a], None);
+        assert_eq!(
+            plant_due_on(&fx.doc, &summer, a, day("2026-09-20")).date,
+            day("2026-09-17")
+        );
+        assert_eq!(
+            plant_due_on(&fx.doc, &summer, a, day("2026-10-05")).date,
+            day("2027-04-01")
+        );
+        // a February pruning missed in February waits for next February
+        let feb = task(
+            apples(),
+            Job::Pruned,
+            Repeat::Yearly,
+            Some((2, 2)),
+            "2026-01-01",
+        );
+        assert_eq!(
+            plant_due_on(&fx.doc, &feb, a, day("2026-02-20")).date,
+            day("2026-02-01")
+        );
+        assert_eq!(
+            plant_due_on(&fx.doc, &feb, a, day("2026-03-10")).date,
+            day("2027-02-01")
+        );
+        // without months a missed job stays overdue
+        let plain = task(apples(), Job::Watered, every(28), None, "2026-06-01");
+        assert_eq!(
+            plant_due_on(&fx.doc, &plain, a, today()).date,
+            day("2026-06-01")
+        );
+        // the card uses it: the summer feed isn't overdue in October
+        fx.doc.tasks.push(summer.clone());
+        let lines = week_lines(&fx.doc, day("2026-10-05"));
+        assert_eq!(lines[0].section, Section::Later);
+        assert!(plan_dots(&fx.doc, day("2026-10-05")).is_empty());
+    }
+
+    #[test]
+    fn kind_names_come_from_the_catalog() {
+        let fx = fixture();
+        let apple = crate::catalog::builtin_plants()
+            .into_iter()
+            .find(|p| p.id == "apple")
+            .unwrap();
+        assert_eq!(kind_name(&fx.doc, "apple"), Some(apple.name));
+        assert_eq!(kind_name(&fx.doc, "no-such-plant"), None);
     }
 }

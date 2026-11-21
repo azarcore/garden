@@ -6,7 +6,7 @@ use garden_core::model::{
     CareTask, Job, ObjectId, ObjectKind, PlantCategory, ProductId, Repeat, Target, TaskId,
 };
 use garden_editor::calendar::{
-    Section, TaskLine, coming_up, hold_text, repeat_text, target_text, week_lines,
+    Section, TaskLine, coming_up, hold_text, kind_name, repeat_text, target_text, week_lines,
 };
 use garden_editor::care::date_label;
 use garden_editor::garden::TaskDraft;
@@ -84,7 +84,7 @@ impl TaskSeed {
                     if let Some(c) = catalog_id {
                         let t = Target::Kind {
                             catalog_id: c.clone(),
-                            name: o.name.clone(),
+                            name: kind_name(doc, c).unwrap_or_else(|| o.name.clone()),
                         };
                         options.push((label_of(doc, &t), t));
                     }
@@ -160,7 +160,10 @@ fn design_options(s: &EditorState) -> Vec<(String, Target)> {
             if let Some(c) = catalog_id
                 && !kinds.iter().any(|(id, _)| id == c)
             {
-                kinds.push((c.clone(), o.name.clone()));
+                kinds.push((
+                    c.clone(),
+                    kind_name(doc, c).unwrap_or_else(|| o.name.clone()),
+                ));
             }
         }
     }
@@ -257,7 +260,7 @@ fn line_view(state: RwSignal<EditorState>, ui: CareUi, l: TaskLine) -> AnyView {
                             ui.week_open.set(false);
                         }
                     }>{EN.done}</button>
-                    <button on:click=move |_| state.update(|s| s.skip_task(id, &skip_plants, now()))>
+                    <button on:click=move |_| state.update(|s| s.skip_task(id, &skip_plants, today(), now()))>
                         {EN.skip}
                     </button>
                 </div>

@@ -1037,6 +1037,112 @@ button.title-card {
   font-variant-numeric: tabular-nums;
 }
 
+/* the compass: true north, in the legend */
+.compass-wrap {
+  position: relative;
+  align-self: center;
+}
+
+.compass {
+  display: block;
+  padding: 0;
+  margin: -4px 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: grab;
+  touch-action: none;
+  pointer-events: auto;
+}
+
+.compass.turning {
+  cursor: grabbing;
+}
+
+.compass.locked {
+  cursor: default;
+}
+
+.compass:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.compass svg {
+  display: block;
+}
+
+.compass-ring {
+  fill: var(--card);
+  stroke: var(--text);
+  stroke-width: 0.9;
+}
+
+.compass-north {
+  fill: var(--text);
+}
+
+.compass-south {
+  fill: var(--card);
+  stroke: var(--text);
+  stroke-width: 0.7;
+  stroke-linejoin: round;
+}
+
+.compass-n {
+  fill: var(--text);
+  font-size: 6.5px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.compass-edit {
+  position: absolute;
+  left: -6px;
+  bottom: calc(100% + 18px);
+  width: 220px;
+  padding: 12px 14px;
+  background: var(--card);
+  border-radius: 14px;
+  box-shadow: var(--card-shadow);
+  pointer-events: auto;
+}
+
+.compass-edit label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-weight: 600;
+}
+
+.compass-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.compass-field input {
+  width: 64px;
+  text-align: right;
+}
+
+.compass-hint {
+  margin: 8px 0 10px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.compass-reset {
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: var(--tile);
+  font-size: 13px;
+  font-weight: 550;
+}
+
 .readout {
   display: flex;
   gap: 10px;

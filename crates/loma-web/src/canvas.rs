@@ -60,6 +60,223 @@ fn scale_bar_length(scale: f64, units: UnitSystem, max_px: f64) -> f64 {
         .unwrap_or(steps[0])
 }
 
+/// Pointer travel (px) before a press on the compass becomes a turn, so a
+/// click or double-click never moves north by itself.
+const COMPASS_DRAG_PX: f64 = 3.0;
+
+/// The plan's compass: shows true north, drag to turn it (5° steps, Alt for
+/// free), double-click (or Enter) to type a bearing. Locked in Garden mode.
+#[component]
+fn Compass() -> impl IntoView {
+    use loma_editor::compass::{bearing_from_pointer, normalize, parse_bearing, snap};
+    use loma_editor::strings::EN;
+
+    let state = expect_context::<RwSignal<EditorState>>();
+    let north = Memo::new(move |_| state.with(|s| s.doc().north));
+    let design = Memo::new(move |_| state.with(|s| s.mode() == Mode::Design));
+    // the angle being dragged to, shown until the drag ends
+    let turning = RwSignal::new(None::<f64>);
+    let press = StoredValue::new(None::<(f64, f64)>);
+    let moved = StoredValue::new(false);
+    let editing = RwSignal::new(false);
+    let button = NodeRef::<leptos::html::Button>::new();
+    let input = NodeRef::<leptos::html::Input>::new();
+
+    let shown = move || turning.get().unwrap_or_else(|| north.get());
+    let bearing_at = move |e: &ev::PointerEvent| -> Option<f64> {
+        let r = button.get_untracked()?.get_bounding_client_rect();
+        let (cx, cy) = (r.left() + r.width() / 2.0, r.top() + r.height() / 2.0);
+        let b = bearing_from_pointer(cx, cy, e.client_x() as f64, e.client_y() as f64)?;
+        Some(if e.alt_key() {
+            normalize(b)
+        } else {
+            snap(b, 5.0)
+        })
+    };
+    let stop = move || {
+        press.set_value(None);
+        moved.set_value(false);
+        turning.set(None);
+    };
+    let on_down = move |e: ev::PointerEvent| {
+        e.stop_propagation();
+        if e.button() != 0 || !design.get_untracked() {
+            return;
+        }
+        commit_focused_field();
+        if let Some(el) = button.get_untracked() {
+            let _ = el.set_pointer_capture(e.pointer_id());
+        }
+        press.set_value(Some((e.client_x() as f64, e.client_y() as f64)));
+        moved.set_value(false);
+    };
+    let on_move = move |e: ev::PointerEvent| {
+        let Some((x, y)) = press.get_value() else {
+            return;
+        };
+        if !moved.get_value()
+            && (e.client_x() as f64 - x).hypot(e.client_y() as f64 - y) < COMPASS_DRAG_PX
+        {
+            return;
+        }
+        moved.set_value(true);
+        if let Some(b) = bearing_at(&e) {
+            turning.set(Some(b));
+        }
+    };
+    let on_up = move |_: ev::PointerEvent| {
+        if let Some(b) = turning.get_untracked() {
+            state.update(|s| {
+                s.set_north(b, now());
+            });
+        }
+        stop();
+    };
+    let on_key = move |e: ev::KeyboardEvent| match e.key().as_str() {
+        "Escape" if press.get_value().is_some() => {
+            e.stop_propagation();
+            stop();
+        }
+        "Enter" | " " if design.get_untracked() => {
+            e.prevent_default();
+            editing.set(true);
+        }
+        _ => {}
+    };
+    let on_dblclick = move |e: ev::MouseEvent| {
+        e.stop_propagation();
+        if design.get_untracked() {
+            editing.set(true);
+        }
+    };
+
+    // the bearing editor
+    let commit = move || {
+        if let Some(b) = input
+            .get_untracked()
+            .and_then(|el| parse_bearing(&el.value()))
+        {
+            state.update(|s| {
+                s.set_north(b, now());
+            });
+        }
+    };
+    let close = move || {
+        editing.set(false);
+        if let Some(el) = button.get_untracked() {
+            let _ = el.focus();
+        }
+    };
+    Effect::new(move |_| {
+        if editing.get()
+            && let Some(el) = input.get()
+        {
+            let _ = el.focus();
+        }
+    });
+    let shown_text = move || {
+        let n = north.get();
+        let r = (n * 10.0).round() / 10.0;
+        if r.fract() == 0.0 {
+            format!("{r:.0}")
+        } else {
+            format!("{r:.1}")
+        }
+    };
+    let editor = move || {
+        editing.get().then(|| {
+            view! {
+                <div class="compass-edit" role="dialog" aria-label=EN.compass_bearing
+                    // pressing the box (or its button) keeps focus in the field,
+                    // so the box doesn't close before the button's click lands
+                    on:mousedown=|e: ev::MouseEvent| {
+                        let on_field = e
+                            .target()
+                            .and_then(|t| t.dyn_into::<web_sys::Element>().ok())
+                            .is_some_and(|el| el.tag_name() == "INPUT");
+                        if !on_field {
+                            e.prevent_default();
+                        }
+                    }
+                    on:focusout=move |e: ev::FocusEvent| {
+                        // leaving the box altogether closes it
+                        let inside = e
+                            .related_target()
+                            .and_then(|t| t.dyn_into::<web_sys::Node>().ok())
+                            .zip(e.current_target().and_then(|t| t.dyn_into::<web_sys::Node>().ok()))
+                            .is_some_and(|(t, me)| me.contains(Some(&t)));
+                        // after Enter, Escape or Reset the box is already closing:
+                        // leaving the field then must not save its text again
+                        if !inside && editing.get_untracked() {
+                            commit();
+                            editing.set(false);
+                        }
+                    }>
+                    <label>
+                        <span>{EN.compass_bearing}</span>
+                        <span class="compass-field">
+                            <input node_ref=input type="text" inputmode="decimal" prop:value=shown_text
+                                on:focus=move |_| {
+                                    // select once the click that focused it is over
+                                    if let Some(el) = input.get_untracked() {
+                                        let cb = Closure::once_into_js(move || el.select());
+                                        if let Some(w) = web_sys::window() {
+                                            let _ = w.set_timeout_with_callback(cb.unchecked_ref());
+                                        }
+                                    }
+                                }
+                                on:keydown=move |e: ev::KeyboardEvent| match e.key().as_str() {
+                                    "Enter" => { e.prevent_default(); commit(); close(); }
+                                    "Escape" => { e.prevent_default(); e.stop_propagation(); close(); }
+                                    _ => {}
+                                } />
+                            <span>"°"</span>
+                        </span>
+                    </label>
+                    <p class="compass-hint">{EN.compass_hint}</p>
+                    <button class="compass-reset" on:click=move |_| {
+                        state.update(|s| { s.set_north(0.0, now()); });
+                        close();
+                    }>{EN.compass_reset}</button>
+                </div>
+            }
+        })
+    };
+
+    let needle = move || format!("rotate({:.2} 16 16)", shown());
+    let label = move || {
+        let (sin, cos) = shown().to_radians().sin_cos();
+        (16.0 + 13.0 * sin, 16.0 - 13.0 * cos)
+    };
+    let title = move || {
+        if design.get() {
+            EN.compass_title
+        } else {
+            EN.compass_locked
+        }
+    };
+    view! {
+        <div class="compass-wrap">
+            <button node_ref=button class="compass" class:locked=move || !design.get()
+                class:turning=move || turning.get().is_some()
+                title=title aria-label=move || format!("{} {}°", title(), shown_text())
+                on:pointerdown=on_down on:pointermove=on_move on:pointerup=on_up
+                on:pointercancel=move |_| stop() on:lostpointercapture=move |_| stop()
+                on:keydown=on_key on:dblclick=on_dblclick>
+                <svg viewBox="0 0 32 32" width="40" height="40" aria-hidden="true">
+                    <circle cx="16" cy="16" r="9.5" class="compass-ring" />
+                    <g transform=needle>
+                        <polygon points="16,7 18.6,16 13.4,16" class="compass-north" />
+                        <polygon points="16,25 18.6,16 13.4,16" class="compass-south" />
+                    </g>
+                    <text x=move || label().0 y=move || label().1 class="compass-n">"N"</text>
+                </svg>
+            </button>
+            {editor}
+        </div>
+    }
+}
+
 /// Map-style scale bar plus cursor readout, floating over the plan.
 #[component]
 fn PlanLegend() -> impl IntoView {
@@ -108,7 +325,7 @@ fn PlanLegend() -> impl IntoView {
             <span class="zoom">{format!("{zoom}%")}</span>
         }
     };
-    view! { <div class="card legend">{bar}<div class="readout">{readout}</div></div> }
+    view! { <div class="card legend"><Compass />{bar}<div class="readout">{readout}</div></div> }
 }
 
 /// Resize corners, the rotate handle, and in node mode the points and curve

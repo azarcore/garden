@@ -87,3 +87,69 @@ self.addEventListener("fetch", (event) => {
     event.respondWith(fromApp(request));
   }
 });
+
+// ---- reminders (no server): the app keeps garden-due.json up to date ----
+
+function localDay(d = new Date()) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+async function readData(name) {
+  const cache = await caches.open(DATA);
+  const hit = await cache.match(scoped(name));
+  return hit ? hit.json() : null;
+}
+
+async function remind() {
+  const summary = (await readData("garden-due.json")) || { items: [] };
+  const today = localDay();
+  // the same rule as the app: each (garden, job) with a date on or before today
+  const due = new Map();
+  for (const item of summary.items) {
+    if (item.date <= today) due.set(item.design_id + "/" + item.task, item);
+  }
+  if (self.navigator.setAppBadge) {
+    try {
+      due.size ? await self.navigator.setAppBadge(due.size) : await self.navigator.clearAppBadge();
+    } catch (_) {}
+  }
+  if (!due.size) return;
+  const last = await readData("garden-reminded.json");
+  if (last && last.day === today) return; // at most one a day
+  const items = [...due.values()];
+  const gardens = new Set(items.map((i) => i.design_id)).size;
+  // name the garden when the jobs come from more than one
+  const titles = items.slice(0, 3).map((i) => (gardens > 1 ? `${i.design}: ${i.title}` : i.title));
+  const n = due.size;
+  await self.registration.showNotification(n === 1 ? "1 garden job due today" : `${n} garden jobs due today`, {
+    body: titles.join("\n"),
+    tag: "garden-due",
+    icon: scoped("icons/icon-192.png"),
+    badge: scoped("icons/icon-192.png"),
+    data: { url: scoped("./?week=1") },
+  });
+  const cache = await caches.open(DATA);
+  await cache.put(scoped("garden-reminded.json"), new Response(JSON.stringify({ day: today })));
+}
+
+self.addEventListener("periodicsync", (event) => {
+  if (event.tag === "garden-due") event.waitUntil(remind());
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const url = (event.notification.data && event.notification.data.url) || scoped("./?week=1");
+  event.waitUntil(
+    (async () => {
+      const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+      for (const client of windows) {
+        if ("navigate" in client) {
+          await client.focus();
+          return client.navigate(url);
+        }
+      }
+      return self.clients.openWindow(url);
+    })()
+  );
+});

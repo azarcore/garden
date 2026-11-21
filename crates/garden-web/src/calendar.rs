@@ -352,6 +352,7 @@ pub fn WeekCard() -> impl IntoView {
                 let seed = state.with_untracked(TaskSeed::for_week);
                 ui.task_form.set(Some(seed));
             }>{EN.new_task}</button>
+            <crate::reminders::ReminderControls />
         }
         .into_any()
     };

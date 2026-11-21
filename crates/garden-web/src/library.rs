@@ -69,6 +69,7 @@ pub async fn refresh_summaries(lib: Library) {
     };
     if let Ok(records) = store.list().await {
         lib.summaries.set(summaries_of(&records));
+        spawn_local(crate::reminders::write_summary(records));
     }
 }
 
@@ -177,6 +178,7 @@ pub fn provide_library(state: RwSignal<EditorState>) -> Library {
             return;
         };
         lib.summaries.set(summaries_of(&records));
+        spawn_local(crate::reminders::write_summary(records.clone()));
         spawn_local(crate::photos::clean_up(
             store.clone(),
             records.clone(),

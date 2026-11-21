@@ -190,6 +190,21 @@ fn garden_key(e: &ev::KeyboardEvent, state: RwSignal<EditorState>, view3d: crate
     e.prevent_default();
 }
 
+/// A reminder notification opens the app at `?week=1`: show This week in
+/// Garden mode, then tidy the address.
+fn open_week_from_link(state: RwSignal<EditorState>) {
+    let Some(w) = web_sys::window() else { return };
+    let search = w.location().search().unwrap_or_default();
+    if !search.split(['?', '&']).any(|p| p == "week=1") {
+        return;
+    }
+    crate::garden::set_mode(state, Mode::Garden);
+    expect_context::<crate::care::CareUi>().week_open.set(true);
+    if let (Ok(history), Ok(path)) = (w.history(), w.location().pathname()) {
+        let _ = history.replace_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(&path));
+    }
+}
+
 #[component]
 pub fn App() -> impl IntoView {
     let state = RwSignal::new(EditorState::new(
@@ -226,6 +241,7 @@ pub fn App() -> impl IntoView {
     let crate::library::DesignsOpen(designs_open) = expect_context::<crate::library::DesignsOpen>();
 
     let design = move || state.with(|s| s.mode() == Mode::Design);
+    open_week_from_link(state);
     let down = window_event_listener(ev::keydown, move |e| {
         let panels = Panels {
             designs_open,
@@ -263,6 +279,7 @@ pub fn App() -> impl IntoView {
             <crate::care::PlantCard />
             <crate::care::ProductsCard />
             <crate::calendar::WeekCard />
+            <crate::reminders::DueBanner />
             <Show when=design><crate::layers::LayersCard /></Show>
             <ControlsCard />
             <Show when=design>

@@ -16,6 +16,7 @@ mod photos;
 mod plan_art;
 mod print;
 mod pwa;
+mod reminders;
 mod storage;
 mod templates;
 mod toolbar;

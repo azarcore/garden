@@ -55,14 +55,42 @@ pub fn compass_svg(north: f64, size: f64, unit: &str) -> String {
     )
 }
 
-/// `svg` (a whole plan, framed on `world` in its own units) with the compass
-/// added in its top-right corner, sized to 8% of the shorter side.
-/// Unchanged if it has no closing `</svg>`.
-pub fn with_compass_in_corner(svg: &str, world: kurbo::Rect, north: f64) -> String {
+/// A freely dragged bearing, kept to a tenth of a degree (what the bearing
+/// box shows), so opening the box and leaving it changes nothing.
+pub fn free_bearing(deg: f64) -> f64 {
+    normalize((deg * 10.0).round() / 10.0)
+}
+
+/// A bearing as the bearing box shows it: to a tenth of a degree, no
+/// trailing ".0", and never "360".
+pub fn bearing_text(deg: f64) -> String {
+    let r = free_bearing(deg);
+    if r.fract() == 0.0 {
+        format!("{r:.0}")
+    } else {
+        format!("{r:.1}")
+    }
+}
+
+/// `svg` (a whole plan framed on `world`, in its own units) with the compass
+/// in its top-right corner: 8% of the shorter side, but always inside the
+/// empty margin above `content` (the drawn garden) so it never covers it.
+/// Unchanged if there's no room or no closing `</svg>`.
+pub fn with_compass_in_corner(
+    svg: &str,
+    world: kurbo::Rect,
+    content: kurbo::Rect,
+    north: f64,
+) -> String {
     let Some(end) = svg.rfind("</svg>") else {
         return svg.to_string();
     };
-    let size = 0.08 * world.width().min(world.height());
+    let margin = content.y0 - world.y0;
+    let size = (0.08 * world.width().min(world.height())).min(0.8 * margin);
+    if size <= 0.0 {
+        return svg.to_string();
+    }
+    // a quarter of its size in from the corner: within the margin, as size ≤ 0.8 × margin
     let (x, y) = (world.x1 - 1.25 * size, world.y0 + 0.25 * size);
     let compass =
         compass_svg(north, size, "").replacen("<svg ", &format!(r#"<svg x="{x}" y="{y}" "#), 1);
@@ -126,15 +154,43 @@ mod tests {
     fn compass_goes_in_the_top_right_corner_of_an_export() {
         let plan = r#"<svg viewBox="0 0 10000 5000"><g/></svg>"#;
         let world = kurbo::Rect::new(0.0, 0.0, 10_000.0, 5_000.0);
-        let out = with_compass_in_corner(plan, world, 45.0);
+        let garden = world.inset(-1000.0);
+        let out = with_compass_in_corner(plan, world, garden, 45.0);
         // 8% of the short side, a quarter of that in from the corner
         assert!(out.contains(r#"<svg x="9500" y="100" "#), "{out}");
         assert!(out.contains(r#"width="400""#), "{out}");
         assert!(out.contains("rotate(45"), "{out}");
         assert!(out.ends_with("</svg></svg>"), "{out}");
         assert_eq!(
-            with_compass_in_corner("no svg here", world, 0.0),
+            with_compass_in_corner("no svg here", world, garden, 0.0),
             "no svg here"
         );
+    }
+
+    #[test]
+    fn export_compass_stays_in_the_margin_of_a_big_garden() {
+        // a 20 × 15 m garden framed with a 1 m margin
+        let world = kurbo::Rect::new(0.0, 0.0, 22_000.0, 17_000.0);
+        let garden = world.inset(-1000.0);
+        let out = with_compass_in_corner("<svg></svg>", world, garden, 0.0);
+        assert!(out.contains(r#"width="800""#), "fits the 1 m margin: {out}");
+        assert!(out.contains(r#"<svg x="21000" y="200" "#), "{out}");
+        // no margin at all: no compass rather than one over the plan
+        let tight = with_compass_in_corner("<svg></svg>", world, world, 0.0);
+        assert_eq!(tight, "<svg></svg>");
+    }
+
+    #[test]
+    fn free_bearings_keep_a_tenth_of_a_degree() {
+        assert_eq!(free_bearing(31.6342), 31.6);
+        assert_eq!(free_bearing(359.97), 0.0);
+        assert_eq!(free_bearing(-0.04), 0.0);
+    }
+
+    #[test]
+    fn bearing_text_rounds_to_a_tenth_and_wraps() {
+        assert_eq!(bearing_text(23.0), "23");
+        assert_eq!(bearing_text(31.6342), "31.6");
+        assert_eq!(bearing_text(359.97), "0");
     }
 }

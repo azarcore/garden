@@ -445,7 +445,7 @@ pub async fn export_image(state: RwSignal<EditorState>, png: bool) {
     let Some((svg, w, h)) = crate::files::plan_svg(framed, None) else {
         return;
     };
-    let svg = loma_editor::compass::with_compass_in_corner(&svg, framed, north);
+    let svg = loma_editor::compass::with_compass_in_corner(&svg, framed, bounds, north);
     if png {
         if let Some(blob) = crate::files::svg_to_png(&svg, 2400.0, h / w).await {
             let file = loma_editor::library::export_file_name(&name, "png");

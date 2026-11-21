@@ -68,7 +68,9 @@ const COMPASS_DRAG_PX: f64 = 3.0;
 /// free), double-click (or Enter) to type a bearing. Locked in Garden mode.
 #[component]
 fn Compass() -> impl IntoView {
-    use loma_editor::compass::{bearing_from_pointer, normalize, parse_bearing, snap};
+    use loma_editor::compass::{
+        bearing_from_pointer, bearing_text, free_bearing, parse_bearing, snap,
+    };
     use loma_editor::strings::EN;
 
     let state = expect_context::<RwSignal<EditorState>>();
@@ -88,7 +90,7 @@ fn Compass() -> impl IntoView {
         let (cx, cy) = (r.left() + r.width() / 2.0, r.top() + r.height() / 2.0);
         let b = bearing_from_pointer(cx, cy, e.client_x() as f64, e.client_y() as f64)?;
         Some(if e.alt_key() {
-            normalize(b)
+            free_bearing(b)
         } else {
             snap(b, 5.0)
         })
@@ -105,6 +107,8 @@ fn Compass() -> impl IntoView {
         }
         commit_focused_field();
         if let Some(el) = button.get_untracked() {
+            // focused, so Escape reaches it even where a click doesn't focus buttons
+            let _ = el.focus();
             let _ = el.set_pointer_capture(e.pointer_id());
         }
         press.set_value(Some((e.client_x() as f64, e.client_y() as f64)));
@@ -139,6 +143,7 @@ fn Compass() -> impl IntoView {
         }
         "Enter" | " " if design.get_untracked() => {
             e.prevent_default();
+            e.stop_propagation(); // not an editor key (Enter would finish a line)
             editing.set(true);
         }
         _ => {}
@@ -152,9 +157,12 @@ fn Compass() -> impl IntoView {
 
     // the bearing editor
     let commit = move || {
+        // only a changed text changes north: opening the box and leaving it
+        // must not nudge a bearing it shows rounded
         if let Some(b) = input
             .get_untracked()
             .and_then(|el| parse_bearing(&el.value()))
+            .filter(|b| bearing_text(*b) != bearing_text(north.get_untracked()))
         {
             state.update(|s| {
                 s.set_north(b, now());
@@ -174,17 +182,10 @@ fn Compass() -> impl IntoView {
             let _ = el.focus();
         }
     });
-    let shown_text = move || {
-        let n = north.get();
-        let r = (n * 10.0).round() / 10.0;
-        if r.fract() == 0.0 {
-            format!("{r:.0}")
-        } else {
-            format!("{r:.1}")
-        }
-    };
+    let shown_text = move || bearing_text(north.get());
+
     let editor = move || {
-        editing.get().then(|| {
+        (editing.get() && design.get()).then(|| {
             view! {
                 <div class="compass-edit" role="dialog" aria-label=EN.compass_bearing
                     // pressing the box (or its button) keeps focus in the field,
@@ -256,9 +257,10 @@ fn Compass() -> impl IntoView {
         }
     };
     view! {
-        <div class="compass-wrap">
+        <div class="card compass-wrap">
             <button node_ref=button class="compass" class:locked=move || !design.get()
                 class:turning=move || turning.get().is_some()
+                aria-disabled=move || (!design.get()).then_some("true")
                 title=title aria-label=move || format!("{} {}°", title(), shown_text())
                 on:pointerdown=on_down on:pointermove=on_move on:pointerup=on_up
                 on:pointercancel=move |_| stop() on:lostpointercapture=move |_| stop()
@@ -285,7 +287,7 @@ fn PlanLegend() -> impl IntoView {
     let view_info = Memo::new(move |_| state.with(|s| (s.viewport.scale, s.doc().units)));
     let bar = move || {
         let (scale, units) = view_info.get();
-        let len = scale_bar_length(scale, units, 150.0);
+        let len = scale_bar_length(scale, units, 130.0); // fits the legend beside the dock
         let px = len * scale;
         let seg = px / 4.0;
         let blocks = (0..4)
@@ -325,7 +327,7 @@ fn PlanLegend() -> impl IntoView {
             <span class="zoom">{format!("{zoom}%")}</span>
         }
     };
-    view! { <div class="card legend"><Compass />{bar}<div class="readout">{readout}</div></div> }
+    view! { <div class="card legend">{bar}<div class="readout">{readout}</div></div> }
 }
 
 /// Resize corners, the rotate handle, and in node mode the points and curve
@@ -709,5 +711,6 @@ pub fn Canvas() -> impl IntoView {
             </g>
         </svg>
         <PlanLegend />
+        <Compass />
     }
 }

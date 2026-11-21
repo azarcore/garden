@@ -124,6 +124,16 @@ impl Document {
             self.layers.push(Layer::default_layer());
             changed = true;
         }
+        // north from outside may be any angle (or garbage): keep it in [0, 360)
+        let north = if self.north.is_finite() {
+            normalize_degrees(self.north)
+        } else {
+            0.0
+        };
+        if north != self.north {
+            self.north = north;
+            changed = true;
+        }
         let first = self.layers[0].id;
         let known: std::collections::HashSet<LayerId> = self.layers.iter().map(|l| l.id).collect();
         for object in &mut self.objects {

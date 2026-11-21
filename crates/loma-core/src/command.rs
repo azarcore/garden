@@ -468,6 +468,17 @@ mod tests {
     }
 
     #[test]
+    fn north_from_a_file_is_normalised() {
+        let mut d = Document::new("g", 0);
+        d.north = 400.0;
+        let json = crate::io::to_json(&d).unwrap();
+        assert_eq!(crate::io::from_json(&json).unwrap().north, 40.0);
+        d.north = -30.0;
+        let json = crate::io::to_json(&d).unwrap();
+        assert_eq!(crate::io::from_json(&json).unwrap().north, 330.0);
+    }
+
+    #[test]
     fn north_is_saved_normalised_and_undoes() {
         let mut d = Document::new("g", 0);
         assert_eq!(d.north, 0.0);

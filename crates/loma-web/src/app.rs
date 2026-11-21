@@ -41,6 +41,8 @@ fn typing_in_field(e: &ev::KeyboardEvent) -> bool {
         || el.is_content_editable()
         // the plant form's own buttons (symbols, Save, Cancel) aren't editor keys
         || el.closest(".plant-form").ok().flatten().is_some()
+        // nor the compass's bearing box (Reset must take Enter)
+        || el.closest(".compass-edit").ok().flatten().is_some()
         // nor are the garden list's buttons
         || el.closest(".list-card").ok().flatten().is_some()
         // nor the job and product forms' buttons (the rest of the plant card

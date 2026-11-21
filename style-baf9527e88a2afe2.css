@@ -673,6 +673,9 @@ button.title-card {
   }
 
   .print-bar {
+    display: flex;
+    align-items: flex-start;
+    gap: 4mm;
     height: 8mm;
     margin-top: 2mm;
     overflow: hidden;
@@ -999,14 +1002,20 @@ button.title-card {
   box-shadow: inset 0 0 0 1.5px var(--plant-ink);
 }
 
-/* scale + cursor readout (bottom-left) */
+/* scale bar with the cursor readout under it (bottom-left), narrow enough to
+   sit level with the dock */
 .legend {
   left: 16px;
   bottom: 18px;
   display: flex;
-  align-items: flex-end;
-  gap: 16px;
-  padding: 10px 14px 9px;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 6px;
+  /* as tall as the dock beside it (7px padding round 44px tools) */
+  box-sizing: border-box;
+  height: 58px;
+  padding: 0 12px;
   font-size: 12px;
   pointer-events: none;
 }
@@ -1037,9 +1046,132 @@ button.title-card {
   font-variant-numeric: tabular-nums;
 }
 
+/* the compass: true north, bottom-right like on a map */
+.compass-wrap {
+  right: 16px;
+  bottom: 18px;
+  padding: 5px;
+  border-radius: 50%;
+}
+
+/* where the dock reaches the corner, sit above it */
+@media (max-width: 1120px) {
+  .compass-wrap {
+    bottom: 84px;
+  }
+}
+
+/* below this the dock reaches the legend: it sits above the dock's row */
+@media (max-width: 1279px) {
+  .legend {
+    bottom: 84px;
+  }
+}
+
+.compass {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: grab;
+  touch-action: none;
+  pointer-events: auto;
+}
+
+.compass.turning {
+  cursor: grabbing;
+}
+
+.compass.locked {
+  cursor: default;
+}
+
+.compass:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.compass svg {
+  display: block;
+}
+
+.compass-ring {
+  fill: var(--card);
+  stroke: var(--text);
+  stroke-width: 0.9;
+}
+
+.compass-north {
+  fill: var(--text);
+}
+
+.compass-south {
+  fill: var(--card);
+  stroke: var(--text);
+  stroke-width: 0.7;
+  stroke-linejoin: round;
+}
+
+.compass-n {
+  fill: var(--text);
+  font-size: 6.5px;
+  font-weight: 700;
+  text-anchor: middle;
+  dominant-baseline: central;
+}
+
+.compass-edit {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 8px);
+  width: 220px;
+  padding: 12px 14px;
+  background: var(--card);
+  border-radius: 14px;
+  box-shadow: var(--card-shadow);
+  pointer-events: auto;
+}
+
+.compass-edit label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-weight: 600;
+}
+
+.compass-field {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.compass-field input {
+  width: 64px;
+  text-align: right;
+}
+
+.compass-hint {
+  margin: 8px 0 10px;
+  color: var(--muted);
+  line-height: 1.35;
+}
+
+.compass-reset {
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 10px;
+  background: var(--tile);
+  font-size: 13px;
+  font-weight: 550;
+}
+
 .readout {
   display: flex;
-  gap: 10px;
+  gap: 8px;
+  font-size: 11px;
+  white-space: nowrap;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
   line-height: 1;
@@ -1635,7 +1767,8 @@ button.title-card {
     text-align: center;
   }
 
-  .legend {
+  .legend,
+  .compass-wrap {
     display: none;
   }
 

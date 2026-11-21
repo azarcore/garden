@@ -1010,9 +1010,12 @@ button.title-card {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 8px;
-  max-width: 158px;
-  padding: 10px 14px 9px;
+  justify-content: center;
+  gap: 6px;
+  /* as tall as the dock beside it (7px padding round 44px tools) */
+  box-sizing: border-box;
+  height: 58px;
+  padding: 0 12px;
   font-size: 12px;
   pointer-events: none;
 }
@@ -1059,7 +1062,7 @@ button.title-card {
 }
 
 /* below this the dock reaches the legend: it sits above the dock's row */
-@media (max-width: 1247px) {
+@media (max-width: 1279px) {
   .legend {
     bottom: 84px;
   }
@@ -1166,8 +1169,9 @@ button.title-card {
 
 .readout {
   display: flex;
-  flex-wrap: wrap;
-  gap: 4px 10px;
+  gap: 8px;
+  font-size: 11px;
+  white-space: nowrap;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
   line-height: 1;

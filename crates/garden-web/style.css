@@ -1580,6 +1580,10 @@ button.title-card {
     left: 10px;
     right: auto;
     padding: 4px;
+    /* Garden mode adds buttons: wrap rather than run off a phone screen */
+    flex-wrap: wrap;
+    max-width: calc(100vw - 20px);
+    box-sizing: border-box;
   }
 
   .controls .toggle,
@@ -2682,4 +2686,157 @@ button.title-card {
   background: var(--card);
   color: var(--text);
   font-weight: 600;
+}
+
+/* ---------- care calendar ---------- */
+
+.week-card {
+  top: 76px;
+  left: 16px;
+  width: 360px;
+  max-height: calc(100vh - 100px);
+  overflow-y: auto;
+  padding: 14px 16px 12px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.week-heading {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  font-weight: 650;
+  color: var(--muted);
+}
+
+.week-heading.sec-overdue {
+  color: var(--sick);
+}
+
+.task-lines {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.task-line {
+  padding: 8px 0;
+  border-top: 1px solid var(--line);
+}
+
+.task-line:first-child {
+  border-top: 0;
+}
+
+.task-text {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  padding: 0;
+  text-align: left;
+}
+
+.task-text strong {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.task-text span {
+  font-size: 13px;
+}
+
+.task-text small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.task-hold {
+  margin: 4px 0 0;
+  padding: 4px 8px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--watch) 12%, transparent);
+  font-size: 12px;
+}
+
+.task-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+.task-actions button {
+  padding: 6px 12px;
+  border-radius: 9px;
+  background: var(--tile);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.task-actions .task-done {
+  background: var(--accent);
+  color: #fff;
+}
+
+.later-toggle {
+  align-self: flex-start;
+  color: var(--accent-strong);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.task-form .task-delete {
+  margin-left: auto;
+  padding: 8px 14px;
+  border-radius: 11px;
+  color: var(--sick);
+  font-weight: 600;
+}
+
+.care-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.care-actions .trace-primary {
+  flex: 1;
+}
+
+.care-actions .trace-secondary {
+  padding: 9px 12px;
+  border-radius: 11px;
+  background: var(--tile);
+  font-weight: 600;
+}
+
+.coming-up {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13.5px;
+}
+
+.coming-up li + li {
+  margin-top: 2px;
+}
+
+.due-dot circle {
+  fill: var(--accent);
+  stroke: var(--card);
+  stroke-width: 2px;
+  vector-effect: non-scaling-stroke;
+}
+
+@media (max-width: 768px) {
+  .week-card {
+    top: auto;
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    width: auto;
+    max-height: 62vh;
+    z-index: 6;
+  }
 }

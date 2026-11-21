@@ -3,7 +3,8 @@
 
 use garden_core::date::Date;
 use garden_core::model::{
-    CareTask, Document, Health, Job, ObjectId, ObjectKind, ProductId, Repeat, Target, TaskId,
+    CareTask, Document, Health, Job, ObjectId, ObjectKind, PlantCategory, ProductId, Repeat,
+    Target, TaskId,
 };
 
 use crate::care::{date_label, is_gardenable, season_count};
@@ -371,8 +372,11 @@ pub fn target_text(doc: &Document, task: &CareTask) -> String {
         Target::Plants { ids } if ids.len() == 1 => crate::care::plant_name(doc, ids[0]),
         Target::Plants { ids } => EN.plants_n.replace("{n}", &ids.len().to_string()),
         Target::Kind { name, .. } => EN.every_target.replace("{name}", name),
+        Target::Category {
+            category: PlantCategory::Other,
+        } => EN.all_other_plants.to_string(),
         Target::Category { category } => EN
-            .every_target
+            .all_target
             .replace("{name}", &category_label(&EN, *category).to_lowercase()),
     }
 }
@@ -772,7 +776,7 @@ mod tests {
             None,
             "2026-01-01",
         );
-        assert_eq!(target_text(&fx.doc, &cat), "every fruit tree");
+        assert_eq!(target_text(&fx.doc, &cat), "all fruit trees");
         let one = task(
             Target::Plants { ids: vec![fx.l] },
             Job::Fed,

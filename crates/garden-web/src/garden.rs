@@ -67,6 +67,8 @@ pub fn set_mode(state: RwSignal<EditorState>, mode: Mode) {
         if let Some(ui) = use_context::<crate::care::CareUi>() {
             ui.products_open.set(false);
             ui.form.set(None);
+            ui.week_open.set(false);
+            ui.task_form.set(None);
         }
     }
 }
@@ -163,6 +165,30 @@ fn mark_view(doc: &Document, m: &GardenMark, mm: f64) -> Option<AnyView> {
     })
 }
 
+/// A dot for a plant with a job overdue or due today: top-left of the canopy,
+/// or at the start of a hedge.
+fn due_dot(doc: &Document, id: garden_core::model::ObjectId, mm: f64) -> Option<AnyView> {
+    let at = match &doc.object(id)?.kind {
+        ObjectKind::Plant {
+            position, spread, ..
+        } => {
+            let d = spread / 2.0 * std::f64::consts::FRAC_1_SQRT_2;
+            Point::new(position.x - d, position.y - d)
+        }
+        ObjectKind::Linear { shape, .. } => *shape.vertices().first()?,
+        _ => return None,
+    };
+    Some(
+        view! {
+            <g class="due-dot">
+                <title>{EN.sec_overdue}</title>
+                <circle cx=at.x cy=at.y r=6.0 * mm />
+            </g>
+        }
+        .into_any(),
+    )
+}
+
 /// Health rings, gone crosses and "not safe to harvest" badges, in Garden mode.
 pub fn marks_view(state: RwSignal<EditorState>) -> impl IntoView {
     move || {
@@ -172,11 +198,16 @@ pub fn marks_view(state: RwSignal<EditorState>) -> impl IntoView {
             }
             let mm = s.viewport.px_to_mm(1.0);
             let doc = s.doc();
-            let views = garden_marks(doc, today())
+            let day = today();
+            let views = garden_marks(doc, day)
                 .iter()
                 .filter_map(|m| mark_view(doc, m, mm))
                 .collect_view();
-            Some(view! { <g class="garden-marks">{views}</g> })
+            let dots = garden_editor::calendar::plan_dots(doc, day)
+                .into_iter()
+                .filter_map(|id| due_dot(doc, id, mm))
+                .collect_view();
+            Some(view! { <g class="garden-marks">{views}{dots}</g> })
         })
     }
 }

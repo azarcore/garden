@@ -365,6 +365,9 @@ pub fn ControlsCard() -> impl IntoView {
                 aria-pressed=move || print_open.get().to_string()
                 on:click=move |_| print_open.update(|o| *o = !*o)>{icon(Icon::Printer)}</button>
             <Show when=move || !design.get()>
+                <button class="icon-btn" data-tip=EN.week_title aria-label=EN.week_title
+                    aria-pressed=move || care.week_open.get().to_string()
+                    on:click=move |_| care.week_open.update(|o| *o = !*o)>{icon(Icon::Calendar)}</button>
                 <button class="icon-btn" data-tip=EN.products_button aria-label=EN.products_button
                     aria-pressed=move || care.products_open.get().to_string()
                     on:click=move |_| care.products_open.update(|o| *o = !*o)>{icon(Icon::Bottle)}</button>

@@ -53,6 +53,7 @@ pub enum Icon {
     Search,
     Pencil,
     Bottle,
+    Calendar,
 }
 
 fn body(icon: Icon) -> AnyView {
@@ -134,6 +135,7 @@ fn body(icon: Icon) -> AnyView {
         Icon::Lock => view! { <path d="M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 017 0v3" /> }.into_any(),
         Icon::Unlock => view! { <path d="M6 11h12v9H6zM8.5 11V8a3.5 3.5 0 016.8-1.2" /> }.into_any(),
         Icon::Plus => view! { <path d="M12 5v14M5 12h14" /> }.into_any(),
+        Icon::Calendar => view! { <path d="M5 6h14v14H5zM5 10h14M9 3.5v4M15 3.5v4M9 14h2M13 14h2M9 17h2" /> }.into_any(),
         Icon::Bottle => view! { <path d="M10 3h4M10.5 3v4L8 10v9.5A1.5 1.5 0 0 0 9.5 21h5a1.5 1.5 0 0 0 1.5-1.5V10l-2.5-3V3M8 13h8" /> }.into_any(),
         Icon::Pencil => view! { <path d="M4 20l1-4L16 5l3 3L8 19zM14 7l3 3" /> }.into_any(),
         Icon::Search => view! { <circle cx="10.5" cy="10.5" r="6" /><path d="M15 15l5.5 5.5" /> }.into_any(),

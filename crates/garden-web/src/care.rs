@@ -23,7 +23,7 @@ use crate::garden::{SelectSeveral, today};
 use crate::icons::{Icon, icon};
 
 const HEALTHS: [Health; 4] = [Health::Healthy, Health::Watch, Health::Sick, Health::Gone];
-const JOBS: [Job; 7] = [
+pub(crate) const JOBS: [Job; 7] = [
     Job::Sprayed,
     Job::Fed,
     Job::Pruned,
@@ -75,6 +75,21 @@ impl LogSeed {
         }
     }
 
+    /// A new entry for a repeating job that's due: its job, product and note.
+    pub(crate) fn prefilled(
+        plants: Vec<ObjectId>,
+        job: Job,
+        product: Option<ProductId>,
+        note: String,
+    ) -> LogSeed {
+        LogSeed {
+            job,
+            product,
+            note,
+            ..LogSeed::new(plants)
+        }
+    }
+
     fn from_entry(e: &LogEntry) -> LogSeed {
         LogSeed {
             id: Some(e.id),
@@ -94,12 +109,16 @@ impl LogSeed {
 pub struct CareUi {
     pub products_open: RwSignal<bool>,
     pub form: RwSignal<Option<LogSeed>>,
+    pub week_open: RwSignal<bool>,
+    pub task_form: RwSignal<Option<crate::calendar::TaskSeed>>,
 }
 
 pub fn provide_care_ui() {
     provide_context(CareUi {
         products_open: RwSignal::new(false),
         form: RwSignal::new(None),
+        week_open: RwSignal::new(false),
+        task_form: RwSignal::new(None),
     });
 }
 
@@ -321,6 +340,7 @@ fn single_view(state: RwSignal<EditorState>, ui: CareUi, id: ObjectId) -> AnyVie
                         state.update(|s| s.set_notes(id, &v, now()));
                     }></textarea>
             </label>
+            {crate::calendar::coming_up_view(s, id)}
             {crate::photos::photo_strip(state, id)}
             <div class="care-section">
                 <h3>{EN.history_label}</h3>
@@ -330,9 +350,16 @@ fn single_view(state: RwSignal<EditorState>, ui: CareUi, id: ObjectId) -> AnyVie
                 view! { <p class="care-empty">{EN.gone_no_log}</p> }.into_any()
             } else {
                 view! {
-                    <button class="trace-primary" on:click=move |_| ui.form.set(Some(LogSeed::new(vec![id])))>
-                        {EN.log_job}
-                    </button>
+                    <div class="care-actions">
+                        <button class="trace-primary" on:click=move |_| ui.form.set(Some(LogSeed::new(vec![id])))>
+                            {EN.log_job}
+                        </button>
+                        <button class="trace-secondary" on:click=move |_| {
+                            let seed = state.with_untracked(|s| crate::calendar::TaskSeed::for_plant(s, id));
+                            ui.task_form.set(Some(seed));
+                            ui.week_open.set(true);
+                        }>{EN.repeat_job}</button>
+                    </div>
                 }.into_any()
             }}
         }
@@ -723,7 +750,8 @@ pub fn PlantCard() -> impl IntoView {
         if let Some(seed) = ui.form.get() {
             return view! { <LogForm seed=seed /> }.into_any();
         }
-        changes.track();
+        // read, not just track: a memo that was never read doesn't follow the state
+        let _ = changes.get();
         let ids = selection.get();
         match ids.as_slice() {
             [] => ().into_any(),

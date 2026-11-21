@@ -47,6 +47,7 @@ fn typing_in_field(e: &ev::KeyboardEvent) -> bool {
         // keeps Ctrl+Z, so a health change can be undone straight away)
         || el.closest(".log-form").ok().flatten().is_some()
         || el.closest(".product-form").ok().flatten().is_some()
+        || el.closest(".task-form").ok().flatten().is_some()
 }
 
 /// The panels and modes the keyboard handler needs to know about.
@@ -260,6 +261,7 @@ pub fn App() -> impl IntoView {
             <crate::list::ListCard />
             <crate::care::PlantCard />
             <crate::care::ProductsCard />
+            <crate::calendar::WeekCard />
             <Show when=design><crate::layers::LayersCard /></Show>
             <ControlsCard />
             <Show when=design>

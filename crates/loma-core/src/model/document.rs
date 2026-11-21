@@ -73,6 +73,21 @@ pub struct Document {
     /// Repeating care jobs.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub tasks: Vec<CareTask>,
+    /// True north: degrees clockwise from the top of the plan, in [0, 360).
+    /// 0 means north is straight up.
+    #[serde(default, skip_serializing_if = "is_zero")]
+    pub north: f64,
+}
+
+fn is_zero(v: &f64) -> bool {
+    *v == 0.0
+}
+
+/// An angle in degrees, brought into [0, 360).
+pub fn normalize_degrees(deg: f64) -> f64 {
+    let d = deg.rem_euclid(360.0);
+    // rem_euclid of a tiny negative rounds to 360
+    if d >= 360.0 { 0.0 } else { d }
 }
 
 impl Document {
@@ -96,6 +111,7 @@ impl Document {
             log: Vec::new(),
             products: Vec::new(),
             tasks: Vec::new(),
+            north: 0.0,
         }
     }
 

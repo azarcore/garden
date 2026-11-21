@@ -318,9 +318,7 @@ pub async fn import_file(
     state: RwSignal<EditorState>,
     message: RwSignal<Option<&'static str>>,
 ) {
-    let Some(text) =
-        crate::files::pick_file(".json,.loma.json,application/json").await
-    else {
+    let Some(text) = crate::files::pick_file(".json,.loma.json,application/json").await else {
         return;
     };
     import_text(lib, state, &text, message).await;

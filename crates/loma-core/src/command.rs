@@ -89,6 +89,10 @@ pub enum Command {
     RemoveTask {
         id: TaskId,
     },
+    /// Set true north (degrees clockwise from plan-up); normalised to [0, 360).
+    SetNorth {
+        degrees: f64,
+    },
     /// All-or-nothing.
     Batch {
         commands: Vec<Command>,
@@ -184,6 +188,7 @@ impl Document {
             Command::UpsertCustomPlant { def } => def.is_finite(),
             Command::SetPrice { price: Some(p), .. } => p.is_finite() && *p >= 0.0,
             Command::SetGravelDepth { depth: Some(d) } => d.is_finite() && *d > 0.0,
+            Command::SetNorth { degrees } => degrees.is_finite(),
             Command::UpsertLogEntry { entry } => {
                 !entry.plants.is_empty()
                     && entry.plants.len() == entry.plant_names.len()
@@ -334,6 +339,12 @@ impl Document {
             Command::SetGravelDepth { depth } => Command::SetGravelDepth {
                 depth: std::mem::replace(&mut self.gravel_depth, depth),
             },
+            Command::SetNorth { degrees } => Command::SetNorth {
+                degrees: std::mem::replace(
+                    &mut self.north,
+                    crate::model::normalize_degrees(degrees),
+                ),
+            },
             Command::SetCare { id, care } => {
                 let old = match care.filter(|c| !c.is_empty()) {
                     Some(c) => self.care.insert(id, c),
@@ -454,6 +465,36 @@ mod tests {
         assert_eq!(d.currency, "€");
         d.apply(undo, 9).unwrap();
         assert_eq!(d.currency, "");
+    }
+
+    #[test]
+    fn north_is_saved_normalised_and_undoes() {
+        let mut d = Document::new("g", 0);
+        assert_eq!(d.north, 0.0);
+        assert!(
+            !crate::io::to_json(&d).unwrap().contains("north"),
+            "north up is not written"
+        );
+        let undo = d.apply(Command::SetNorth { degrees: 370.0 }, 1).unwrap();
+        assert_eq!(d.north, 10.0);
+        d.apply(undo, 2).unwrap();
+        assert_eq!(d.north, 0.0);
+        d.apply(Command::SetNorth { degrees: -10.0 }, 3).unwrap();
+        assert_eq!(d.north, 350.0);
+        for bad in [f64::NAN, f64::INFINITY] {
+            assert_eq!(
+                d.apply(Command::SetNorth { degrees: bad }, 4),
+                Err(CommandError::InvalidValue)
+            );
+        }
+        assert_eq!(d.north, 350.0);
+        // a tiny negative would round up to 360 with rem_euclid
+        d.apply(Command::SetNorth { degrees: -1e-20 }, 5).unwrap();
+        assert!((0.0..360.0).contains(&d.north), "{}", d.north);
+        d.apply(Command::SetNorth { degrees: 350.0 }, 6).unwrap();
+        let back = crate::io::from_json(&crate::io::to_json(&d).unwrap()).unwrap();
+        assert_eq!(back.north, 350.0);
+        assert!(!Command::SetNorth { degrees: 1.0 }.is_layout_free());
     }
 
     #[test]

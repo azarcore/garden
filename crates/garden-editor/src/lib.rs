@@ -120,6 +120,7 @@ pub mod library;
 pub mod list;
 pub mod objects;
 pub mod print;
+pub mod reminders;
 pub mod search;
 pub mod state;
 pub mod templates;

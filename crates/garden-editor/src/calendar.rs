@@ -179,6 +179,22 @@ fn base_date(task: &CareTask, done: &[Date]) -> Date {
     }
 }
 
+/// When the job would next be due if it were done on `done_on`, from the
+/// repeat and the months alone (no label limits). Used to project ahead.
+pub fn next_after(task: &CareTask, done_on: Date) -> Date {
+    match (task.repeat, task.months) {
+        // the first season after the one this was done in
+        (Repeat::Yearly, Some(months)) => {
+            let from = CareTask {
+                first_due: done_on,
+                ..task.clone()
+            };
+            yearly_due(&from, months, &[done_on])
+        }
+        _ => base_date(task, &[done_on]),
+    }
+}
+
 /// Move `date` later for the product label: the gap between applications,
 /// then the yearly maximum. The months still apply after each move.
 fn apply_label(doc: &Document, task: &CareTask, plant: ObjectId, mut date: Date) -> PlantDue {

@@ -57,6 +57,16 @@ fn scale_bar_svg(scale: f64, units: loma_core::units::UnitSystem) -> String {
     )
 }
 
+/// The footer of a printed page: the compass, then the scale bar.
+fn footer_svgs(scale: f64, units: loma_core::units::UnitSystem, north: f64) -> String {
+    // the footer is 8 mm tall; the compass fills its height
+    format!(
+        "{}{}",
+        loma_editor::compass::compass_svg(north, 8.0, "mm"),
+        scale_bar_svg(scale, units)
+    )
+}
+
 /// Build the print page and open the browser's print dialog.
 fn print_now(state: RwSignal<EditorState>, paper: Paper, layout: Layout) {
     let Some(bounds) = plan_bounds(state) else {
@@ -67,7 +77,8 @@ fn print_now(state: RwSignal<EditorState>, paper: Paper, layout: Layout) {
     else {
         return;
     };
-    let (name, units) = state.with_untracked(|s| (s.doc().name.clone(), s.doc().units));
+    let (name, units, north) =
+        state.with_untracked(|s| (s.doc().name.clone(), s.doc().units, s.doc().north));
     let date =
         js_sys::Date::new_0().to_locale_date_string("default", &wasm_bindgen::JsValue::UNDEFINED);
     let scale = format!("1:{:.0}", layout.scale);
@@ -75,7 +86,7 @@ fn print_now(state: RwSignal<EditorState>, paper: Paper, layout: Layout) {
         r#"<header class="print-title"><strong>{name}</strong><span>{scale}</span><span>{date}</span></header>{svg}<footer class="print-bar">{bar}</footer>"#,
         name = html_escape(&name),
         date = String::from(date),
-        bar = scale_bar_svg(layout.scale, units),
+        bar = footer_svgs(layout.scale, units, north),
     );
     show_and_print(&html, paper, layout.landscape);
 }
@@ -85,7 +96,8 @@ fn print_tiled(state: RwSignal<EditorState>, paper: Paper, tiling: &Tiling, over
     let Some(bounds) = plan_bounds(state) else {
         return;
     };
-    let (name, units) = state.with_untracked(|s| (s.doc().name.clone(), s.doc().units));
+    let (name, units, north) =
+        state.with_untracked(|s| (s.doc().name.clone(), s.doc().units, s.doc().north));
     let name = html_escape(&name);
     let scale = format!("1:{:.0}", tiling.scale);
     let total = tiling.tiles.len() + usize::from(overview);
@@ -124,7 +136,7 @@ fn print_tiled(state: RwSignal<EditorState>, paper: Paper, tiling: &Tiling, over
                 pages_word = EN.pages,
                 page = EN.page_word,
                 of = EN.of_word,
-                bar = scale_bar_svg(fit.scale, units),
+                bar = footer_svgs(fit.scale, units, north),
             ));
         }
     }
@@ -186,7 +198,7 @@ fn print_tiled(state: RwSignal<EditorState>, paper: Paper, tiling: &Tiling, over
             label = t.label,
             page = EN.page_word,
             of = EN.of_word,
-            bar = scale_bar_svg(tiling.scale, units),
+            bar = footer_svgs(tiling.scale, units, north),
         ));
     }
     show_and_print(&pages.concat(), paper, tiling.landscape);

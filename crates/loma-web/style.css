@@ -673,6 +673,9 @@ button.title-card {
   }
 
   .print-bar {
+    display: flex;
+    align-items: flex-start;
+    gap: 4mm;
     height: 8mm;
     margin-top: 2mm;
     overflow: hidden;

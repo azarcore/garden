@@ -431,20 +431,21 @@ pub async fn download_design(lib: Library, state: RwSignal<EditorState>) {
 
 /// Export the plan as SVG, or PNG (2400 px wide) when `png` is set.
 pub async fn export_image(state: RwSignal<EditorState>, png: bool) {
-    let (name, bounds) = state.with_untracked(|s| {
+    let (name, bounds, north) = state.with_untracked(|s| {
         let b = s
             .doc()
             .objects
             .iter()
             .map(|o| loma_editor::objects::object_bounds(&o.kind))
             .reduce(|a, b| a.union(b));
-        (s.doc().name.clone(), b)
+        (s.doc().name.clone(), b, s.doc().north)
     });
     let Some(bounds) = bounds else { return };
     let framed = bounds.inflate(1000.0, 1000.0);
     let Some((svg, w, h)) = crate::files::plan_svg(framed, None) else {
         return;
     };
+    let svg = loma_editor::compass::with_compass_in_corner(&svg, framed, north);
     if png {
         if let Some(blob) = crate::files::svg_to_png(&svg, 2400.0, h / w).await {
             let file = loma_editor::library::export_file_name(&name, "png");

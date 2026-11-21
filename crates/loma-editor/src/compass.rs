@@ -55,6 +55,20 @@ pub fn compass_svg(north: f64, size: f64, unit: &str) -> String {
     )
 }
 
+/// `svg` (a whole plan, framed on `world` in its own units) with the compass
+/// added in its top-right corner, sized to 8% of the shorter side.
+/// Unchanged if it has no closing `</svg>`.
+pub fn with_compass_in_corner(svg: &str, world: kurbo::Rect, north: f64) -> String {
+    let Some(end) = svg.rfind("</svg>") else {
+        return svg.to_string();
+    };
+    let size = 0.08 * world.width().min(world.height());
+    let (x, y) = (world.x1 - 1.25 * size, world.y0 + 0.25 * size);
+    let compass =
+        compass_svg(north, size, "").replacen("<svg ", &format!(r#"<svg x="{x}" y="{y}" "#), 1);
+    format!("{}{compass}{}", &svg[..end], &svg[end..])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -106,5 +120,21 @@ mod tests {
         assert!(svg.contains("rotate(90"), "{svg}");
         assert!(svg.contains(">N<"), "{svg}");
         assert!(compass_svg(0.0, 40.0, "").contains(r#"width="40""#));
+    }
+
+    #[test]
+    fn compass_goes_in_the_top_right_corner_of_an_export() {
+        let plan = r#"<svg viewBox="0 0 10000 5000"><g/></svg>"#;
+        let world = kurbo::Rect::new(0.0, 0.0, 10_000.0, 5_000.0);
+        let out = with_compass_in_corner(plan, world, 45.0);
+        // 8% of the short side, a quarter of that in from the corner
+        assert!(out.contains(r#"<svg x="9500" y="100" "#), "{out}");
+        assert!(out.contains(r#"width="400""#), "{out}");
+        assert!(out.contains("rotate(45"), "{out}");
+        assert!(out.ends_with("</svg></svg>"), "{out}");
+        assert_eq!(
+            with_compass_in_corner("no svg here", world, 0.0),
+            "no svg here"
+        );
     }
 }

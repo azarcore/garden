@@ -3,7 +3,7 @@
 use leptos::ev;
 use leptos::prelude::*;
 use loma_core::geometry::Point;
-use loma_core::units::{UnitSystem, format_length};
+use loma_core::units::format_length;
 use loma_editor::render::scene;
 use loma_editor::state::{EditorState, Mode};
 use loma_editor::tools::{Input, Modifiers, ToolKind};
@@ -41,24 +41,6 @@ fn modifiers(e: &ev::MouseEvent) -> Modifiers {
 
 /// Garden mode: pointer travel (px) after which a press pans instead of tapping.
 const GARDEN_TAP_PX: f64 = 4.0;
-
-/// A "nice" scale-bar length (mm) that is at most `max_px` wide on screen.
-fn scale_bar_length(scale: f64, units: UnitSystem, max_px: f64) -> f64 {
-    let steps: &[f64] = match units {
-        UnitSystem::Metric => &[
-            100., 200., 500., 1000., 2000., 5000., 10_000., 20_000., 50_000., 100_000.,
-        ],
-        UnitSystem::Imperial => &[
-            304.8, 609.6, 1524., 3048., 6096., 15_240., 30_480., 60_960., 152_400.,
-        ],
-    };
-    steps
-        .iter()
-        .rev()
-        .copied()
-        .find(|mm| mm * scale <= max_px)
-        .unwrap_or(steps[0])
-}
 
 /// Pointer travel (px) before a press on the compass becomes a turn, so a
 /// click or double-click never moves north by itself.
@@ -287,7 +269,7 @@ fn PlanLegend() -> impl IntoView {
     let view_info = Memo::new(move |_| state.with(|s| (s.viewport.scale, s.doc().units)));
     let bar = move || {
         let (scale, units) = view_info.get();
-        let len = scale_bar_length(scale, units, 130.0); // fits the legend beside the dock
+        let len = loma_editor::viewport::scale_bar_length(scale, units, 130.0); // fits the legend beside the dock
         let px = len * scale;
         let seg = px / 4.0;
         let blocks = (0..4)

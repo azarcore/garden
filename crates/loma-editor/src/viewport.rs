@@ -86,9 +86,54 @@ impl Viewport {
     }
 }
 
+/// A "nice" scale-bar length (mm) that is at most `max_px` wide on screen,
+/// from 1 mm (¼ inch) when zoomed right in to 100 m (500 ft) when zoomed out.
+pub fn scale_bar_length(scale: f64, units: loma_core::units::UnitSystem, max_px: f64) -> f64 {
+    use loma_core::units::UnitSystem;
+    let steps: &[f64] = match units {
+        UnitSystem::Metric => &[
+            1., 2., 5., 10., 20., 50., 100., 200., 500., 1000., 2000., 5000., 10_000., 20_000.,
+            50_000., 100_000.,
+        ],
+        UnitSystem::Imperial => &[
+            6.35, 12.7, 25.4, 50.8, 152.4, 304.8, 609.6, 1524., 3048., 6096., 15_240., 30_480.,
+            60_960., 152_400.,
+        ],
+    };
+    steps
+        .iter()
+        .rev()
+        .copied()
+        .find(|mm| mm * scale <= max_px)
+        .unwrap_or(steps[0])
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn scale_bar_fits_at_every_zoom() {
+        use loma_core::units::UnitSystem::{Imperial, Metric};
+        for units in [Metric, Imperial] {
+            for scale in [
+                Viewport::MIN_SCALE,
+                Viewport::DEFAULT_SCALE,
+                1.0,
+                Viewport::MAX_SCALE,
+            ] {
+                let mm = scale_bar_length(scale, units, 130.0);
+                let px = mm * scale;
+                assert!(px <= 130.0, "{units:?} at {scale}: {px} px");
+                assert!(px >= 20.0, "{units:?} at {scale}: only {px} px");
+            }
+        }
+        // the usual view is unchanged: 2 m across 100 px
+        assert_eq!(
+            scale_bar_length(Viewport::DEFAULT_SCALE, Metric, 130.0),
+            2000.0
+        );
+    }
 
     #[test]
     fn maps_world_to_screen_and_back() {

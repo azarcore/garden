@@ -4,8 +4,8 @@
 use garden_core::command::Command;
 use garden_core::date::Date;
 use garden_core::model::{
-    Amount, Health, Job, LogEntry, LogId, ObjectId, Photo, PlantCare, Product, ProductId,
-    ProductKind,
+    Amount, CareTask, Health, Job, LogEntry, LogId, ObjectId, Photo, PlantCare, Product, ProductId,
+    ProductKind, Repeat, Target, TaskId,
 };
 
 use crate::care::is_gardenable;
@@ -72,6 +72,38 @@ impl ProductError {
     }
 }
 
+/// A repeating job as typed into its form. `id` is set when editing.
+#[derive(Clone, Debug, PartialEq)]
+pub struct TaskDraft {
+    pub id: Option<TaskId>,
+    pub job: Job,
+    pub product: Option<ProductId>,
+    pub note: String,
+    pub target: Target,
+    pub repeat: Repeat,
+    pub months: Option<(u32, u32)>,
+    pub first_due: Date,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum TaskError {
+    NoPlants,
+    ProductRequired,
+    BadRepeat,
+    BadMonths,
+}
+
+impl TaskError {
+    pub fn message(self, s: &Strings) -> &'static str {
+        match self {
+            TaskError::NoPlants => s.err_task_no_plants,
+            TaskError::ProductRequired => s.err_product_required,
+            TaskError::BadRepeat => s.err_task_repeat,
+            TaskError::BadMonths => s.err_task_months,
+        }
+    }
+}
+
 /// A days field: empty means not set, otherwise a whole number ≥ 0.
 #[allow(clippy::result_unit_err)]
 pub fn parse_days(s: &str) -> Result<Option<u32>, ()> {
@@ -86,6 +118,72 @@ pub fn parse_days(s: &str) -> Result<Option<u32>, ()> {
 }
 
 impl EditorState {
+    /// Save a new or edited repeating job (Garden mode). Editing keeps its skips.
+    pub fn save_task(&mut self, d: TaskDraft, now_ms: i64) -> Result<TaskId, TaskError> {
+        if matches!(&d.target, Target::Plants { ids } if ids.is_empty()) {
+            return Err(TaskError::NoPlants);
+        }
+        if let Repeat::Every { days } = d.repeat
+            && !(1..=2555).contains(&days)
+        {
+            return Err(TaskError::BadRepeat);
+        }
+        if d.months
+            .is_some_and(|(a, b)| !(1..=12).contains(&a) || !(1..=12).contains(&b))
+        {
+            return Err(TaskError::BadMonths);
+        }
+        let product = d
+            .product
+            .and_then(|id| self.doc().products.iter().find(|p| p.id == id));
+        if d.job == Job::Sprayed && product.is_none() {
+            return Err(TaskError::ProductRequired);
+        }
+        if !self.in_garden() {
+            return Err(TaskError::NoPlants);
+        }
+        let saved =
+            d.id.and_then(|id| self.doc().tasks.iter().find(|t| t.id == id));
+        let task = CareTask {
+            id: d.id.unwrap_or_else(TaskId::new),
+            job: d.job,
+            product: product.map(|p| p.id),
+            product_name: product.map(|p| p.name.clone()).unwrap_or_default(),
+            note: d.note.trim().to_string(),
+            target: d.target,
+            repeat: d.repeat,
+            months: d.months,
+            first_due: d.first_due,
+            skips: saved.map(|t| t.skips.clone()).unwrap_or_default(),
+        };
+        let id = task.id;
+        if saved != Some(&task) {
+            self.execute(Command::UpsertTask { task }, now_ms);
+        }
+        Ok(id)
+    }
+
+    pub fn remove_task(&mut self, id: TaskId, now_ms: i64) {
+        if self.in_garden() && self.doc().tasks.iter().any(|t| t.id == id) {
+            self.execute(Command::RemoveTask { id }, now_ms);
+        }
+    }
+
+    /// Record each plant's current due date as skipped, as one undo step.
+    pub fn skip_task(&mut self, id: TaskId, plants: &[ObjectId], now_ms: i64) {
+        if !self.in_garden() || plants.is_empty() {
+            return;
+        }
+        let Some(mut task) = self.doc().tasks.iter().find(|t| t.id == id).cloned() else {
+            return;
+        };
+        for p in plants {
+            let due = crate::calendar::plant_due(self.doc(), &task, *p).date;
+            task.skips.insert(*p, due);
+        }
+        self.execute(Command::UpsertTask { task }, now_ms);
+    }
+
     fn in_garden(&self) -> bool {
         self.mode == Mode::Garden
     }
@@ -534,5 +632,114 @@ mod tests {
         assert!(s.can_undo());
         assert!(s.undo(5));
         assert_eq!(s.doc().gravel_depth, None);
+    }
+
+    fn feed_every(days: u32, target: Target) -> TaskDraft {
+        TaskDraft {
+            id: None,
+            job: Job::Fed,
+            product: None,
+            note: "half dose".into(),
+            target,
+            repeat: Repeat::Every { days },
+            months: None,
+            first_due: day("2026-06-01"),
+        }
+    }
+
+    #[test]
+    fn task_validation() {
+        let (mut s, a, _) = garden();
+        let none = Target::Plants { ids: vec![] };
+        assert_eq!(
+            s.save_task(feed_every(7, none), 1),
+            Err(TaskError::NoPlants)
+        );
+        let one = Target::Plants { ids: vec![a] };
+        assert_eq!(
+            s.save_task(feed_every(0, one.clone()), 1),
+            Err(TaskError::BadRepeat)
+        );
+        assert_eq!(
+            s.save_task(feed_every(2556, one.clone()), 1),
+            Err(TaskError::BadRepeat)
+        );
+        let mut months = feed_every(7, one.clone());
+        months.months = Some((0, 4));
+        assert_eq!(s.save_task(months, 1), Err(TaskError::BadMonths));
+        let mut spray = feed_every(7, one.clone());
+        spray.job = Job::Sprayed;
+        assert_eq!(
+            s.save_task(spray.clone(), 1),
+            Err(TaskError::ProductRequired)
+        );
+        // a kind with no plants on the plan is allowed
+        let kind = Target::Kind {
+            catalog_id: "quince".into(),
+            name: "Quince".into(),
+        };
+        assert!(s.save_task(feed_every(7, kind), 2).is_ok());
+        // a spray takes its product's name
+        let p = s.save_product(copper(), 3).unwrap();
+        spray.product = Some(p);
+        let id = s.save_task(spray, 4).unwrap();
+        let t = s.doc().tasks.iter().find(|t| t.id == id).unwrap();
+        assert_eq!(t.product_name, "Copper");
+    }
+
+    #[test]
+    fn editing_keeps_skips() {
+        let (mut s, a, _) = garden();
+        let id = s
+            .save_task(feed_every(28, Target::Plants { ids: vec![a] }), 1)
+            .unwrap();
+        s.skip_task(id, &[a], 2);
+        let skips = s.doc().tasks[0].skips.clone();
+        assert_eq!(skips.get(&a), Some(&day("2026-06-01")));
+        let mut edit = feed_every(14, Target::Plants { ids: vec![a] });
+        edit.id = Some(id);
+        assert_eq!(s.save_task(edit, 3), Ok(id));
+        assert_eq!(s.doc().tasks.len(), 1);
+        assert_eq!(s.doc().tasks[0].skips, skips);
+        assert_eq!(s.doc().tasks[0].repeat, Repeat::Every { days: 14 });
+        s.remove_task(id, 4);
+        assert!(s.doc().tasks.is_empty());
+        assert!(s.undo(5));
+        assert_eq!(s.doc().tasks.len(), 1);
+    }
+
+    #[test]
+    fn skip_moves_on_and_undoes() {
+        use crate::calendar::plant_due;
+        let (mut s, a, b) = garden();
+        let id = s
+            .save_task(feed_every(28, Target::Plants { ids: vec![a, b] }), 1)
+            .unwrap();
+        let before = s.doc().tasks[0].clone();
+        s.skip_task(id, &[a], 2);
+        let t = s.doc().tasks[0].clone();
+        assert_eq!(plant_due(s.doc(), &t, a).date, day("2026-06-29"));
+        assert_eq!(plant_due(s.doc(), &t, b).date, day("2026-06-01"));
+        assert!(s.undo(3));
+        assert_eq!(s.doc().tasks[0], before);
+        let t = s.doc().tasks[0].clone();
+        assert_eq!(plant_due(s.doc(), &t, a).date, day("2026-06-01"));
+    }
+
+    #[test]
+    fn design_mode_refuses_task_edits() {
+        let (mut s, a, _) = garden();
+        let id = s
+            .save_task(feed_every(28, Target::Plants { ids: vec![a] }), 1)
+            .unwrap();
+        s.set_mode(Mode::Design);
+        let before = s.doc().clone();
+        assert!(
+            s.save_task(feed_every(7, Target::Plants { ids: vec![a] }), 2)
+                .is_err()
+        );
+        s.skip_task(id, &[a], 3);
+        s.remove_task(id, 4);
+        assert_eq!(s.doc(), &before);
     }
 }

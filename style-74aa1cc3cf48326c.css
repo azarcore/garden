@@ -173,6 +173,23 @@ button:disabled {
   bottom: calc(100% + 10px);
 }
 
+/* Inside cards a label sits above its button, never over the buttons beside
+   it, and stays within the card (cards clip anything sticking out): it
+   grows leftwards from the button's right edge... */
+.card:not(.controls):not(.dock) [data-tip]:hover::after {
+  bottom: calc(100% + 6px);
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+/* ...except near the start of a row, where it grows rightwards. */
+.card .icon-row [data-tip]:nth-child(-n + 3):hover::after,
+.card:not(.controls):not(.dock) .layer-active[data-tip]:hover::after {
+  left: 0;
+  right: auto;
+}
+
 /* title (top-left) */
 .title-card {
   top: 16px;

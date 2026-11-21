@@ -215,7 +215,6 @@ pub fn App() -> impl IntoView {
     state.update(|s| s.set_mode(crate::garden::saved_mode()));
     provide_context(crate::garden::SelectSeveral(RwSignal::new(false)));
     crate::care::provide_care_ui();
-    crate::pwa::provide_pwa();
     crate::photos::provide_photos();
     let space = RwSignal::new(false);
     let default_plant = builtin_plants()
@@ -228,6 +227,7 @@ pub fn App() -> impl IntoView {
     provide_context(SpaceHeld(space));
     provide_context(LastPlant(plant));
     crate::library::provide_library(state);
+    crate::pwa::provide_pwa(state, expect_context::<crate::library::Library>());
     crate::trace::provide_trace();
     crate::view3d::provide_view3d();
     let catalog_open = RwSignal::new(false);

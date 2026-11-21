@@ -209,14 +209,40 @@ async fn registration() -> Option<web_sys::ServiceWorkerRegistration> {
     reg.dyn_into().ok()
 }
 
-/// None when the browser has no notifications at all.
+/// None when the browser has no notifications at all. Daily only where the
+/// browser actually allows background checks (an installed app), not merely
+/// where the API exists.
 pub async fn remind_kind() -> Option<RemindKind> {
-    get(&window()?.into(), "Notification")?;
-    let reg = registration().await;
-    Some(match reg.and_then(|r| get(&r.into(), "periodicSync")) {
-        Some(_) => RemindKind::Daily,
-        None => RemindKind::BadgeOnly,
+    let w = window()?;
+    get(&w.clone().into(), "Notification")?;
+    let has_sync = registration()
+        .await
+        .and_then(|r| get(&r.into(), "periodicSync"))
+        .is_some();
+    Some(if has_sync && periodic_sync_allowed(&w).await {
+        RemindKind::Daily
+    } else {
+        RemindKind::BadgeOnly
     })
+}
+
+async fn periodic_sync_allowed(w: &web_sys::Window) -> bool {
+    let Some(permissions) = get(&w.navigator().into(), "permissions") else {
+        return false;
+    };
+    let query = js_sys::Object::new();
+    let _ = js_sys::Reflect::set(&query, &"name".into(), &"periodic-background-sync".into());
+    let Some(p) = call(&permissions, "query", &[query.into()])
+        .and_then(|p| p.dyn_into::<js_sys::Promise>().ok())
+    else {
+        return false;
+    };
+    match JsFuture::from(p).await {
+        Ok(status) => {
+            get(&status, "state").and_then(|s| s.as_string()).as_deref() == Some("granted")
+        }
+        Err(_) => false,
+    }
 }
 
 pub fn remind_on() -> bool {

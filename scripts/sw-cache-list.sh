@@ -7,8 +7,21 @@ set -eu
 DIR="${TRUNK_STAGING_DIR:-$(cd "$(dirname "$0")/.." && pwd)/crates/garden-web/dist}"
 cd "$DIR"
 
+if command -v shasum >/dev/null 2>&1; then
+  sha() { shasum -a 256 "$@"; }
+elif command -v sha256sum >/dev/null 2>&1; then
+  sha() { sha256sum "$@"; }
+else
+  echo "sw-cache-list: needs shasum or sha256sum" >&2
+  exit 1
+fi
+
 LIST=$(find . -type f ! -name sw.js ! -name cache-list.js ! -name '.*' | sed 's|^\./||' | LC_ALL=C sort)
-VERSION=$(for f in $LIST; do printf '%s:%s\n' "$f" "$(shasum -a 256 "$f" | cut -d' ' -f1)"; done | shasum -a 256 | cut -c1-16)
+VERSION=$(for f in $LIST; do printf '%s:%s\n' "$f" "$(sha "$f" | cut -d' ' -f1)"; done | sha | cut -c1-16)
+if [ ${#VERSION} -ne 16 ]; then
+  echo "sw-cache-list: could not compute a version" >&2
+  exit 1
+fi
 
 quote() { printf '"%s"' "$1"; }
 app=""

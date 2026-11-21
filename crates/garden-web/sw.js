@@ -15,11 +15,10 @@ self.addEventListener("install", (event) => {
   event.waitUntil(
     (async () => {
       const cache = await caches.open(APP);
-      await cache.addAll(["./", ...self.APP_FILES].map(scoped));
-      // the 3D view is large: cache it if we can, otherwise when first opened
-      try {
-        await cache.addAll([...LAZY]);
-      } catch (_) {}
+      // straight from the server: an HTTP-cached copy of a fixed-name file
+      // (index.html) could pair an old page with this version's files
+      await cache.addAll(["./", ...self.APP_FILES].map((p) => new Request(scoped(p), { cache: "reload" })));
+      // the 3D view is large: it is cached the first time it is opened
     })()
   );
 });
@@ -44,8 +43,9 @@ async function fromApp(request) {
   const cache = await caches.open(APP);
   const hit = await cache.match(request, { ignoreSearch: true });
   if (hit) return hit;
-  const response = await fetch(request);
-  if (response.ok && LAZY.has(new URL(request.url).href)) {
+  const lazy = LAZY.has(new URL(request.url).href);
+  const response = await fetch(request, lazy ? { cache: "reload" } : undefined);
+  if (response.ok && lazy) {
     await cache.put(request, response.clone());
   }
   return response;

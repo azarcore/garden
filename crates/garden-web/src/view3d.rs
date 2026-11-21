@@ -68,6 +68,10 @@ fn snapshot(state: RwSignal<EditorState>) -> Option<String> {
 
 /// Show the 3D view with the current design, loading the bundle the first time.
 pub fn open_3d(view: View3d, state: RwSignal<EditorState>) {
+    // a tab left on an older app version must not load a newer 3D bundle
+    if crate::pwa::reload_if_stale(state) {
+        return;
+    }
     view.open.set(true);
     focus_canvas();
     if view.module.with_value(Option::is_some) && viewer_failed(view) {

@@ -109,6 +109,7 @@ pub(crate) mod test_util {
 pub mod calendar;
 pub mod care;
 pub mod catalog;
+pub mod compass;
 pub mod custom_plants;
 mod draw;
 pub mod garden;

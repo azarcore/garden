@@ -429,6 +429,11 @@ pub struct Strings {
     pub page_word: &'static str,
     pub of_word: &'static str,
     pub overview_title: &'static str,
+    pub compass_title: &'static str,
+    pub compass_locked: &'static str,
+    pub compass_bearing: &'static str,
+    pub compass_hint: &'static str,
+    pub compass_reset: &'static str,
 }
 
 pub static EN: Strings = Strings {
@@ -856,6 +861,11 @@ pub static EN: Strings = Strings {
     page_word: "page",
     of_word: "of",
     overview_title: "Overview",
+    compass_title: "North: drag to turn, double-click to type",
+    compass_locked: "North (switch to Design to change it)",
+    compass_bearing: "North bearing",
+    compass_hint: "Use a map's north, not a phone compass",
+    compass_reset: "Reset to up",
 };
 
 /// Heading for a group of plants.

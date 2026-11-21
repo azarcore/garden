@@ -478,6 +478,19 @@ impl EditorState {
         );
     }
 
+    /// Point true north at `degrees` clockwise from plan-up (undoable).
+    /// Returns false when nothing changed: a bad or unchanged value, or Garden mode.
+    pub fn set_north(&mut self, degrees: f64, now_ms: i64) -> bool {
+        if !degrees.is_finite() {
+            return false;
+        }
+        let degrees = crate::compass::normalize(degrees);
+        if degrees == self.doc().north {
+            return false;
+        }
+        self.execute(Command::SetNorth { degrees }, now_ms)
+    }
+
     /// Gravel depth for the garden list (mm, undoable); bad values are ignored.
     pub fn set_gravel_depth(&mut self, depth_mm: f64, now_ms: i64) {
         if depth_mm.is_finite() && depth_mm > 0.0 && self.doc().gravel_depth != Some(depth_mm) {
@@ -819,6 +832,24 @@ mod tests {
             ObjectKind::Plant { position, .. } => position,
             _ => panic!("not a plant"),
         }
+    }
+
+    #[test]
+    fn set_north_is_one_undo_step_and_locked_in_garden() {
+        let mut s = state_with(vec![]);
+        assert!(s.set_north(30.0, 1));
+        assert!(
+            !s.set_north(30.0, 2),
+            "same value again is not another step"
+        );
+        assert!(!s.set_north(f64::NAN, 3));
+        assert!(!s.set_north(-330.0, 4), "-330 is 30 again");
+        assert_eq!(s.doc().north, 30.0);
+        s.undo(5);
+        assert_eq!(s.doc().north, 0.0);
+        s.set_mode(Mode::Garden);
+        assert!(!s.set_north(45.0, 6));
+        assert_eq!(s.doc().north, 0.0);
     }
 
     #[test]

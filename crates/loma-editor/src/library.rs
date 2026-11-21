@@ -189,7 +189,7 @@ pub fn export_file_name(name: &str, extension: &str) -> String {
         }
     }
     let slug = slug.trim_matches('-');
-    let slug = if slug.is_empty() { "garden" } else { slug };
+    let slug = if slug.is_empty() { "design" } else { slug };
     format!("{slug}.{extension}")
 }
 
@@ -305,7 +305,7 @@ mod tests {
             export_file_name("Back garden / 2026!", "loma.json"),
             "back-garden-2026.loma.json"
         );
-        assert_eq!(export_file_name("   ", "svg"), "garden.svg");
+        assert_eq!(export_file_name("   ", "svg"), "design.svg");
     }
 
     #[test]

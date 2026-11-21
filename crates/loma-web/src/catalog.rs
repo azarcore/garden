@@ -22,7 +22,7 @@ use crate::plan_art::plant_swatch;
 #[derive(Clone, Copy)]
 pub struct CatalogOpen(pub RwSignal<bool>);
 
-const RECENT_KEY: &str = "garden.recent";
+const RECENT_KEY: &str = "loma.recent";
 const RECENT_MAX: usize = 6;
 const SEARCH_ID: &str = "catalog-search";
 

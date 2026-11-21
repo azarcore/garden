@@ -9,7 +9,7 @@ use loma_editor::care::{GardenMark, garden_marks};
 use loma_editor::state::{EditorState, Mode};
 use loma_editor::strings::EN;
 
-const MODE_KEY: &str = "garden-mode";
+const MODE_KEY: &str = "loma-mode";
 
 /// On phones, taps add to or remove from the selection instead of replacing it.
 #[derive(Clone, Copy)]

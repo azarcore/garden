@@ -16,8 +16,8 @@ use crate::storage::StoredDesign;
 
 const DATA_CACHE: &str = "loma-data";
 const SUMMARY: &str = "loma-due.json";
-const BANNER_KEY: &str = "garden-banner-closed";
-const REMIND_KEY: &str = "garden-remind";
+const BANNER_KEY: &str = "loma-banner-closed";
+const REMIND_KEY: &str = "loma-remind";
 const SYNC_TAG: &str = "loma-due";
 
 fn window() -> Option<web_sys::Window> {

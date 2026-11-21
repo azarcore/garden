@@ -8,9 +8,7 @@ use loma_core::model::{Document, PlantDef};
 use serde::{Deserialize, Serialize};
 use wasm_bindgen::{JsCast, JsValue};
 
-/// Kept from the app's earlier name ("Garden Planner") so designs saved
-/// before the rename still open.
-const DB_NAME: &str = "garden-planner";
+const DB_NAME: &str = "loma";
 /// 1: designs. 2: adds the images store (traced photos). 3: adds the plants
 /// store (the person's own plants).
 const DB_VERSION: u32 = 3;

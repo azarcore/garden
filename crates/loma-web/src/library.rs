@@ -312,14 +312,14 @@ pub async fn delete_design(lib: Library, state: RwSignal<EditorState>, id: Strin
     refresh_summaries(lib).await;
 }
 
-/// Import a `.loma.json` (or older `.garden.json`) chosen by the person; never overwrites a stored design.
+/// Import a `.loma.json` chosen by the person; never overwrites a stored design.
 pub async fn import_file(
     lib: Library,
     state: RwSignal<EditorState>,
     message: RwSignal<Option<&'static str>>,
 ) {
     let Some(text) =
-        crate::files::pick_file(".json,.loma.json,.garden.json,application/json").await
+        crate::files::pick_file(".json,.loma.json,application/json").await
     else {
         return;
     };

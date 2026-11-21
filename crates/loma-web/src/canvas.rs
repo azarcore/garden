@@ -347,7 +347,7 @@ pub fn Canvas() -> impl IntoView {
             s.handle(Input::DoubleClick(w, m), now());
         });
     };
-    // Dropping a .loma.json (or older .garden.json) file on the plan imports it.
+    // Dropping a .loma.json file on the plan imports it.
     let lib = expect_context::<crate::library::Library>();
     let crate::library::ImportMessage(import_message) =
         expect_context::<crate::library::ImportMessage>();

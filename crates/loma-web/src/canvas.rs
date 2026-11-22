@@ -84,7 +84,8 @@ fn Compass() -> impl IntoView {
         match parse_location(&text) {
             Some(p) => {
                 state.update(|s| {
-                    s.set_location(Some(p), now());
+                    let zone = loma_editor::timezones::nearest_zone(p).to_string();
+                    s.set_place(Some(p), Some(zone), now());
                 });
                 place_error.set(None);
             }
@@ -104,7 +105,8 @@ fn Compass() -> impl IntoView {
                 Some((lat, lon)) => {
                     let p = loma_core::model::GeoPoint::new(lat, lon);
                     state.update(|s| {
-                        s.set_location(p, now());
+                        // the device is where the garden is: its zone is right
+                        s.set_place(p, crate::app::device_zone(), now());
                     });
                 }
                 None => place_error.set(Some(EN.location_denied)),
@@ -294,12 +296,36 @@ fn Compass() -> impl IntoView {
                     {move || place_error.get().map(|m| view! {
                         <p class="compass-hint error" role="alert">{m}</p>
                     })}
+                    {move || location.get().is_some().then(|| {
+                        let current = state.with(|s| s.doc().time_zone.clone());
+                        // the table's zones, plus the saved one if it isn't among them
+                        let mut zones: Vec<String> =
+                            loma_editor::timezones::zone_names().map(String::from).collect();
+                        if let Some(z) = &current && !zones.contains(z) {
+                            zones.insert(0, z.clone());
+                        }
+                        let selected = current.clone().unwrap_or_default();
+                        view! {
+                            <label class="compass-zone">
+                                <span>{EN.time_zone}</span>
+                                <select on:change=move |e| {
+                                    let zone = event_target_value(&e);
+                                    state.update(|s| { s.set_time_zone(Some(zone), now()); });
+                                }>
+                                    {zones.into_iter().map(|z| {
+                                        let is = z == selected;
+                                        view! { <option value=z.clone() selected=is>{z.replace('_', " ")}</option> }
+                                    }).collect_view()}
+                                </select>
+                            </label>
+                        }
+                    })}
                     <div class="compass-place-actions">
                         <button class="compass-reset" disabled=move || locating.get()
                             on:click=use_my_location>{EN.use_my_location}</button>
                         {move || location.get().is_some().then(|| view! {
                             <button class="compass-reset" on:click=move |_| {
-                                state.update(|s| { s.set_location(None, now()); });
+                                state.update(|s| { s.set_place(None, None, now()); });
                             }>{EN.clear_location}</button>
                         })}
                     </div>

@@ -1172,6 +1172,18 @@ button.title-card {
   box-sizing: border-box;
 }
 
+.compass-zone {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 8px 0;
+  font-weight: 600;
+}
+
+.compass-zone select {
+  width: 100%;
+}
+
 .compass-place-actions {
   display: flex;
   gap: 6px;
@@ -2220,6 +2232,31 @@ button.title-card {
   margin-bottom: 10px;
 }
 
+.sun-clock {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+  padding: 3px;
+  border-radius: 11px;
+  background: var(--tile);
+}
+
+.sun-clock button {
+  flex: 1;
+  padding: 5px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 550;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sun-clock button[aria-pressed="true"] {
+  background: var(--card);
+  box-shadow: var(--card-shadow);
+}
+
 .sun-presets button {
   flex: 1;
   padding: 6px 8px;
@@ -2297,7 +2334,7 @@ button.title-card {
 }
 
 .view3d-help.above-sun {
-  bottom: 186px;
+  bottom: 226px;
 }
 
 .view3d-help {

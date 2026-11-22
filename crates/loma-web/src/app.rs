@@ -75,6 +75,80 @@ pub fn current_position(done: impl FnOnce(Option<(f64, f64)>) + 'static) {
     }
 }
 
+/// The device's own time zone (an IANA name), if the browser says.
+pub fn device_zone() -> Option<String> {
+    let format = js_sys::Intl::DateTimeFormat::new(&js_sys::Array::new(), &js_sys::Object::new());
+    js_sys::Reflect::get(&format.resolved_options(), &"timeZone".into())
+        .ok()?
+        .as_string()
+}
+
+thread_local! {
+    /// One formatter per zone (making them is slow); `None` for zones the
+    /// browser doesn't know.
+    static ZONE_FORMATS: std::cell::RefCell<std::collections::HashMap<String, Option<js_sys::Intl::DateTimeFormat>>> =
+        Default::default();
+}
+
+/// How far `zone`'s clocks are ahead of UTC (ms) at moment `utc_ms`, using
+/// the browser's own rules (summer time included). `None` for a zone the
+/// browser doesn't know.
+pub fn zone_offset_ms(zone: &str, utc_ms: f64) -> Option<f64> {
+    use wasm_bindgen::JsValue;
+    let format = ZONE_FORMATS.with(|cache| {
+        cache
+            .borrow_mut()
+            .entry(zone.to_string())
+            .or_insert_with(|| {
+                let options = js_sys::Object::new();
+                let set = |k: &str, v: &str| {
+                    let _ = js_sys::Reflect::set(&options, &k.into(), &v.into());
+                };
+                set("timeZone", zone);
+                set("hourCycle", "h23");
+                for part in ["year", "month", "day", "hour", "minute", "second"] {
+                    set(part, "numeric");
+                }
+                // the constructor throws for an unknown zone: catch it
+                let intl = js_sys::Reflect::get(&js_sys::global(), &"Intl".into()).ok()?;
+                let ctor: js_sys::Function = js_sys::Reflect::get(&intl, &"DateTimeFormat".into())
+                    .ok()?
+                    .dyn_into()
+                    .ok()?;
+                let args = js_sys::Array::of2(&"en-US".into(), &options);
+                js_sys::Reflect::construct(&ctor, &args)
+                    .ok()
+                    .map(|f| f.unchecked_into())
+            })
+            .clone()
+    })?;
+    // round to the second: the parts below have no milliseconds
+    let utc = (utc_ms / 1000.0).floor() * 1000.0;
+    let parts = format.format_to_parts(&js_sys::Date::new(&JsValue::from_f64(utc)));
+    let mut v = [0.0f64; 6];
+    for p in parts.iter() {
+        let kind = js_sys::Reflect::get(&p, &"type".into()).ok()?.as_string()?;
+        let i = match kind.as_str() {
+            "year" => 0,
+            "month" => 1,
+            "day" => 2,
+            "hour" => 3,
+            "minute" => 4,
+            "second" => 5,
+            _ => continue, // the "/", ", " and ":" between them
+        };
+        v[i] = js_sys::Reflect::get(&p, &"value".into())
+            .ok()?
+            .as_string()?
+            .parse()
+            .ok()?;
+    }
+    let wall = js_sys::Date::utc(v[0], v[1] - 1.0) + 0.0; // year and month only
+    let wall =
+        wall + (v[2] - 1.0) * 86_400_000.0 + v[3] * 3_600_000.0 + v[4] * 60_000.0 + v[5] * 1000.0;
+    Some(wall - utc)
+}
+
 pub fn now() -> i64 {
     js_sys::Date::now() as i64
 }

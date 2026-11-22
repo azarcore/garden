@@ -39,6 +39,8 @@ pub struct View3d {
     sun_year: RwSignal<i32>,
     sun_day: RwSignal<u32>,
     sun_minute: RwSignal<u32>,
+    /// Whose clock the times are in: the garden's zone, or `None` for the device's.
+    clock: RwSignal<Option<String>>,
 }
 
 pub fn provide_view3d() {
@@ -49,32 +51,46 @@ pub fn provide_view3d() {
         sun_year: RwSignal::new(2026),
         sun_day: RwSignal::new(1),
         sun_minute: RwSignal::new(12 * 60),
+        clock: RwSignal::new(None),
     };
     sun_to_now(view);
     provide_context(view);
 }
 
-// ---- local clock time (the device's time zone) ----
+// ---- clock time: the garden's zone, or the device's when `zone` is None ----
 
-/// Milliseconds for a local date and time; days past the year's end roll on.
-fn local_ms(year: i32, day: u32, minute: u32) -> f64 {
-    js_sys::Date::new_with_year_month_day_hr_min(
-        year as u32,
-        0,
-        day as i32,
-        (minute / 60) as i32,
-        (minute % 60) as i32,
-    )
-    .get_time()
+const DAY_MS: f64 = 86_400_000.0;
+
+/// A zone's offset from UTC (ms) at `utc_ms`; 0 if the browser can't say.
+fn offset(zone: &str, utc_ms: f64) -> f64 {
+    crate::app::zone_offset_ms(zone, utc_ms).unwrap_or(0.0)
 }
 
-/// The day of the year (1-based) of a local date (`month` 1-based).
+/// The moment of a clock time; days past the year's end roll on.
+fn local_ms(year: i32, day: u32, minute: u32, zone: Option<&str>) -> f64 {
+    match zone {
+        None => js_sys::Date::new_with_year_month_day_hr_min(
+            year as u32,
+            0,
+            day as i32,
+            (minute / 60) as i32,
+            (minute % 60) as i32,
+        )
+        .get_time(),
+        Some(z) => {
+            let wall = js_sys::Date::utc(year as f64, 0.0)
+                + (day as f64 - 1.0) * DAY_MS
+                + minute as f64 * 60_000.0;
+            loma_editor::timezones::local_to_utc(wall, |t| offset(z, t))
+        }
+    }
+}
+
+/// The day of the year (1-based) of a date (`month` 1-based).
 fn day_of_year(year: i32, month: u32, day: u32) -> u32 {
-    let jan1 = js_sys::Date::new_with_year_month_day(year as u32, 0, 1).get_time();
-    let date =
-        js_sys::Date::new_with_year_month_day(year as u32, month as i32 - 1, day as i32).get_time();
-    // round: a summer-time change makes some days 23 or 25 hours long
-    ((date - jan1) / 86_400_000.0).round() as u32 + 1
+    let jan1 = js_sys::Date::utc(year as f64, 0.0);
+    let date = js_sys::Date::utc(year as f64, month as f64 - 1.0) + (day as f64 - 1.0) * DAY_MS;
+    ((date - jan1) / DAY_MS).round() as u32 + 1
 }
 
 fn days_in_year(year: i32) -> u32 {
@@ -85,10 +101,20 @@ fn days_in_year(year: i32) -> u32 {
     }
 }
 
-/// The local clock time of an instant, in minutes since midnight.
-fn clock_minute(ms: f64) -> u32 {
-    let d = js_sys::Date::new(&JsValue::from_f64(ms));
-    d.get_hours() * 60 + d.get_minutes()
+/// The clock reading of a moment, written as if it were UTC (so its UTC
+/// fields are the clock's fields).
+fn wall(ms: f64, zone: Option<&str>) -> js_sys::Date {
+    let shifted = match zone {
+        Some(z) => ms + offset(z, ms),
+        None => ms - js_sys::Date::new(&JsValue::from_f64(ms)).get_timezone_offset() * 60_000.0,
+    };
+    js_sys::Date::new(&JsValue::from_f64(shifted))
+}
+
+/// The clock time of a moment, in minutes since midnight.
+fn clock_minute(ms: f64, zone: Option<&str>) -> u32 {
+    let d = wall(ms, zone);
+    d.get_utc_hours() * 60 + d.get_utc_minutes()
 }
 
 fn clock_text(minute: u32) -> String {
@@ -100,20 +126,26 @@ fn date_text(year: i32, day: u32) -> String {
     let options = js_sys::Object::new();
     let _ = js_sys::Reflect::set(&options, &"day".into(), &"numeric".into());
     let _ = js_sys::Reflect::set(&options, &"month".into(), &"short".into());
-    js_sys::Date::new(&JsValue::from_f64(local_ms(year, day, 12 * 60)))
+    let _ = js_sys::Reflect::set(&options, &"timeZone".into(), &"UTC".into());
+    let noon = js_sys::Date::utc(year as f64, 0.0) + (day as f64 - 1.0) * DAY_MS + DAY_MS / 2.0;
+    js_sys::Date::new(&JsValue::from_f64(noon))
         .to_locale_date_string("default", &options)
         .into()
 }
 
-/// Show the sun as it is right now.
+/// Show the sun as it is right now, in whichever clock is chosen.
 fn sun_to_now(view: View3d) {
-    let now = js_sys::Date::new_0();
-    let year = now.get_full_year() as i32;
+    let zone = view.clock.get_untracked();
+    let now = wall(js_sys::Date::now(), zone.as_deref());
+    let year = now.get_utc_full_year() as i32;
     view.sun_year.set(year);
-    view.sun_day
-        .set(day_of_year(year, now.get_month() + 1, now.get_date()));
+    view.sun_day.set(day_of_year(
+        year,
+        now.get_utc_month() + 1,
+        now.get_utc_date(),
+    ));
     // to the slider's 5-minute steps, so its thumb agrees with the label
-    let minute = (now.get_hours() * 60 + now.get_minutes() + 2) / 5 * 5;
+    let minute = (now.get_utc_hours() * 60 + now.get_utc_minutes() + 2) / 5 * 5;
     view.sun_minute.set(minute.min(1435));
 }
 
@@ -129,6 +161,7 @@ fn light_3d(view: View3d, place: Option<(loma_core::model::GeoPoint, f64)>) {
                 view.sun_year.get_untracked(),
                 view.sun_day.get_untracked(),
                 view.sun_minute.get_untracked(),
+                view.clock.get_untracked().as_deref(),
             );
             let sun = loma_core::sun::sun_position(at, ms);
             let bearing = loma_editor::compass::sun_bearing_on_plan(north, sun.azimuth);
@@ -290,6 +323,24 @@ pub fn View3dOverlay() -> impl IntoView {
     let compass_box = expect_context::<crate::app::CompassBox>();
     let place = Memo::new(move |_| state.with(|s| s.doc().location.map(|at| (at, s.doc().north))));
     let design = Memo::new(move |_| state.with(|s| s.mode() == loma_editor::state::Mode::Design));
+    // the garden's zone when it has one the browser knows and the person
+    // hasn't chosen their own clock
+    let garden_zone = Memo::new(move |_| {
+        state.with(|s| {
+            s.doc()
+                .time_zone
+                .clone()
+                .filter(|z| crate::app::zone_offset_ms(z, 0.0).is_some())
+        })
+    });
+    let device_time = Memo::new(move |_| state.with(|s| s.doc().device_time));
+    Effect::new(move |_| {
+        let clock = garden_zone.get().filter(|_| !device_time.get());
+        if clock != view.clock.get_untracked() {
+            view.clock.set(clock);
+            sun_to_now(view); // a new clock: start again from now
+        }
+    });
     // relight whenever the view is showing and the place or moment changes
     Effect::new(move |_| {
         let showing = view.open.get() && view.status.get() == Status::Ready;
@@ -298,6 +349,7 @@ pub fn View3dOverlay() -> impl IntoView {
             view.sun_year.get(),
             view.sun_day.get(),
             view.sun_minute.get(),
+            view.clock.get(),
         );
         if showing {
             light_3d(view, place);
@@ -307,9 +359,17 @@ pub fn View3dOverlay() -> impl IntoView {
     let sun_times = Memo::new(move |_| {
         let (at, _) = place.get()?;
         let (year, day) = (view.sun_year.get(), view.sun_day.get());
-        let (rise, set) =
-            loma_core::sun::sun_times(at, local_ms(year, day, 0), local_ms(year, day + 1, 0));
-        Some((rise.map(clock_minute), set.map(clock_minute)))
+        let zone = view.clock.get();
+        let zone = zone.as_deref();
+        let (rise, set) = loma_core::sun::sun_times(
+            at,
+            local_ms(year, day, 0, zone),
+            local_ms(year, day + 1, 0, zone),
+        );
+        Some((
+            rise.map(|t| clock_minute(t, zone)),
+            set.map(|t| clock_minute(t, zone)),
+        ))
     });
     let preset = move |month: u32, day: u32| {
         let year = view.sun_year.get_untracked();
@@ -346,6 +406,21 @@ pub fn View3dOverlay() -> impl IntoView {
         Some(
             view! {
                 <div class="sun-panel">
+                    {move || garden_zone.get().map(|z| {
+                        let city = loma_editor::timezones::zone_city(&z);
+                        let choose = move |device: bool| {
+                            state.update(|s| { s.set_device_time(device, crate::app::now()); });
+                        };
+                        view! {
+                            <div class="sun-clock" role="group" aria-label=EN.time_zone>
+                                <button aria-pressed=move || (!device_time.get()).to_string()
+                                    on:click=move |_| choose(false)>
+                                    {EN.garden_time.replace("{}", &city)}</button>
+                                <button aria-pressed=move || device_time.get().to_string()
+                                    on:click=move |_| choose(true)>{EN.your_time}</button>
+                            </div>
+                        }
+                    })}
                     <div class="sun-presets">
                         <button on:click=move |_| sun_to_now(view)>{EN.sun_now}</button>
                         <button on:click=move |_| if south() { preset(12, 21) } else { preset(6, 21) }>

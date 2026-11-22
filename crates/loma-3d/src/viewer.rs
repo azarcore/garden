@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Duration;
 
 use crate::gestures::{Finger, Gesture, Taps, gesture};
+use crate::sunlight::{Light, default_light, light_for};
 use bevy::asset::RenderAssetUsages;
 use bevy::core_pipeline::tonemapping::Tonemapping;
 use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll, MouseScrollUnit};
@@ -34,8 +35,17 @@ static TAPS: Mutex<Option<Taps>> = Mutex::new(None);
 static RESET: AtomicBool = AtomicBool::new(false);
 /// Whether the Bevy app is already running.
 static STARTED: AtomicBool = AtomicBool::new(false);
+/// The next lighting to show (a new sun position), handed over from JavaScript.
+static PENDING_LIGHT: Mutex<Option<Light>> = Mutex::new(None);
 
-const SKY: Color = Color::srgb(0.874, 0.913, 0.886);
+const SKY: Color = Color::srgb(
+    crate::sunlight::DAY_SKY[0],
+    crate::sunlight::DAY_SKY[1],
+    crate::sunlight::DAY_SKY[2],
+);
+/// How far from the garden the sun light sits (it's directional; only the
+/// direction matters).
+const SUN_DISTANCE: f32 = 60.0;
 const TRUNK: Color = Color::srgb(0.43, 0.31, 0.22);
 const MIN_RADIUS: f32 = 2.0;
 const MAX_RADIUS: f32 = 400.0;
@@ -97,6 +107,59 @@ pub fn has_failed() -> bool {
 pub fn show(design_json: &str) -> Result<(), JsValue> {
     hand_over(parse(design_json)?);
     Ok(())
+}
+
+/// Light the garden from a sun at `bearing` (degrees clockwise from the top
+/// of the plan) and `altitude` (degrees above the horizon).
+#[wasm_bindgen]
+pub fn set_sun(bearing: f32, altitude: f32) {
+    if bearing.is_finite() && altitude.is_finite() {
+        hand_over_light(light_for(bearing, altitude));
+    }
+}
+
+/// Light the garden as when it has no location: a low south-west sun.
+#[wasm_bindgen]
+pub fn default_sun() {
+    hand_over_light(default_light());
+}
+
+fn hand_over_light(light: Light) {
+    if let Ok(mut p) = PENDING_LIGHT.lock() {
+        *p = Some(light);
+    }
+    wake();
+}
+
+/// The directional light that plays the sun.
+#[derive(Component)]
+struct Sun;
+
+/// Put a new sun in place: direction, strength, shadows, ambient and sky.
+fn apply_light(
+    mut sun: Query<(&mut DirectionalLight, &mut Transform), With<Sun>>,
+    mut ambient: ResMut<GlobalAmbientLight>,
+    mut sky: ResMut<ClearColor>,
+    mut settling: ResMut<Settling>,
+) {
+    let Some(light) = PENDING_LIGHT.lock().ok().and_then(|mut p| p.take()) else {
+        return;
+    };
+    for (mut directional, mut transform) in &mut sun {
+        directional.illuminance = light.sun;
+        directional.shadow_maps_enabled = light.shadows;
+        let at = Vec3::from_array(light.dir_to_sun) * SUN_DISTANCE;
+        // straight overhead "looking at" the origin needs another up direction
+        let up = if light.dir_to_sun[1] > 0.999 {
+            Vec3::Z
+        } else {
+            Vec3::Y
+        };
+        *transform = Transform::from_translation(at).looking_at(Vec3::ZERO, up);
+    }
+    ambient.brightness = light.ambient;
+    sky.0 = Color::srgb(light.sky[0], light.sky[1], light.sky[2]);
+    settling.0 = SETTLE_FRAMES;
 }
 
 /// Watch the canvas for double taps (touch only).
@@ -193,7 +256,14 @@ fn start(canvas_selector: &str) {
     .init_resource::<LastFingers>()
     .add_systems(
         Update,
-        (apply_pending, orbit_controls, touch_controls, keep_drawing).chain(),
+        (
+            apply_pending,
+            apply_light,
+            orbit_controls,
+            touch_controls,
+            keep_drawing,
+        )
+            .chain(),
     );
     // after the plugins: Bevy installs its own panic hook while adding them
     let previous = std::panic::take_hook();
@@ -304,8 +374,9 @@ fn setup(
             illuminance: 9_900.0,
             ..default()
         },
-        // low sun from the south-west
+        // low sun from the south-west until a real one is set
         Transform::from_xyz(-30.0, 36.0, 30.0).looking_at(Vec3::ZERO, Vec3::Y),
+        Sun,
         CascadeShadowConfigBuilder {
             maximum_distance: 250.0,
             ..default()

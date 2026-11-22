@@ -77,6 +77,33 @@ pub struct Document {
     /// 0 means north is straight up.
     #[serde(default, skip_serializing_if = "is_zero")]
     pub north: f64,
+    /// Where the garden is on Earth, for the sun. Rounded to about 1 km.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub location: Option<GeoPoint>,
+}
+
+/// A place on Earth in decimal degrees (north and east positive).
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GeoPoint {
+    pub lat: f64,
+    pub lon: f64,
+}
+
+impl GeoPoint {
+    /// A checked place, rounded to 2 decimal places (about 1 km); `None` when
+    /// out of range or not a number.
+    pub fn new(lat: f64, lon: f64) -> Option<GeoPoint> {
+        let ok = lat.is_finite()
+            && lon.is_finite()
+            && (-90.0..=90.0).contains(&lat)
+            && (-180.0..=180.0).contains(&lon);
+        // +0.0 so a rounded -0.004 doesn't save as "-0"
+        let round = |v: f64| (v * 100.0).round() / 100.0 + 0.0;
+        ok.then(|| GeoPoint {
+            lat: round(lat),
+            lon: round(lon),
+        })
+    }
 }
 
 fn is_zero(v: &f64) -> bool {
@@ -112,6 +139,7 @@ impl Document {
             products: Vec::new(),
             tasks: Vec::new(),
             north: 0.0,
+            location: None,
         }
     }
 
@@ -133,6 +161,13 @@ impl Document {
         if north != self.north {
             self.north = north;
             changed = true;
+        }
+        if let Some(p) = self.location {
+            let checked = GeoPoint::new(p.lat, p.lon);
+            if checked != Some(p) {
+                self.location = checked;
+                changed = true;
+            }
         }
         let first = self.layers[0].id;
         let known: std::collections::HashSet<LayerId> = self.layers.iter().map(|l| l.id).collect();

@@ -93,6 +93,10 @@ pub enum Command {
     SetNorth {
         degrees: f64,
     },
+    /// Where the garden is (`None` forgets it); stored rounded to 2 decimals.
+    SetLocation {
+        location: Option<crate::model::GeoPoint>,
+    },
     /// All-or-nothing.
     Batch {
         commands: Vec<Command>,
@@ -189,6 +193,9 @@ impl Document {
             Command::SetPrice { price: Some(p), .. } => p.is_finite() && *p >= 0.0,
             Command::SetGravelDepth { depth: Some(d) } => d.is_finite() && *d > 0.0,
             Command::SetNorth { degrees } => degrees.is_finite(),
+            Command::SetLocation { location: Some(p) } => {
+                crate::model::GeoPoint::new(p.lat, p.lon).is_some()
+            }
             Command::UpsertLogEntry { entry } => {
                 !entry.plants.is_empty()
                     && entry.plants.len() == entry.plant_names.len()
@@ -339,6 +346,12 @@ impl Document {
             Command::SetGravelDepth { depth } => Command::SetGravelDepth {
                 depth: std::mem::replace(&mut self.gravel_depth, depth),
             },
+            Command::SetLocation { location } => Command::SetLocation {
+                location: std::mem::replace(
+                    &mut self.location,
+                    location.and_then(|p| crate::model::GeoPoint::new(p.lat, p.lon)),
+                ),
+            },
             Command::SetNorth { degrees } => Command::SetNorth {
                 degrees: std::mem::replace(
                     &mut self.north,
@@ -465,6 +478,84 @@ mod tests {
         assert_eq!(d.currency, "€");
         d.apply(undo, 9).unwrap();
         assert_eq!(d.currency, "");
+    }
+
+    #[test]
+    fn location_is_saved_rounded_and_undoes() {
+        use crate::model::GeoPoint;
+        let mut d = Document::new("g", 0);
+        assert_eq!(d.location, None);
+        assert!(!crate::io::to_json(&d).unwrap().contains("location"));
+        let undo = d
+            .apply(
+                Command::SetLocation {
+                    location: Some(GeoPoint {
+                        lat: 51.4779,
+                        lon: -0.0015,
+                    }),
+                },
+                1,
+            )
+            .unwrap();
+        let p = d.location.unwrap();
+        assert!((p.lat - 51.48).abs() < 1e-9 && p.lon.abs() < 1e-9, "{p:?}");
+        d.apply(undo, 2).unwrap();
+        assert_eq!(d.location, None);
+        for bad in [
+            GeoPoint {
+                lat: 91.0,
+                lon: 0.0,
+            },
+            GeoPoint {
+                lat: 0.0,
+                lon: -181.0,
+            },
+            GeoPoint {
+                lat: 0.0,
+                lon: f64::NAN,
+            },
+        ] {
+            assert_eq!(
+                d.apply(
+                    Command::SetLocation {
+                        location: Some(bad)
+                    },
+                    3
+                ),
+                Err(CommandError::InvalidValue),
+                "{bad:?}"
+            );
+        }
+        d.apply(
+            Command::SetLocation {
+                location: Some(GeoPoint {
+                    lat: -33.87,
+                    lon: 151.21,
+                }),
+            },
+            4,
+        )
+        .unwrap();
+        let back = crate::io::from_json(&crate::io::to_json(&d).unwrap()).unwrap();
+        assert_eq!(
+            back.location,
+            Some(GeoPoint {
+                lat: -33.87,
+                lon: 151.21
+            })
+        );
+        assert!(!Command::SetLocation { location: None }.is_layout_free());
+    }
+
+    #[test]
+    fn location_from_a_file_is_checked() {
+        let mut d = Document::new("g", 0);
+        d.location = Some(crate::model::GeoPoint {
+            lat: 200.0,
+            lon: 0.0,
+        });
+        let json = crate::io::to_json(&d).unwrap();
+        assert_eq!(crate::io::from_json(&json).unwrap().location, None);
     }
 
     #[test]

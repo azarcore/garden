@@ -34,14 +34,114 @@ pub struct View3d {
     status: RwSignal<Status>,
     /// The loaded 3D module (imported at most once).
     module: StoredValue<Option<JsValue>, LocalStorage>,
+    /// The moment the sun is shown for, in local clock time: year, day of the
+    /// year (1-based) and minute of the day. Not saved; starts at now.
+    sun_year: RwSignal<i32>,
+    sun_day: RwSignal<u32>,
+    sun_minute: RwSignal<u32>,
 }
 
 pub fn provide_view3d() {
-    provide_context(View3d {
+    let view = View3d {
         open: RwSignal::new(false),
         status: RwSignal::new(Status::Idle),
         module: StoredValue::new_local(None),
-    });
+        sun_year: RwSignal::new(2026),
+        sun_day: RwSignal::new(1),
+        sun_minute: RwSignal::new(12 * 60),
+    };
+    sun_to_now(view);
+    provide_context(view);
+}
+
+// ---- local clock time (the device's time zone) ----
+
+/// Milliseconds for a local date and time; days past the year's end roll on.
+fn local_ms(year: i32, day: u32, minute: u32) -> f64 {
+    js_sys::Date::new_with_year_month_day_hr_min(
+        year as u32,
+        0,
+        day as i32,
+        (minute / 60) as i32,
+        (minute % 60) as i32,
+    )
+    .get_time()
+}
+
+/// The day of the year (1-based) of a local date (`month` 1-based).
+fn day_of_year(year: i32, month: u32, day: u32) -> u32 {
+    let jan1 = js_sys::Date::new_with_year_month_day(year as u32, 0, 1).get_time();
+    let date =
+        js_sys::Date::new_with_year_month_day(year as u32, month as i32 - 1, day as i32).get_time();
+    // round: a summer-time change makes some days 23 or 25 hours long
+    ((date - jan1) / 86_400_000.0).round() as u32 + 1
+}
+
+fn days_in_year(year: i32) -> u32 {
+    if (year % 4 == 0 && year % 100 != 0) || year % 400 == 0 {
+        366
+    } else {
+        365
+    }
+}
+
+/// The local clock time of an instant, in minutes since midnight.
+fn clock_minute(ms: f64) -> u32 {
+    let d = js_sys::Date::new(&JsValue::from_f64(ms));
+    d.get_hours() * 60 + d.get_minutes()
+}
+
+fn clock_text(minute: u32) -> String {
+    format!("{:02}:{:02}", minute / 60, minute % 60)
+}
+
+/// "21 Jun" in the person's own language.
+fn date_text(year: i32, day: u32) -> String {
+    let options = js_sys::Object::new();
+    let _ = js_sys::Reflect::set(&options, &"day".into(), &"numeric".into());
+    let _ = js_sys::Reflect::set(&options, &"month".into(), &"short".into());
+    js_sys::Date::new(&JsValue::from_f64(local_ms(year, day, 12 * 60)))
+        .to_locale_date_string("default", &options)
+        .into()
+}
+
+/// Show the sun as it is right now.
+fn sun_to_now(view: View3d) {
+    let now = js_sys::Date::new_0();
+    let year = now.get_full_year() as i32;
+    view.sun_year.set(year);
+    view.sun_day
+        .set(day_of_year(year, now.get_month() + 1, now.get_date()));
+    view.sun_minute
+        .set(now.get_hours() * 60 + now.get_minutes());
+}
+
+/// Light the open 3D view from the sun at the chosen moment, or as before
+/// when the design has no location.
+fn light_3d(view: View3d, place: Option<(loma_core::model::GeoPoint, f64)>) {
+    let Some(module) = view.module.get_value() else {
+        return;
+    };
+    let _ = match place {
+        Some((at, north)) => {
+            let ms = local_ms(
+                view.sun_year.get_untracked(),
+                view.sun_day.get_untracked(),
+                view.sun_minute.get_untracked(),
+            );
+            let sun = loma_core::sun::sun_position(at, ms);
+            let bearing = loma_editor::compass::sun_bearing_on_plan(north, sun.azimuth);
+            call(
+                &module,
+                "set_sun",
+                &[
+                    &JsValue::from_f64(bearing),
+                    &JsValue::from_f64(sun.altitude),
+                ],
+            )
+        }
+        None => call(&module, "default_sun", &[]),
+    };
 }
 
 fn has_webgl2() -> bool {
@@ -73,6 +173,7 @@ pub fn open_3d(view: View3d, state: RwSignal<EditorState>) {
         return;
     }
     view.open.set(true);
+    sun_to_now(view);
     focus_canvas();
     if view.module.with_value(Option::is_some) && viewer_failed(view) {
         view.status.set(Status::Failed(EN.err_3d_crashed));
@@ -184,6 +285,118 @@ async fn load_and_start(view: View3d, state: RwSignal<EditorState>) -> Result<()
 #[component]
 pub fn View3dOverlay() -> impl IntoView {
     let view = expect_context::<View3d>();
+    let state = expect_context::<RwSignal<EditorState>>();
+    let crate::app::CompassBox(compass_box) = expect_context::<crate::app::CompassBox>();
+    let place = Memo::new(move |_| state.with(|s| s.doc().location.map(|at| (at, s.doc().north))));
+    let design = Memo::new(move |_| state.with(|s| s.mode() == loma_editor::state::Mode::Design));
+    // relight whenever the view is showing and the place or moment changes
+    Effect::new(move |_| {
+        let showing = view.open.get() && view.status.get() == Status::Ready;
+        let place = place.get();
+        let _moment = (
+            view.sun_year.get(),
+            view.sun_day.get(),
+            view.sun_minute.get(),
+        );
+        if showing {
+            light_3d(view, place);
+        }
+    });
+    // sunrise and sunset on the chosen day, as local clock minutes
+    let sun_times = Memo::new(move |_| {
+        let (at, _) = place.get()?;
+        let (year, day) = (view.sun_year.get(), view.sun_day.get());
+        let (rise, set) =
+            loma_core::sun::sun_times(at, local_ms(year, day, 0), local_ms(year, day + 1, 0));
+        Some((rise.map(clock_minute), set.map(clock_minute)))
+    });
+    let preset = move |month: u32, day: u32| {
+        let year = view.sun_year.get_untracked();
+        view.sun_day.set(day_of_year(year, month, day));
+    };
+    let south = move || place.get_untracked().is_some_and(|(at, _)| at.lat < 0.0);
+    let has_place = Memo::new(move |_| place.get().is_some());
+    let rise = move || sun_times.get().and_then(|t| t.0);
+    let set = move || sun_times.get().and_then(|t| t.1);
+    let tick = move |minute: Option<u32>, class: &'static str| {
+        minute.map(|m| {
+            view! {
+                <span class=class style=format!("left:{:.2}%", m as f64 / 1439.0 * 100.0)
+                    aria-hidden="true"></span>
+            }
+        })
+    };
+    let days = move || days_in_year(view.sun_year.get());
+    // rebuilt only when a location appears or goes, so dragging a slider
+    // never replaces the slider under the pointer
+    let sun_panel = move || {
+        if !has_place.get() {
+            return design.get().then(|| {
+                view! {
+                    <button class="sun-link" on:click=move |_| {
+                        view.open.set(false);
+                        compass_box.set(true);
+                    }>{EN.sun_link}</button>
+                }
+                .into_any()
+            });
+        }
+        Some(
+            view! {
+                <div class="sun-panel">
+                    <div class="sun-presets">
+                        <button on:click=move |_| sun_to_now(view)>{EN.sun_now}</button>
+                        <button on:click=move |_| if south() { preset(12, 21) } else { preset(6, 21) }>
+                            {EN.sun_midsummer}</button>
+                        <button on:click=move |_| preset(3, 20)>{EN.sun_equinox}</button>
+                        <button on:click=move |_| if south() { preset(6, 21) } else { preset(12, 21) }>
+                            {EN.sun_midwinter}</button>
+                    </div>
+                    <label class="sun-row">
+                        <span class="sun-label">{EN.sun_time}</span>
+                        <span class="sun-track">
+                            <input type="range" min="0" max="1439" step="5"
+                                prop:value=move || view.sun_minute.get().to_string()
+                                on:input=move |e| {
+                                    if let Ok(m) = event_target_value(&e).parse::<u32>() {
+                                        view.sun_minute.set(m.min(1439));
+                                    }
+                                } />
+                            {move || tick(rise(), "sun-tick rise")}
+                            {move || tick(set(), "sun-tick set")}
+                        </span>
+                        <output class="sun-value">{move || clock_text(view.sun_minute.get())}</output>
+                    </label>
+                    <label class="sun-row">
+                        <span class="sun-label">{EN.sun_date}</span>
+                        <span class="sun-track">
+                            <input type="range" min="1" max=move || days().to_string()
+                                prop:value=move || view.sun_day.get().to_string()
+                                on:input=move |e| {
+                                    if let Ok(d) = event_target_value(&e).parse::<u32>() {
+                                        view.sun_day.set(d.clamp(1, days()));
+                                    }
+                                } />
+                        </span>
+                        <output class="sun-value">
+                            {move || date_text(view.sun_year.get(), view.sun_day.get())}
+                        </output>
+                    </label>
+                    <p class="sun-times">
+                        <span>{move || match rise() {
+                            Some(m) => format!("{} {}", EN.sun_rise, clock_text(m)),
+                            None => EN.sun_no_rise.to_string(),
+                        }}</span>
+                        <span>{move || match set() {
+                            Some(m) => format!("{} {}", EN.sun_set, clock_text(m)),
+                            None => EN.sun_no_set.to_string(),
+                        }}</span>
+                    </p>
+                </div>
+            }
+            .into_any(),
+        )
+    };
     let close = move |_| view.open.set(false);
     // touch wording on phones and tablets (a finger is the main pointer)
     let touch = web_sys::window()
@@ -206,7 +419,8 @@ pub fn View3dOverlay() -> impl IntoView {
                 <button class="view3d-close" on:click=close>{icon(Icon::Close)}{EN.close_3d}</button>
             </header>
             {status}
-            <p class="view3d-help">{help}</p>
+            <p class="view3d-help" class:above-sun=move || has_place.get()>{help}</p>
+            {sun_panel}
         </section>
     }
 }

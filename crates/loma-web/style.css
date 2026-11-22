@@ -2093,6 +2093,107 @@ button.title-card {
 .view3d-status.error {
   color: var(--error);
 }
+/* the sun: date and time for real sunlight */
+.sun-panel {
+  position: absolute;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  width: min(480px, calc(100% - 32px));
+  box-sizing: border-box;
+  padding: 12px 16px 10px;
+  border-radius: 16px;
+  background: var(--card);
+  box-shadow: var(--card-shadow);
+  font-size: 13px;
+}
+
+.sun-presets {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.sun-presets button {
+  flex: 1;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: var(--tile);
+  font-size: 13px;
+  font-weight: 550;
+}
+
+.sun-row {
+  display: grid;
+  grid-template-columns: 40px 1fr 64px;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0;
+}
+
+.sun-label {
+  color: var(--muted);
+}
+
+.sun-track {
+  position: relative;
+  display: block;
+}
+
+.sun-track input {
+  width: 100%;
+  margin: 6px 0;
+}
+
+.sun-tick {
+  position: absolute;
+  top: 50%;
+  width: 2px;
+  height: 14px;
+  margin-left: -1px;
+  transform: translateY(-50%);
+  border-radius: 1px;
+  background: var(--muted);
+  pointer-events: none;
+}
+
+.sun-value {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.sun-times {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.sun-link {
+  position: absolute;
+  left: 50%;
+  bottom: 62px;
+  transform: translateX(-50%);
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--card);
+  box-shadow: var(--card-shadow);
+  font-size: 13px;
+  font-weight: 550;
+}
+
+@media (max-width: 768px) {
+  .sun-link {
+    display: none;
+  }
+}
+
+.view3d-help.above-sun {
+  bottom: 186px;
+}
+
 .view3d-help {
   position: absolute;
   bottom: 18px;

@@ -103,20 +103,29 @@ fn paint(grid: &SunGrid) -> Option<String> {
     canvas.to_data_url().ok()
 }
 
+/// Work for at most this long (ms) before letting the page draw.
+const BUDGET_MS: f64 = 8.0;
+
 /// Work out the map again whenever it's on and the design, its place or the
 /// chosen days change; quietly, a day at a time, after a short pause.
 pub fn run_sun_map() {
     let map = expect_context::<SunMap>();
     let state = expect_context::<RwSignal<EditorState>>();
-    let key = Memo::new(move |_| {
-        state.with(|s| {
-            let d = s.doc();
-            (d.id, d.modified, d.location, d.north)
-        })
-    });
+    // only what shadows depend on: a rename or a care note changes nothing
+    let key = Memo::new(move |_| state.with(|s| loma_editor::sunmap::fingerprint(s.doc())));
+    let design = Memo::new(move |_| state.with(|s| s.doc().id));
+    // a map from another design, or from before the map was switched off,
+    // is never shown over this one
+    let shown_for = StoredValue::new(None::<uuid::Uuid>);
     Effect::new(move |_| {
         let on = map.on.get();
         let _ = key.get();
+        let id = design.get();
+        if !on || shown_for.get_value() != Some(id) {
+            map.grid.set(None);
+            map.picture.set(None);
+            shown_for.set_value(on.then_some(id));
+        }
         let span = match map.span.get() {
             SpanChoice::Season => Span::Season {
                 year: crate::garden::today().year(),
@@ -146,11 +155,17 @@ pub fn run_sun_map() {
                 return;
             };
             map.busy.set(true);
+            // a few milliseconds of work between frames, so nothing stutters
+            let clock = || js_sys::Date::now();
+            let mut slice_start = clock();
             loop {
                 let finished = job.step();
-                sleep(0).await; // let the page draw and respond
-                if !current() {
-                    return; // a newer job has taken over
+                if finished || clock() - slice_start > BUDGET_MS {
+                    sleep(0).await; // let the page draw and respond
+                    if !current() {
+                        return; // a newer job has taken over
+                    }
+                    slice_start = clock();
                 }
                 if finished {
                     break;
@@ -202,6 +217,9 @@ pub fn SunMapCard() -> impl IntoView {
     };
     let here = move || {
         let p = cursor.get()?;
+        if !state.with(|s| loma_editor::sunmap::in_garden(s.doc(), p)) {
+            return None;
+        }
         let h = map.grid.with(|g| g.as_ref().and_then(|g| g.hours_at(p)))?;
         let rounded = (h * 2.0).round() / 2.0; // to the half hour
         let text = if rounded.fract() == 0.0 {

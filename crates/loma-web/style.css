@@ -2099,6 +2099,11 @@ button.title-card {
   pointer-events: none;
 }
 
+/* square edges keep the three band colours true (no blends between them) */
+.sun-map-layer image {
+  image-rendering: pixelated;
+}
+
 .sun-map-card {
   left: 16px;
   bottom: 84px;

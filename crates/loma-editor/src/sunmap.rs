@@ -139,18 +139,22 @@ pub fn casters(doc: &Document) -> Vec<Caster> {
     out
 }
 
-/// Whether `p` is inside the polygon (even-odd).
+/// Whether `p` is inside the polygon, by the non-zero rule the plan fills
+/// shapes with (so a crossed footprint is solid wherever it's drawn filled).
 fn inside(poly: &[Point], p: Point) -> bool {
-    let mut odd = false;
-    let mut j = poly.len() - 1;
+    let mut winding = 0i32;
     for i in 0..poly.len() {
-        let (a, b) = (poly[i], poly[j]);
-        if (a.y > p.y) != (b.y > p.y) && p.x < (b.x - a.x) * (p.y - a.y) / (b.y - a.y) + a.x {
-            odd = !odd;
+        let (a, b) = (poly[i], poly[(i + 1) % poly.len()]);
+        let side = (b - a).cross(p - a);
+        if a.y <= p.y {
+            if b.y > p.y && side > 0.0 {
+                winding += 1;
+            }
+        } else if b.y <= p.y && side < 0.0 {
+            winding -= 1;
         }
-        j = i;
     }
-    odd
+    winding != 0
 }
 
 /// Whether segments ab and cd cross or touch.
@@ -326,6 +330,12 @@ pub fn plot_outline(doc: &Document) -> Option<String> {
     Some(plot_shape(doc)?.to_bez_path().to_svg())
 }
 
+/// Whether `p` is in the garden: inside the plot boundary, or anywhere
+/// when there isn't one.
+pub fn in_garden(doc: &Document, p: Point) -> bool {
+    plot_shape(doc).is_none_or(|shape| shape.contains(p))
+}
+
 /// An empty grid over the garden: the plot boundary if there is one, else
 /// everything drawn, with room around. `None` for an empty design.
 pub fn grid_for(doc: &Document) -> Option<SunGrid> {
@@ -402,6 +412,61 @@ pub fn days(span: Span, lat: f64) -> Vec<Date> {
     }
 }
 
+/// The first moment of `day` at `at`: local solar midnight, so the day
+/// isn't split around noon.
+fn day_start(at: GeoPoint, day: Date) -> f64 {
+    let epoch = Date::from_ymd(1970, 1, 1).expect("a real date");
+    day.days_since(epoch) as f64 * 86_400_000.0 - at.lon / 15.0 * 3_600_000.0
+}
+
+/// Add `weight` × a quarter hour of sun to every square that the sun
+/// reaches in quarter `step` of `day`. `shade` is scratch space, one per square.
+#[allow(clippy::too_many_arguments)]
+fn quarter_hour(
+    casters: &[Caster],
+    at: GeoPoint,
+    north: f64,
+    day: Date,
+    step: u32,
+    grid: &mut SunGrid,
+    weight: f32,
+    shade: &mut [bool],
+) {
+    let t = day_start(at, day) + (step as f64 + 0.5) * (STEP_HOURS as f64) * 3_600_000.0;
+    let sky = sun_position(at, t);
+    if sky.altitude <= 0.0 {
+        return;
+    }
+    let sun = SunDir {
+        bearing: crate::compass::sun_bearing_on_plan(north, sky.azimuth),
+        altitude: sky.altitude,
+    };
+    shade.fill(false);
+    for c in casters {
+        let b = caster_shadow_bounds(c, sun).intersect(grid.rect());
+        if b.width() <= 0.0 || b.height() <= 0.0 {
+            continue;
+        }
+        let col0 = ((b.x0 - grid.origin.x) / grid.cell).floor().max(0.0) as usize;
+        let row0 = ((b.y0 - grid.origin.y) / grid.cell).floor().max(0.0) as usize;
+        let col1 = (((b.x1 - grid.origin.x) / grid.cell).ceil() as usize).min(grid.cols);
+        let row1 = (((b.y1 - grid.origin.y) / grid.cell).ceil() as usize).min(grid.rows);
+        for row in row0..row1 {
+            for col in col0..col1 {
+                let i = row * grid.cols + col;
+                if !shade[i] && in_shadow(c, grid.centre(col, row), sun) {
+                    shade[i] = true;
+                }
+            }
+        }
+    }
+    for (h, shaded) in grid.hours.iter_mut().zip(shade.iter()) {
+        if !shaded {
+            *h += STEP_HOURS * weight;
+        }
+    }
+}
+
 /// Add `weight` × the hours of direct sun on `day` to every square.
 pub fn day_hours(
     casters: &[Caster],
@@ -411,54 +476,46 @@ pub fn day_hours(
     grid: &mut SunGrid,
     weight: f32,
 ) {
-    let epoch = Date::from_ymd(1970, 1, 1).expect("a real date");
-    // from local solar midnight, so the day isn't split around noon
-    let start = day.days_since(epoch) as f64 * 86_400_000.0 - at.lon / 15.0 * 3_600_000.0;
     let mut shade = vec![false; grid.hours.len()];
     for step in 0..STEPS_PER_DAY {
-        let t = start + (step as f64 + 0.5) * (STEP_HOURS as f64) * 3_600_000.0;
-        let sky = sun_position(at, t);
-        if sky.altitude <= 0.0 {
-            continue;
-        }
-        let sun = SunDir {
-            bearing: crate::compass::sun_bearing_on_plan(north, sky.azimuth),
-            altitude: sky.altitude,
-        };
-        shade.fill(false);
-        for c in casters {
-            let b = caster_shadow_bounds(c, sun).intersect(grid.rect());
-            if b.width() <= 0.0 || b.height() <= 0.0 {
-                continue;
-            }
-            let col0 = ((b.x0 - grid.origin.x) / grid.cell).floor().max(0.0) as usize;
-            let row0 = ((b.y0 - grid.origin.y) / grid.cell).floor().max(0.0) as usize;
-            let col1 = (((b.x1 - grid.origin.x) / grid.cell).ceil() as usize).min(grid.cols);
-            let row1 = (((b.y1 - grid.origin.y) / grid.cell).ceil() as usize).min(grid.rows);
-            for row in row0..row1 {
-                for col in col0..col1 {
-                    let i = row * grid.cols + col;
-                    if !shade[i] && in_shadow(c, grid.centre(col, row), sun) {
-                        shade[i] = true;
-                    }
-                }
-            }
-        }
-        for (h, shaded) in grid.hours.iter_mut().zip(&shade) {
-            if !shaded {
-                *h += STEP_HOURS * weight;
-            }
-        }
+        quarter_hour(casters, at, north, day, step, grid, weight, &mut shade);
     }
 }
 
-/// Working out a sun map a day at a time, so a page can stay responsive.
+/// Everything a sun map depends on: when it changes, the map must be worked
+/// out again; a new name, a price or a care note leave it alone.
+#[derive(Clone, Debug, PartialEq)]
+pub struct SunKey {
+    id: uuid::Uuid,
+    location: Option<GeoPoint>,
+    north: f64,
+    casters: Vec<Caster>,
+    area: Option<(Point, f64, usize, usize)>,
+    plot: Option<String>,
+}
+
+pub fn fingerprint(doc: &Document) -> SunKey {
+    SunKey {
+        id: doc.id,
+        location: doc.location,
+        north: doc.north,
+        casters: casters(doc),
+        area: grid_for(doc).map(|g| (g.origin, g.cell, g.cols, g.rows)),
+        plot: plot_outline(doc),
+    }
+}
+
+/// Working out a sun map a quarter hour at a time, so a page can do a few
+/// steps between frames and stay responsive.
 pub struct SunMapJob {
     casters: Vec<Caster>,
     at: GeoPoint,
     north: f64,
     days: Vec<Date>,
+    /// Days finished, and quarter hours of the current day finished.
     done: usize,
+    quarter: u32,
+    shade: Vec<bool>,
     grid: SunGrid,
 }
 
@@ -466,29 +523,38 @@ impl SunMapJob {
     /// `None` when the design has no location or nothing in it.
     pub fn new(doc: &Document, span: Span) -> Option<SunMapJob> {
         let at = doc.location?;
+        let grid = grid_for(doc)?;
         Some(SunMapJob {
             casters: casters(doc),
             at,
             north: doc.north,
             days: days(span, at.lat),
             done: 0,
-            grid: grid_for(doc)?,
+            quarter: 0,
+            shade: vec![false; grid.hours.len()],
+            grid,
         })
     }
 
-    /// Work out one more day; true once every day is done.
+    /// Work out one more quarter hour; true once every day is done.
     pub fn step(&mut self) -> bool {
         if let Some(day) = self.days.get(self.done).copied() {
             let weight = 1.0 / self.days.len() as f32;
-            day_hours(
+            quarter_hour(
                 &self.casters,
                 self.at,
                 self.north,
                 day,
+                self.quarter,
                 &mut self.grid,
                 weight,
+                &mut self.shade,
             );
-            self.done += 1;
+            self.quarter += 1;
+            if self.quarter == STEPS_PER_DAY {
+                self.quarter = 0;
+                self.done += 1;
+            }
         }
         self.done >= self.days.len()
     }
@@ -779,7 +845,8 @@ mod tests {
         while !job.step() {
             steps += 1;
         }
-        assert_eq!(steps + 1, 12);
+        // one step per quarter hour of each of the twelve days
+        assert_eq!(steps + 1, 12 * 96);
         assert_eq!(job.progress(), (12, 12));
         // the same as adding up the twelve days by hand
         let mut by_hand = grid_for(&doc).unwrap();
@@ -789,6 +856,121 @@ mod tests {
         for (a, b) in job.grid().hours.iter().zip(&by_hand.hours) {
             assert!((a - b).abs() < 1e-4);
         }
+    }
+
+    #[test]
+    fn a_notch_in_a_building_gets_sun_from_above() {
+        // a U-shaped building, open at the top of the plan
+        let u = ObjectKind::Structure {
+            kind: StructureKind::Shed,
+            footprint: Shape::polyline(
+                &[
+                    Point::new(0., 0.),
+                    Point::new(1000., 0.),
+                    Point::new(1000., 2000.),
+                    Point::new(2000., 2000.),
+                    Point::new(2000., 0.),
+                    Point::new(3000., 0.),
+                    Point::new(3000., 3000.),
+                    Point::new(0., 3000.),
+                ],
+                true,
+            ),
+            height: 2500.,
+        };
+        // high sun from up the plan: the notch is open to it
+        assert!(!shaded(vec![u.clone()], (1500., 1000.), sun(0.0, 80.0)));
+        assert!(
+            shaded(vec![u.clone()], (500., 1000.), sun(0.0, 80.0)),
+            "inside an arm"
+        );
+        // low sun from the side: the arm shades the notch
+        assert!(shaded(vec![u], (1500., 1000.), sun(270.0, 30.0)));
+    }
+
+    #[test]
+    fn a_crossed_footprint_is_solid_where_it_is_drawn_filled() {
+        // a pentagram's middle is filled when drawn (non-zero), so it's inside
+        let star: Vec<Point> = (0..5)
+            .map(|i| {
+                let a = (i as f64 * 144.0 - 90.0).to_radians();
+                Point::new(2000. * a.cos(), 2000. * a.sin())
+            })
+            .collect();
+        let shed = ObjectKind::Structure {
+            kind: StructureKind::Shed,
+            footprint: Shape::polyline(&star, true),
+            height: 2000.,
+        };
+        assert!(shaded(vec![shed], (0., 0.), sun(10.0, 89.0)));
+    }
+
+    #[test]
+    fn a_low_mound_shades_the_ground_it_covers() {
+        let herb = ObjectKind::Plant {
+            position: Point::new(0., 0.),
+            spread: 600.,
+            height: 400.,
+            symbol: PlantSymbol::Leafy,
+            category: PlantCategory::Herb,
+            catalog_id: None,
+        };
+        assert!(shaded(vec![herb.clone()], (0., 0.), sun(180.0, 60.0)));
+        assert!(!shaded(vec![herb], (0., 1000.), sun(180.0, 60.0)));
+    }
+
+    #[test]
+    fn in_the_south_the_sunny_side_of_a_wall_faces_north() {
+        const SYDNEY: GeoPoint = GeoPoint {
+            lat: -33.87,
+            lon: 151.21,
+        };
+        let at = |g: &SunGrid, y: f64| g.hours_at(Point::new(2000., y)).unwrap();
+        let g = day_map(vec![lawn(), wall()], SYDNEY, 0.0, date(2024, 6, 21));
+        // the sun is up the plan (north): plan-up of the wall is the sunny side
+        assert!(
+            at(&g, -1000.) > at(&g, 1000.) + 3.0,
+            "{} vs {}",
+            at(&g, -1000.),
+            at(&g, 1000.)
+        );
+    }
+
+    #[test]
+    fn the_shadow_fingerprint_ignores_names_and_care() {
+        let mut doc = doc_with(vec![lawn(), wall()]);
+        let before = fingerprint(&doc);
+        doc.name = "Renamed".into();
+        assert_eq!(fingerprint(&doc), before);
+        doc.north = 10.0;
+        assert_ne!(fingerprint(&doc), before);
+    }
+
+    #[test]
+    fn hover_hours_only_inside_the_plot() {
+        let l = ObjectKind::PlotBoundary {
+            shape: Shape::polyline(
+                &[
+                    Point::new(0., 0.),
+                    Point::new(4000., 0.),
+                    Point::new(4000., 2000.),
+                    Point::new(2000., 2000.),
+                    Point::new(2000., 4000.),
+                    Point::new(0., 4000.),
+                ],
+                true,
+            ),
+        };
+        let doc = doc_with(vec![l]);
+        assert!(in_garden(&doc, Point::new(1000., 1000.)));
+        assert!(
+            !in_garden(&doc, Point::new(3000., 3000.)),
+            "the L's missing corner"
+        );
+        assert!(
+            in_garden(&doc_with(vec![lawn()]), Point::new(-500., -500.)),
+            "no plot: anywhere"
+        );
     }
 
     #[test]

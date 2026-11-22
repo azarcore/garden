@@ -883,7 +883,7 @@ pub static EN: Strings = Strings {
     compass_hint: "Use a map's north, not a phone compass",
     compass_reset: "Reset to up",
     location_title: "Location",
-    location_hint: "Paste from a map, e.g. 51.48, -0.01",
+    location_hint: "Paste it from a map, or use where you are now.",
     use_my_location: "Use my location",
     clear_location: "Clear location",
     location_denied: "Couldn't get your location. Type it instead.",

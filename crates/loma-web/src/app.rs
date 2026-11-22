@@ -13,6 +13,59 @@ use crate::inspector::Inspector;
 use crate::toolbar::{ControlsCard, HintBar, TitleCard, ToolDock, tool_entries};
 
 /// Milliseconds since the Unix epoch.
+/// Ask the browser where this device is (once; it may ask the person) and
+/// call `done` with latitude and longitude, or `None` if it can't or may not.
+/// The answer stays on the device.
+pub fn current_position(done: impl FnOnce(Option<(f64, f64)>) + 'static) {
+    use std::cell::RefCell;
+    use std::rc::Rc;
+    use wasm_bindgen::JsValue;
+    use wasm_bindgen::prelude::Closure;
+    type Done = Rc<RefCell<Option<Box<dyn FnOnce(Option<(f64, f64)>)>>>>;
+    let done: Done = Rc::new(RefCell::new(Some(Box::new(done))));
+    let finish = |done: &Done, found| {
+        if let Some(f) = done.borrow_mut().take() {
+            f(found);
+        }
+    };
+    let get = |o: &JsValue, key: &str| js_sys::Reflect::get(o, &JsValue::from_str(key)).ok();
+    let geolocation = web_sys::window()
+        .map(|w| JsValue::from(w.navigator()))
+        .and_then(|n| get(&n, "geolocation"))
+        .filter(|g| !g.is_undefined() && !g.is_null());
+    let Some(geolocation) = geolocation else {
+        finish(&done, None);
+        return;
+    };
+    let on_found = {
+        let done = done.clone();
+        Closure::once_into_js(move |position: JsValue| {
+            let coords = get(&position, "coords");
+            let read = |k| {
+                coords
+                    .as_ref()
+                    .and_then(|c| get(c, k))
+                    .and_then(|v| v.as_f64())
+            };
+            finish(&done, read("latitude").zip(read("longitude")));
+        })
+    };
+    let on_error = {
+        let done = done.clone();
+        Closure::once_into_js(move |_: JsValue| finish(&done, None))
+    };
+    let options = js_sys::Object::new();
+    let _ = js_sys::Reflect::set(&options, &"enableHighAccuracy".into(), &false.into());
+    let _ = js_sys::Reflect::set(&options, &"timeout".into(), &15_000.into());
+    let _ = js_sys::Reflect::set(&options, &"maximumAge".into(), &600_000.into());
+    let called = get(&geolocation, "getCurrentPosition")
+        .and_then(|f| f.dyn_into::<js_sys::Function>().ok())
+        .map(|f| f.call3(&geolocation, &on_found, &on_error, &options));
+    if !matches!(called, Some(Ok(_))) {
+        finish(&done, None);
+    }
+}
+
 pub fn now() -> i64 {
     js_sys::Date::now() as i64
 }
@@ -20,6 +73,11 @@ pub fn now() -> i64 {
 /// World position of the pointer, for the status bar.
 #[derive(Clone, Copy)]
 pub struct Cursor(pub RwSignal<Option<Point>>);
+
+/// Whether the compass's box (north and location) is open; the 3D view's
+/// "set where your garden is" link opens it.
+#[derive(Clone, Copy)]
+pub struct CompassBox(pub RwSignal<bool>);
 
 /// Whether Space is held (pan mode).
 #[derive(Clone, Copy)]
@@ -226,6 +284,7 @@ pub fn App() -> impl IntoView {
     let plant = RwSignal::new(default_plant);
     provide_context(state);
     provide_context(Cursor(RwSignal::new(None)));
+    provide_context(CompassBox(RwSignal::new(false)));
     provide_context(SpaceHeld(space));
     provide_context(LastPlant(plant));
     crate::library::provide_library(state);

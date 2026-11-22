@@ -51,7 +51,8 @@ const COMPASS_DRAG_PX: f64 = 3.0;
 #[component]
 fn Compass() -> impl IntoView {
     use loma_editor::compass::{
-        bearing_from_pointer, bearing_text, free_bearing, parse_bearing, snap,
+        bearing_from_pointer, bearing_text, free_bearing, location_text, parse_bearing,
+        parse_location, snap,
     };
     use loma_editor::strings::EN;
 
@@ -62,9 +63,50 @@ fn Compass() -> impl IntoView {
     let turning = RwSignal::new(None::<f64>);
     let press = StoredValue::new(None::<(f64, f64)>);
     let moved = StoredValue::new(false);
-    let editing = RwSignal::new(false);
+    let crate::app::CompassBox(editing) = expect_context::<crate::app::CompassBox>();
     let button = NodeRef::<leptos::html::Button>::new();
     let input = NodeRef::<leptos::html::Input>::new();
+    let place_input = NodeRef::<leptos::html::Input>::new();
+    let location = Memo::new(move |_| state.with(|s| s.doc().location));
+    let place_text = move || location.get().map(location_text).unwrap_or_default();
+    // "Use my location": waiting for the browser, or it said no
+    let locating = RwSignal::new(false);
+    let place_error = RwSignal::new(false);
+    let commit_place = move || {
+        let Some(el) = place_input.get_untracked() else {
+            return;
+        };
+        let text = el.value();
+        if text.trim().is_empty() {
+            return;
+        }
+        match parse_location(&text) {
+            Some(p) => {
+                state.update(|s| {
+                    s.set_location(Some(p), now());
+                });
+                place_error.set(false);
+            }
+            // not a place: show what's saved again
+            None => el.set_value(&place_text()),
+        }
+    };
+    let use_my_location = move |_| {
+        locating.set(true);
+        place_error.set(false);
+        crate::app::current_position(move |found| {
+            locating.set(false);
+            match found {
+                Some((lat, lon)) => {
+                    let p = loma_core::model::GeoPoint::new(lat, lon);
+                    state.update(|s| {
+                        s.set_location(p, now());
+                    });
+                }
+                None => place_error.set(true),
+            }
+        });
+    };
 
     let shown = move || turning.get().unwrap_or_else(|| north.get());
     let bearing_at = move |e: &ev::PointerEvent| -> Option<f64> {
@@ -221,6 +263,30 @@ fn Compass() -> impl IntoView {
                         state.update(|s| { s.set_north(0.0, now()); });
                         close();
                     }>{EN.compass_reset}</button>
+                    <label class="compass-place">
+                        <span>{EN.location_title}</span>
+                        <input node_ref=place_input type="text" inputmode="decimal"
+                            placeholder="51.48, -0.01" prop:value=place_text
+                            on:change=move |_| commit_place()
+                            on:keydown=move |e: ev::KeyboardEvent| match e.key().as_str() {
+                                "Enter" => { e.prevent_default(); commit_place(); }
+                                "Escape" => { e.prevent_default(); e.stop_propagation(); close(); }
+                                _ => {}
+                            } />
+                    </label>
+                    <p class="compass-hint">{EN.location_hint}</p>
+                    {move || place_error.get().then(|| view! {
+                        <p class="compass-hint error" role="alert">{EN.location_denied}</p>
+                    })}
+                    <div class="compass-place-actions">
+                        <button class="compass-reset" disabled=move || locating.get()
+                            on:click=use_my_location>{EN.use_my_location}</button>
+                        {move || location.get().is_some().then(|| view! {
+                            <button class="compass-reset" on:click=move |_| {
+                                state.update(|s| { s.set_location(None, now()); });
+                            }>{EN.clear_location}</button>
+                        })}
+                    </div>
                 </div>
             }
         })

@@ -54,6 +54,15 @@ pub fn current_position(done: impl FnOnce(Option<(f64, f64)>) + 'static) {
         let done = done.clone();
         Closure::once_into_js(move |_: JsValue| finish(&done, None))
     };
+    // some browsers never answer when the permission prompt is ignored
+    let give_up = {
+        let done = done.clone();
+        Closure::once_into_js(move || finish(&done, None))
+    };
+    if let Some(w) = web_sys::window() {
+        let _ = w
+            .set_timeout_with_callback_and_timeout_and_arguments_0(give_up.unchecked_ref(), 20_000);
+    }
     let options = js_sys::Object::new();
     let _ = js_sys::Reflect::set(&options, &"enableHighAccuracy".into(), &false.into());
     let _ = js_sys::Reflect::set(&options, &"timeout".into(), &15_000.into());
@@ -77,7 +86,11 @@ pub struct Cursor(pub RwSignal<Option<Point>>);
 /// Whether the compass's box (north and location) is open; the 3D view's
 /// "set where your garden is" link opens it.
 #[derive(Clone, Copy)]
-pub struct CompassBox(pub RwSignal<bool>);
+pub struct CompassBox {
+    pub open: RwSignal<bool>,
+    /// Open it with the Location field focused (from the 3D view's link).
+    pub at_place: RwSignal<bool>,
+}
 
 /// Whether Space is held (pan mode).
 #[derive(Clone, Copy)]
@@ -284,7 +297,10 @@ pub fn App() -> impl IntoView {
     let plant = RwSignal::new(default_plant);
     provide_context(state);
     provide_context(Cursor(RwSignal::new(None)));
-    provide_context(CompassBox(RwSignal::new(false)));
+    provide_context(CompassBox {
+        open: RwSignal::new(false),
+        at_place: RwSignal::new(false),
+    });
     provide_context(SpaceHeld(space));
     provide_context(LastPlant(plant));
     crate::library::provide_library(state);

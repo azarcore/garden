@@ -112,8 +112,9 @@ fn sun_to_now(view: View3d) {
     view.sun_year.set(year);
     view.sun_day
         .set(day_of_year(year, now.get_month() + 1, now.get_date()));
-    view.sun_minute
-        .set(now.get_hours() * 60 + now.get_minutes());
+    // to the slider's 5-minute steps, so its thumb agrees with the label
+    let minute = (now.get_hours() * 60 + now.get_minutes() + 2) / 5 * 5;
+    view.sun_minute.set(minute.min(1435));
 }
 
 /// Light the open 3D view from the sun at the chosen moment, or as before
@@ -286,7 +287,7 @@ async fn load_and_start(view: View3d, state: RwSignal<EditorState>) -> Result<()
 pub fn View3dOverlay() -> impl IntoView {
     let view = expect_context::<View3d>();
     let state = expect_context::<RwSignal<EditorState>>();
-    let crate::app::CompassBox(compass_box) = expect_context::<crate::app::CompassBox>();
+    let compass_box = expect_context::<crate::app::CompassBox>();
     let place = Memo::new(move |_| state.with(|s| s.doc().location.map(|at| (at, s.doc().north))));
     let design = Memo::new(move |_| state.with(|s| s.mode() == loma_editor::state::Mode::Design));
     // relight whenever the view is showing and the place or moment changes
@@ -335,7 +336,8 @@ pub fn View3dOverlay() -> impl IntoView {
                 view! {
                     <button class="sun-link" on:click=move |_| {
                         view.open.set(false);
-                        compass_box.set(true);
+                        compass_box.at_place.set(true);
+                        compass_box.open.set(true);
                     }>{EN.sun_link}</button>
                 }
                 .into_any()

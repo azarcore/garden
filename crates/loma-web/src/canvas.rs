@@ -63,7 +63,8 @@ fn Compass() -> impl IntoView {
     let turning = RwSignal::new(None::<f64>);
     let press = StoredValue::new(None::<(f64, f64)>);
     let moved = StoredValue::new(false);
-    let crate::app::CompassBox(editing) = expect_context::<crate::app::CompassBox>();
+    let compass_box = expect_context::<crate::app::CompassBox>();
+    let editing = compass_box.open;
     let button = NodeRef::<leptos::html::Button>::new();
     let input = NodeRef::<leptos::html::Input>::new();
     let place_input = NodeRef::<leptos::html::Input>::new();
@@ -71,7 +72,7 @@ fn Compass() -> impl IntoView {
     let place_text = move || location.get().map(location_text).unwrap_or_default();
     // "Use my location": waiting for the browser, or it said no
     let locating = RwSignal::new(false);
-    let place_error = RwSignal::new(false);
+    let place_error = RwSignal::new(None::<&'static str>);
     let commit_place = move || {
         let Some(el) = place_input.get_untracked() else {
             return;
@@ -85,15 +86,18 @@ fn Compass() -> impl IntoView {
                 state.update(|s| {
                     s.set_location(Some(p), now());
                 });
-                place_error.set(false);
+                place_error.set(None);
             }
-            // not a place: show what's saved again
-            None => el.set_value(&place_text()),
+            // not a place: say so, and show what's saved again
+            None => {
+                el.set_value(&place_text());
+                place_error.set(Some(EN.location_unreadable));
+            }
         }
     };
     let use_my_location = move |_| {
         locating.set(true);
-        place_error.set(false);
+        place_error.set(None);
         crate::app::current_position(move |found| {
             locating.set(false);
             match found {
@@ -103,7 +107,7 @@ fn Compass() -> impl IntoView {
                         s.set_location(p, now());
                     });
                 }
-                None => place_error.set(true),
+                None => place_error.set(Some(EN.location_denied)),
             }
         });
     };
@@ -200,10 +204,14 @@ fn Compass() -> impl IntoView {
         }
     };
     Effect::new(move |_| {
-        if editing.get()
-            && let Some(el) = input.get()
-        {
-            let _ = el.focus();
+        if editing.get() {
+            let at_place = compass_box.at_place.get_untracked();
+            compass_box.at_place.set(false);
+            if at_place && let Some(el) = place_input.get() {
+                let _ = el.focus();
+            } else if let Some(el) = input.get() {
+                let _ = el.focus();
+            }
         }
     });
     let shown_text = move || bearing_text(north.get());
@@ -270,13 +278,21 @@ fn Compass() -> impl IntoView {
                             on:change=move |_| commit_place()
                             on:keydown=move |e: ev::KeyboardEvent| match e.key().as_str() {
                                 "Enter" => { e.prevent_default(); commit_place(); }
-                                "Escape" => { e.prevent_default(); e.stop_propagation(); close(); }
+                                "Escape" => {
+                                    e.prevent_default();
+                                    e.stop_propagation();
+                                    // a cancel: put back what's saved so leaving the field saves nothing
+                                    if let Some(el) = place_input.get_untracked() {
+                                        el.set_value(&place_text());
+                                    }
+                                    close();
+                                }
                                 _ => {}
                             } />
                     </label>
                     <p class="compass-hint">{EN.location_hint}</p>
-                    {move || place_error.get().then(|| view! {
-                        <p class="compass-hint error" role="alert">{EN.location_denied}</p>
+                    {move || place_error.get().map(|m| view! {
+                        <p class="compass-hint error" role="alert">{m}</p>
                     })}
                     <div class="compass-place-actions">
                         <button class="compass-reset" disabled=move || locating.get()

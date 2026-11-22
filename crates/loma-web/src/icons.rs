@@ -50,6 +50,7 @@ pub enum Icon {
     Unlock,
     Plus,
     Cube,
+    Sun,
     Search,
     Pencil,
     Bottle,
@@ -139,6 +140,7 @@ fn body(icon: Icon) -> AnyView {
         Icon::Bottle => view! { <path d="M10 3h4M10.5 3v4L8 10v9.5A1.5 1.5 0 0 0 9.5 21h5a1.5 1.5 0 0 0 1.5-1.5V10l-2.5-3V3M8 13h8" /> }.into_any(),
         Icon::Pencil => view! { <path d="M4 20l1-4L16 5l3 3L8 19zM14 7l3 3" /> }.into_any(),
         Icon::Search => view! { <circle cx="10.5" cy="10.5" r="6" /><path d="M15 15l5.5 5.5" /> }.into_any(),
+        Icon::Sun => view! { <path d="M12 8a4 4 0 1 0 0 8a4 4 0 0 0 0-8zM12 2v2.5M12 19.5V22M2 12h2.5M19.5 12H22M4.9 4.9l1.8 1.8M17.3 17.3l1.8 1.8M4.9 19.1l1.8-1.8M17.3 6.7l1.8-1.8" /> }.into_any(),
         Icon::Cube => view! { <path d="M12 3l8 4.5v9L12 21l-8-4.5v-9zM12 12l8-4.5M12 12v9M12 12L4 7.5" /> }.into_any(),
         Icon::Fit => view! { <path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5M9 9h6v6H9z" /> }.into_any(),
     }

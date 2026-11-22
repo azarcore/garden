@@ -325,6 +325,8 @@ pub fn ControlsCard() -> impl IntoView {
     let set_units = move |u: UnitSystem| state.update(|s| s.set_units(u, now()));
     let trace = expect_context::<crate::trace::Trace>();
     let crate::print::PrintOpen(print_open) = expect_context::<crate::print::PrintOpen>();
+    let sun_map = expect_context::<crate::sunmap::SunMap>();
+    let compass_box = expect_context::<crate::app::CompassBox>();
     let crate::list::ListOpen(list_open) = expect_context::<crate::list::ListOpen>();
     let crate::layers::LayersOpen(layers_open) = expect_context::<crate::layers::LayersOpen>();
     let view3d = expect_context::<crate::view3d::View3d>();
@@ -348,6 +350,9 @@ pub fn ControlsCard() -> impl IntoView {
                 </Show>
                 <button class="icon-btn" data-tip=EN.fit aria-label=EN.fit
                     on:click=move |_| state.update(|s| s.fit_to_content())>{icon(Icon::Fit)}</button>
+                <button class="icon-btn" data-tip=EN.sun_map aria-label=EN.sun_map
+                    aria-pressed=move || sun_map.on.get().to_string()
+                    on:click=move |_| crate::sunmap::toggle(sun_map, state, compass_box)>{icon(Icon::Sun)}</button>
                 <Show when=move || design.get()>
                 <span class="card-sep"></span>
                 <button class="icon-btn toggle" data-tip=EN.snap_grid aria-label=EN.snap_grid

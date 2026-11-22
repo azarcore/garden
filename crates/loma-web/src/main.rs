@@ -18,6 +18,7 @@ mod print;
 mod pwa;
 mod reminders;
 mod storage;
+mod sunmap;
 mod templates;
 mod toolbar;
 mod trace;

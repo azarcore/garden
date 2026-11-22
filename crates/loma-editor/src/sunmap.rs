@@ -304,22 +304,41 @@ impl SunGrid {
     }
 }
 
+fn plot_shape(doc: &Document) -> Option<&loma_core::geometry::Shape> {
+    doc.objects.iter().find_map(|o| match &o.kind {
+        ObjectKind::PlotBoundary { shape } if shape.is_finite() => Some(shape),
+        _ => None,
+    })
+}
+
+fn plot_bounds(doc: &Document) -> Option<Rect> {
+    let pts = plot_shape(doc)?.flatten(10.0);
+    let first = *pts.first()?;
+    Some(
+        pts.iter()
+            .fold(Rect::from_points(first, first), |r, p| r.union_pt(*p)),
+    )
+}
+
+/// The plot boundary as an SVG path (plan coordinates), to keep the map
+/// inside the garden; `None` without one.
+pub fn plot_outline(doc: &Document) -> Option<String> {
+    Some(plot_shape(doc)?.to_bez_path().to_svg())
+}
+
 /// An empty grid over the garden: the plot boundary if there is one, else
 /// everything drawn, with room around. `None` for an empty design.
 pub fn grid_for(doc: &Document) -> Option<SunGrid> {
-    let plot = doc.objects.iter().find_map(|o| match &o.kind {
-        ObjectKind::PlotBoundary { shape } => shape
-            .is_finite()
-            .then(|| crate::objects::object_bounds(&o.kind)),
-        _ => None,
-    });
-    let bounds = plot.or_else(|| {
-        doc.objects
+    // the plot is the garden; without one, everything drawn and room around it
+    let area = match plot_bounds(doc) {
+        Some(plot) => plot,
+        None => doc
+            .objects
             .iter()
             .map(|o| crate::objects::object_bounds(&o.kind))
-            .reduce(|a, b| a.union(b))
-    })?;
-    let area = bounds.inflate(MARGIN, MARGIN);
+            .reduce(|a, b| a.union(b))?
+            .inflate(MARGIN, MARGIN),
+    };
     let longest = area.width().max(area.height());
     let cell = CELL.max(longest / MAX_CELLS as f64);
     let cols = (area.width() / cell).ceil().max(1.0) as usize;
@@ -732,6 +751,19 @@ mod tests {
         assert_eq!((g.cols, g.rows), (32, 28));
         assert_eq!(g.hours_at(Point::new(-5000., 0.)), None);
         assert!(grid_for(&doc_with(vec![])).is_none());
+    }
+
+    #[test]
+    fn with_a_plot_boundary_the_grid_is_just_the_plot() {
+        let plot = ObjectKind::PlotBoundary {
+            shape: Shape::rect(Point::new(1000., 500.), 6000., 4000.),
+        };
+        let doc = doc_with(vec![plot, lawn()]);
+        let g = grid_for(&doc).unwrap();
+        assert_eq!(g.origin, Point::new(1000., 500.));
+        assert_eq!((g.cols, g.rows), (24, 16));
+        assert!(plot_outline(&doc).unwrap().starts_with('M'));
+        assert_eq!(plot_outline(&doc_with(vec![lawn()])), None);
     }
 
     #[test]

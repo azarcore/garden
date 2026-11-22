@@ -768,6 +768,7 @@ pub fn Canvas() -> impl IntoView {
                 {grid}
                 {photo}
                 <g class="plan-content">{content}</g>
+                {crate::sunmap::layer(expect_context::<crate::sunmap::SunMap>())}
                 {crate::garden::marks_view(state)}
                 {preview}
                 {tag}

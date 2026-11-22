@@ -451,6 +451,17 @@ pub struct Strings {
     pub sun_set: &'static str,
     pub sun_no_rise: &'static str,
     pub sun_no_set: &'static str,
+    pub sun_map: &'static str,
+    pub sun_full: &'static str,
+    pub sun_part: &'static str,
+    pub sun_shade: &'static str,
+    pub sun_full_range: &'static str,
+    pub sun_part_range: &'static str,
+    pub sun_shade_range: &'static str,
+    pub sun_season: &'static str,
+    pub sun_one_day: &'static str,
+    pub sun_here: &'static str,
+    pub sun_working: &'static str,
 }
 
 pub static EN: Strings = Strings {
@@ -900,6 +911,17 @@ pub static EN: Strings = Strings {
     sun_set: "Sunset",
     sun_no_rise: "No sunrise",
     sun_no_set: "No sunset",
+    sun_map: "Sun map",
+    sun_full: "Full sun",
+    sun_part: "Part sun",
+    sun_shade: "Shade",
+    sun_full_range: "6 h or more",
+    sun_part_range: "3 to 6 h",
+    sun_shade_range: "under 3 h",
+    sun_season: "Growing season",
+    sun_one_day: "One day",
+    sun_here: "Here: {} h of sun",
+    sun_working: "Working out the sun…",
 };
 
 /// Heading for a group of plants.

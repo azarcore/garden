@@ -307,6 +307,8 @@ pub fn App() -> impl IntoView {
     crate::pwa::provide_pwa(state, expect_context::<crate::library::Library>());
     crate::trace::provide_trace();
     crate::view3d::provide_view3d();
+    crate::sunmap::provide_sun_map();
+    crate::sunmap::run_sun_map();
     let catalog_open = RwSignal::new(false);
     provide_context(crate::catalog::CatalogOpen(catalog_open));
     let chooser = RwSignal::new(false);
@@ -353,6 +355,7 @@ pub fn App() -> impl IntoView {
             <Show when=design><crate::trace::TraceCard /></Show>
             <crate::print::PrintCard />
             <crate::list::ListCard />
+            <crate::sunmap::SunMapCard />
             <crate::care::PlantCard />
             <crate::care::ProductsCard />
             <crate::calendar::WeekCard />

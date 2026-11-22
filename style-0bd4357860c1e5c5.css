@@ -2093,6 +2093,112 @@ button.title-card {
 .view3d-status.error {
   color: var(--error);
 }
+/* the sun map: hours of sun over the plan */
+.sun-map-layer {
+  opacity: 0.45;
+  pointer-events: none;
+}
+
+/* square edges keep the three band colours true (no blends between them) */
+.sun-map-layer image {
+  image-rendering: pixelated;
+}
+
+.sun-map-card {
+  left: 16px;
+  bottom: 84px;
+  width: 240px;
+  padding: 12px 14px;
+  font-size: 13px;
+}
+
+/* where the legend sits above the dock row, sit above the legend */
+@media (max-width: 1279px) {
+  .sun-map-card {
+    bottom: 150px;
+  }
+}
+
+.sun-key {
+  display: grid;
+  gap: 6px;
+  margin: 0 0 10px;
+  padding: 0;
+  list-style: none;
+}
+
+.sun-key li {
+  display: grid;
+  grid-template-columns: 14px 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.sun-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  opacity: 0.8;
+}
+
+.sun-band {
+  font-weight: 600;
+}
+
+.sun-range {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.sun-span,
+.sun-map-card .sun-presets {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.sun-span button,
+.sun-map-card .sun-presets button {
+  flex: 1;
+  padding: 6px 4px;
+  border-radius: 9px;
+  background: var(--tile);
+  font-size: 12px;
+  font-weight: 550;
+  white-space: nowrap;
+}
+
+.sun-span button[aria-pressed="true"] {
+  background: var(--accent-tint);
+  color: var(--accent-strong);
+}
+
+.sun-day {
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 8px;
+}
+
+.sun-here:empty {
+  display: none;
+}
+
+.sun-here {
+  margin: 0;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 768px) {
+  .sun-map-card {
+    left: 10px;
+    right: 10px;
+    bottom: auto;
+    top: 158px; /* under the toolbar, which takes two rows on a phone */
+    width: auto;
+  }
+}
+
 /* the sun: date and time for real sunlight */
 .sun-panel {
   position: absolute;

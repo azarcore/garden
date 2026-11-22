@@ -97,6 +97,14 @@ pub enum Command {
     SetLocation {
         location: Option<crate::model::GeoPoint>,
     },
+    /// The garden's time zone (an IANA name); `None` forgets it.
+    SetTimeZone {
+        zone: Option<String>,
+    },
+    /// Show times in the device's clock (true) or the garden's (false).
+    SetDeviceTime {
+        on: bool,
+    },
     /// All-or-nothing.
     Batch {
         commands: Vec<Command>,
@@ -150,7 +158,8 @@ impl Command {
             Command::Rename { .. }
             | Command::SetPrice { .. }
             | Command::SetCurrency { .. }
-            | Command::SetGravelDepth { .. } => true,
+            | Command::SetGravelDepth { .. }
+            | Command::SetDeviceTime { .. } => true,
             Command::Batch { commands } => {
                 !commands.is_empty() && commands.iter().all(Command::is_layout_free)
             }
@@ -193,6 +202,7 @@ impl Document {
             Command::SetPrice { price: Some(p), .. } => p.is_finite() && *p >= 0.0,
             Command::SetGravelDepth { depth: Some(d) } => d.is_finite() && *d > 0.0,
             Command::SetNorth { degrees } => degrees.is_finite(),
+            Command::SetTimeZone { zone: Some(z) } => !z.trim().is_empty(),
             Command::SetLocation { location: Some(p) } => {
                 crate::model::GeoPoint::new(p.lat, p.lon).is_some()
             }
@@ -346,6 +356,12 @@ impl Document {
             Command::SetGravelDepth { depth } => Command::SetGravelDepth {
                 depth: std::mem::replace(&mut self.gravel_depth, depth),
             },
+            Command::SetTimeZone { zone } => Command::SetTimeZone {
+                zone: std::mem::replace(&mut self.time_zone, zone),
+            },
+            Command::SetDeviceTime { on } => Command::SetDeviceTime {
+                on: std::mem::replace(&mut self.device_time, on),
+            },
             Command::SetLocation { location } => Command::SetLocation {
                 location: std::mem::replace(
                     &mut self.location,
@@ -478,6 +494,51 @@ mod tests {
         assert_eq!(d.currency, "€");
         d.apply(undo, 9).unwrap();
         assert_eq!(d.currency, "");
+    }
+
+    #[test]
+    fn time_zone_is_saved_and_undoes() {
+        let mut d = Document::new("g", 0);
+        assert_eq!(d.time_zone, None);
+        assert!(!crate::io::to_json(&d).unwrap().contains("time_zone"));
+        let undo = d
+            .apply(
+                Command::SetTimeZone {
+                    zone: Some("Australia/Sydney".into()),
+                },
+                1,
+            )
+            .unwrap();
+        assert_eq!(d.time_zone.as_deref(), Some("Australia/Sydney"));
+        let back = crate::io::from_json(&crate::io::to_json(&d).unwrap()).unwrap();
+        assert_eq!(back.time_zone.as_deref(), Some("Australia/Sydney"));
+        d.apply(undo, 2).unwrap();
+        assert_eq!(d.time_zone, None);
+        for bad in ["", "   "] {
+            assert_eq!(
+                d.apply(
+                    Command::SetTimeZone {
+                        zone: Some(bad.into())
+                    },
+                    3
+                ),
+                Err(CommandError::InvalidValue)
+            );
+        }
+        assert!(!Command::SetTimeZone { zone: None }.is_layout_free());
+    }
+
+    #[test]
+    fn device_time_is_a_view_choice() {
+        let mut d = Document::new("g", 0);
+        assert!(!d.device_time);
+        let undo = d.apply(Command::SetDeviceTime { on: true }, 1).unwrap();
+        assert!(d.device_time);
+        assert!(crate::io::to_json(&d).unwrap().contains("device_time"));
+        d.apply(undo, 2).unwrap();
+        assert!(!d.device_time);
+        assert!(!crate::io::to_json(&d).unwrap().contains("device_time"));
+        assert!(Command::SetDeviceTime { on: true }.is_layout_free());
     }
 
     #[test]

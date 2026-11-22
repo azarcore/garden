@@ -80,6 +80,13 @@ pub struct Document {
     /// Where the garden is on Earth, for the sun. Rounded to about 1 km.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub location: Option<GeoPoint>,
+    /// The garden's time zone (an IANA name such as "Australia/Sydney"),
+    /// for showing sun times in the garden's own clock.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub time_zone: Option<String>,
+    /// Show times in the device's clock instead of the garden's.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub device_time: bool,
 }
 
 /// A place on Earth in decimal degrees (north and east positive).
@@ -140,6 +147,8 @@ impl Document {
             tasks: Vec::new(),
             north: 0.0,
             location: None,
+            time_zone: None,
+            device_time: false,
         }
     }
 

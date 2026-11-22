@@ -462,6 +462,9 @@ pub struct Strings {
     pub sun_one_day: &'static str,
     pub sun_here: &'static str,
     pub sun_working: &'static str,
+    pub time_zone: &'static str,
+    pub garden_time: &'static str,
+    pub your_time: &'static str,
 }
 
 pub static EN: Strings = Strings {
@@ -922,6 +925,9 @@ pub static EN: Strings = Strings {
     sun_one_day: "One day",
     sun_here: "Here: {} h of sun",
     sun_working: "Working out the sun…",
+    time_zone: "Time zone",
+    garden_time: "Garden time ({})",
+    your_time: "Your time",
 };
 
 /// Heading for a group of plants.

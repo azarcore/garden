@@ -126,4 +126,5 @@ pub mod search;
 pub mod state;
 pub mod sunmap;
 pub mod templates;
+pub mod timezones;
 pub mod tools;

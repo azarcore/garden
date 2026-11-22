@@ -511,6 +511,48 @@ impl EditorState {
         self.execute(Command::SetLocation { location }, now_ms)
     }
 
+    /// Set where the garden is and its time zone together, as one undo step.
+    /// Forgetting the place forgets the zone. Returns false when nothing
+    /// changed: a bad or unchanged place, or Garden mode.
+    pub fn set_place(
+        &mut self,
+        location: Option<loma_core::model::GeoPoint>,
+        zone: Option<String>,
+        now_ms: i64,
+    ) -> bool {
+        let location = match location {
+            Some(p) => match loma_core::model::GeoPoint::new(p.lat, p.lon) {
+                Some(p) => Some(p),
+                None => return false,
+            },
+            None => None,
+        };
+        let zone = location.and(zone).filter(|z| !z.trim().is_empty());
+        let mut commands = Vec::new();
+        if location != self.doc().location {
+            commands.push(Command::SetLocation { location });
+        }
+        if zone != self.doc().time_zone {
+            commands.push(Command::SetTimeZone { zone });
+        }
+        match commands.len() {
+            0 => false,
+            1 => self.execute(commands.remove(0), now_ms),
+            _ => self.execute(Command::Batch { commands }, now_ms),
+        }
+    }
+
+    /// Change the garden's time zone (undoable; not in Garden mode).
+    pub fn set_time_zone(&mut self, zone: Option<String>, now_ms: i64) -> bool {
+        let zone = zone.filter(|z| !z.trim().is_empty());
+        zone != self.doc().time_zone && self.execute(Command::SetTimeZone { zone }, now_ms)
+    }
+
+    /// Show times in the device's clock (true) or the garden's (undoable).
+    pub fn set_device_time(&mut self, on: bool, now_ms: i64) -> bool {
+        on != self.doc().device_time && self.execute(Command::SetDeviceTime { on }, now_ms)
+    }
+
     /// Gravel depth for the garden list (mm, undoable); bad values are ignored.
     pub fn set_gravel_depth(&mut self, depth_mm: f64, now_ms: i64) {
         if depth_mm.is_finite() && depth_mm > 0.0 && self.doc().gravel_depth != Some(depth_mm) {
@@ -852,6 +894,34 @@ mod tests {
             ObjectKind::Plant { position, .. } => position,
             _ => panic!("not a plant"),
         }
+    }
+
+    #[test]
+    fn place_and_zone_are_one_undo_step() {
+        use loma_core::model::GeoPoint;
+        let mut s = state_with(vec![]);
+        let sydney = GeoPoint::new(-33.87, 151.21);
+        assert!(s.set_place(sydney, Some("Australia/Sydney".into()), 1));
+        assert_eq!(s.doc().time_zone.as_deref(), Some("Australia/Sydney"));
+        assert!(
+            !s.set_place(sydney, Some("Australia/Sydney".into()), 2),
+            "nothing new"
+        );
+        s.undo(3);
+        assert_eq!((s.doc().location, s.doc().time_zone.clone()), (None, None));
+        s.redo(4);
+        // forgetting the place forgets the zone too, in one step
+        assert!(s.set_place(None, Some("Australia/Sydney".into()), 5));
+        assert_eq!((s.doc().location, s.doc().time_zone.clone()), (None, None));
+        s.undo(6);
+        assert_eq!(s.doc().time_zone.as_deref(), Some("Australia/Sydney"));
+        // a different zone on its own
+        assert!(s.set_time_zone(Some("Australia/Brisbane".into()), 7));
+        // the clock choice works in Garden mode; the place doesn't
+        s.set_mode(Mode::Garden);
+        assert!(!s.set_place(None, None, 8));
+        assert!(s.set_device_time(true, 9));
+        assert!(s.doc().device_time);
     }
 
     #[test]

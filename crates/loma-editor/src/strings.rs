@@ -465,6 +465,7 @@ pub struct Strings {
     pub time_zone: &'static str,
     pub garden_time: &'static str,
     pub your_time: &'static str,
+    pub zone_not_set: &'static str,
 }
 
 pub static EN: Strings = Strings {
@@ -928,6 +929,7 @@ pub static EN: Strings = Strings {
     time_zone: "Time zone",
     garden_time: "Garden time ({})",
     your_time: "Your time",
+    zone_not_set: "Not set",
 };
 
 /// Heading for a group of plants.

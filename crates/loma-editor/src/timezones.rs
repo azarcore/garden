@@ -8,23 +8,57 @@ use loma_core::model::GeoPoint;
 #[path = "timezones_data.rs"]
 mod data;
 
+/// How far apart two places are along the Earth's surface (as an angle; only
+/// the order matters).
+fn distance(a: GeoPoint, lat: f64, lon: f64) -> f64 {
+    let (lat1, lon1) = (a.lat.to_radians(), a.lon.to_radians());
+    let (lat2, lon2) = (lat.to_radians(), lon.to_radians());
+    let h = ((lat2 - lat1) / 2.0).sin().powi(2)
+        + lat1.cos() * lat2.cos() * ((lon2 - lon1) / 2.0).sin().powi(2);
+    h.sqrt().asin()
+}
+
 /// The zone whose representative place is nearest `at` (along the Earth's
 /// surface, so it works across the date line). Usually the garden's zone;
 /// near a border it can be the neighbour's, which the person can correct.
 pub fn nearest_zone(at: GeoPoint) -> &'static str {
-    let (lat1, lon1) = (at.lat.to_radians(), at.lon.to_radians());
-    // haversine, without the constant factors (only the order matters)
-    let distance = |lat: f64, lon: f64| {
-        let (lat2, lon2) = (lat.to_radians(), lon.to_radians());
-        let a = ((lat2 - lat1) / 2.0).sin().powi(2)
-            + lat1.cos() * lat2.cos() * ((lon2 - lon1) / 2.0).sin().powi(2);
-        a.sqrt().asin()
-    };
     data::ZONES
         .iter()
-        .min_by(|a, b| distance(a.1, a.2).total_cmp(&distance(b.1, b.2)))
+        .min_by(|a, b| distance(at, a.1, a.2).total_cmp(&distance(at, b.1, b.2)))
         .map(|z| z.0)
         .unwrap_or("UTC")
+}
+
+/// A zone that says nothing about where a device is: privacy settings make
+/// some browsers report UTC.
+fn says_nothing(zone: &str) -> bool {
+    matches!(zone, "UTC" | "GMT" | "Etc/UTC" | "Etc/GMT") || zone.starts_with("Etc/")
+}
+
+/// The zone to suggest for a garden at `at`, given the device's own zone:
+/// the device's when it's one of the zones close by (most people plan their
+/// own garden, and the nearest place can be across a border), else the
+/// nearest.
+pub fn suggest_zone(at: GeoPoint, device: Option<&str>) -> String {
+    let nearest = nearest_zone(at);
+    let near = data::ZONES
+        .iter()
+        .find(|z| z.0 == nearest)
+        .map_or(0.0, |z| distance(at, z.1, z.2));
+    let device_close = device
+        .filter(|d| !says_nothing(d))
+        .and_then(|d| data::ZONES.iter().find(|z| z.0 == d))
+        .filter(|z| distance(at, z.1, z.2) <= near * 1.5 + 1e-4);
+    device_close.map_or(nearest, |z| z.0).to_string()
+}
+
+/// The zone for "use my location": the device's own, unless it says
+/// nothing, then the nearest.
+pub fn zone_here(at: GeoPoint, device: Option<&str>) -> String {
+    match device.filter(|d| !d.trim().is_empty() && !says_nothing(d)) {
+        Some(d) => d.to_string(),
+        None => nearest_zone(at).to_string(),
+    }
 }
 
 /// The place a zone is named after: "Australia/Sydney" → "Sydney".
@@ -40,7 +74,8 @@ pub fn zone_names() -> impl Iterator<Item = &'static str> {
 /// The moment whose clock reading in a zone is `wall_ms` (the reading
 /// written as if it were UTC). `offset_ms(t)` is the zone's offset from UTC
 /// at moment `t`. A reading skipped when clocks go forward lands just after
-/// the gap; a reading repeated when they go back gives one of its moments.
+/// the gap; a reading repeated when they go back gives one of its moments
+/// (the later one east of UTC, the earlier one west of it; never a jump).
 pub fn local_to_utc(wall_ms: f64, offset_ms: impl Fn(f64) -> f64) -> f64 {
     let first = offset_ms(wall_ms - offset_ms(wall_ms));
     let t = wall_ms - first;
@@ -73,6 +108,35 @@ mod tests {
         // either side of the date line
         assert_eq!(nearest_zone(at(-18.1, 178.4)), "Pacific/Fiji");
         assert_eq!(nearest_zone(at(-13.8, -171.8)), "Pacific/Apia");
+    }
+
+    #[test]
+    fn the_device_zone_wins_when_it_is_close_by() {
+        let vigo = at(42.24, -8.72);
+        // nearest by table: Lisbon (an hour off); the device in Madrid knows better
+        assert_eq!(suggest_zone(vigo, None), "Europe/Lisbon");
+        assert_eq!(suggest_zone(vigo, Some("Europe/Madrid")), "Europe/Madrid");
+        // a device far away doesn't override the garden's own area
+        assert_eq!(suggest_zone(vigo, Some("Asia/Baku")), "Europe/Lisbon");
+        // privacy settings that report UTC tell us nothing
+        assert_eq!(suggest_zone(vigo, Some("UTC")), "Europe/Lisbon");
+        assert_eq!(suggest_zone(vigo, Some("Etc/GMT")), "Europe/Lisbon");
+    }
+
+    #[test]
+    fn my_location_takes_the_device_zone_unless_it_says_nothing() {
+        let sydney = at(-33.87, 151.21);
+        assert_eq!(
+            zone_here(sydney, Some("Australia/Sydney")),
+            "Australia/Sydney"
+        );
+        // an older name the browser may give is still the device's own
+        assert_eq!(
+            zone_here(at(28.6, 77.2), Some("Asia/Calcutta")),
+            "Asia/Calcutta"
+        );
+        assert_eq!(zone_here(sydney, Some("UTC")), "Australia/Sydney");
+        assert_eq!(zone_here(sydney, None), "Australia/Sydney");
     }
 
     #[test]

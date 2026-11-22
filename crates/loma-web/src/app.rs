@@ -144,8 +144,10 @@ pub fn zone_offset_ms(zone: &str, utc_ms: f64) -> Option<f64> {
             .ok()?;
     }
     let wall = js_sys::Date::utc(v[0], v[1] - 1.0) + 0.0; // year and month only
+    // some engines once wrote midnight as hour 24
+    let hour = v[3] % 24.0;
     let wall =
-        wall + (v[2] - 1.0) * 86_400_000.0 + v[3] * 3_600_000.0 + v[4] * 60_000.0 + v[5] * 1000.0;
+        wall + (v[2] - 1.0) * 86_400_000.0 + hour * 3_600_000.0 + v[4] * 60_000.0 + v[5] * 1000.0;
     Some(wall - utc)
 }
 

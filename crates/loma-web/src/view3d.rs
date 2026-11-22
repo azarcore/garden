@@ -333,6 +333,10 @@ pub fn View3dOverlay() -> impl IntoView {
                 .filter(|z| crate::app::zone_offset_ms(z, 0.0).is_some())
         })
     });
+    // the switch only matters when the garden's clock isn't the device's own
+    let device = crate::app::device_zone();
+    let worth_a_switch =
+        Memo::new(move |_| garden_zone.get().filter(|z| Some(z) != device.as_ref()));
     let device_time = Memo::new(move |_| state.with(|s| s.doc().device_time));
     Effect::new(move |_| {
         let clock = garden_zone.get().filter(|_| !device_time.get());
@@ -406,7 +410,7 @@ pub fn View3dOverlay() -> impl IntoView {
         Some(
             view! {
                 <div class="sun-panel">
-                    {move || garden_zone.get().map(|z| {
+                    {move || worth_a_switch.get().map(|z| {
                         let city = loma_editor::timezones::zone_city(&z);
                         let choose = move |device: bool| {
                             state.update(|s| { s.set_device_time(device, crate::app::now()); });

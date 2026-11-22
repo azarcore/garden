@@ -28,7 +28,7 @@ OUT="$ROOT/crates/loma-editor/src/timezones_data.rs"
       split_at = match(substr(c, 2), /[+-]/) + 1
       lat = substr(c, 1, split_at - 1); lon = substr(c, split_at)
       printf "    (\"%s\", %.4f, %.4f),\n", $3, deg(lat, 2), deg(lon, 3)
-    }' | sort
+    }' | LC_ALL=C sort
   echo "];"
 } > "$OUT"
 echo "gen-timezones: wrote $(grep -c '^    ("' "$OUT") zones to $OUT"

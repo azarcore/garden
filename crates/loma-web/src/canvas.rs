@@ -69,6 +69,7 @@ fn Compass() -> impl IntoView {
     let input = NodeRef::<leptos::html::Input>::new();
     let place_input = NodeRef::<leptos::html::Input>::new();
     let location = Memo::new(move |_| state.with(|s| s.doc().location));
+    let saved_zone = Memo::new(move |_| state.with(|s| s.doc().time_zone.clone()));
     let place_text = move || location.get().map(location_text).unwrap_or_default();
     // "Use my location": waiting for the browser, or it said no
     let locating = RwSignal::new(false);
@@ -84,8 +85,14 @@ fn Compass() -> impl IntoView {
         match parse_location(&text) {
             Some(p) => {
                 state.update(|s| {
-                    let zone = loma_editor::timezones::nearest_zone(p).to_string();
-                    s.set_place(Some(p), Some(zone), now());
+                    // the same place again keeps a zone the person chose
+                    let zone = if s.doc().location == Some(p) {
+                        s.doc().time_zone.clone()
+                    } else {
+                        let device = crate::app::device_zone();
+                        Some(loma_editor::timezones::suggest_zone(p, device.as_deref()))
+                    };
+                    s.set_place(Some(p), zone, now());
                 });
                 place_error.set(None);
             }
@@ -106,7 +113,11 @@ fn Compass() -> impl IntoView {
                     let p = loma_core::model::GeoPoint::new(lat, lon);
                     state.update(|s| {
                         // the device is where the garden is: its zone is right
-                        s.set_place(p, crate::app::device_zone(), now());
+                        let zone = p.map(|p| {
+                            let device = crate::app::device_zone();
+                            loma_editor::timezones::zone_here(p, device.as_deref())
+                        });
+                        s.set_place(p, zone, now());
                     });
                 }
                 None => place_error.set(Some(EN.location_denied)),
@@ -297,7 +308,7 @@ fn Compass() -> impl IntoView {
                         <p class="compass-hint error" role="alert">{m}</p>
                     })}
                     {move || location.get().is_some().then(|| {
-                        let current = state.with(|s| s.doc().time_zone.clone());
+                        let current = saved_zone.get();
                         // the table's zones, plus the saved one if it isn't among them
                         let mut zones: Vec<String> =
                             loma_editor::timezones::zone_names().map(String::from).collect();
@@ -305,13 +316,16 @@ fn Compass() -> impl IntoView {
                             zones.insert(0, z.clone());
                         }
                         let selected = current.clone().unwrap_or_default();
+                        // a garden from before zones were saved has none yet
+                        let unset = current.is_none();
                         view! {
                             <label class="compass-zone">
                                 <span>{EN.time_zone}</span>
                                 <select on:change=move |e| {
-                                    let zone = event_target_value(&e);
-                                    state.update(|s| { s.set_time_zone(Some(zone), now()); });
+                                    let zone = Some(event_target_value(&e)).filter(|z| !z.is_empty());
+                                    state.update(|s| { s.set_time_zone(zone, now()); });
                                 }>
+                                    <option value="" selected=unset>{EN.zone_not_set}</option>
                                     {zones.into_iter().map(|z| {
                                         let is = z == selected;
                                         view! { <option value=z.clone() selected=is>{z.replace('_', " ")}</option> }

@@ -491,6 +491,26 @@ impl EditorState {
         self.execute(Command::SetNorth { degrees }, now_ms)
     }
 
+    /// Set where the garden is (undoable); `None` forgets it. Returns false
+    /// when nothing changed: a bad or unchanged place, or Garden mode.
+    pub fn set_location(
+        &mut self,
+        location: Option<loma_core::model::GeoPoint>,
+        now_ms: i64,
+    ) -> bool {
+        let location = match location {
+            Some(p) => match loma_core::model::GeoPoint::new(p.lat, p.lon) {
+                Some(p) => Some(p),
+                None => return false,
+            },
+            None => None,
+        };
+        if location == self.doc().location {
+            return false;
+        }
+        self.execute(Command::SetLocation { location }, now_ms)
+    }
+
     /// Gravel depth for the garden list (mm, undoable); bad values are ignored.
     pub fn set_gravel_depth(&mut self, depth_mm: f64, now_ms: i64) {
         if depth_mm.is_finite() && depth_mm > 0.0 && self.doc().gravel_depth != Some(depth_mm) {
@@ -832,6 +852,29 @@ mod tests {
             ObjectKind::Plant { position, .. } => position,
             _ => panic!("not a plant"),
         }
+    }
+
+    #[test]
+    fn set_location_undoes_and_is_locked_in_garden() {
+        use loma_core::model::GeoPoint;
+        let mut s = state_with(vec![]);
+        let here = GeoPoint::new(51.4779, -0.0015);
+        assert!(s.set_location(here, 1));
+        assert!(
+            !s.set_location(
+                Some(GeoPoint {
+                    lat: 51.481,
+                    lon: 0.001
+                }),
+                2
+            ),
+            "same once rounded"
+        );
+        s.undo(3);
+        assert_eq!(s.doc().location, None);
+        s.set_mode(Mode::Garden);
+        assert!(!s.set_location(here, 4));
+        assert_eq!(s.doc().location, None);
     }
 
     #[test]

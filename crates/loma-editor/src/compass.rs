@@ -1,6 +1,7 @@
 //! The compass: which way true north is on the plan. Bearings are degrees
 //! clockwise from the top of the plan (screen up), in [0, 360).
 
+use loma_core::model::GeoPoint;
 pub use loma_core::model::normalize_degrees as normalize;
 
 /// The nearest multiple of `step` degrees, in [0, 360).
@@ -53,6 +54,73 @@ pub fn compass_svg(north: f64, size: f64, unit: &str) -> String {
         nx = nx,
         ny = ny,
     )
+}
+
+/// A place typed or pasted from a map: "51.4779, -0.0015", "51.5 -0.12",
+/// "51.5° N, 0.12° W" or "33.87S 151.21E" (latitude first; S and W are
+/// negative). Checked and rounded like every stored location.
+pub fn parse_location(s: &str) -> Option<GeoPoint> {
+    // split letters off their numbers, and drop degree signs and commas
+    let mut spaced = String::new();
+    for c in s.to_uppercase().chars() {
+        match c {
+            'N' | 'S' | 'E' | 'W' => {
+                spaced.push(' ');
+                spaced.push(c);
+                spaced.push(' ');
+            }
+            '°' | ',' => spaced.push(' '),
+            c => spaced.push(c),
+        }
+    }
+    let mut values: Vec<(f64, Option<char>)> = Vec::new();
+    for token in spaced.split_whitespace() {
+        match token {
+            "N" | "S" | "E" | "W" => {
+                let last = values.last_mut()?;
+                if last.1.is_some() {
+                    return None;
+                }
+                last.1 = token.chars().next();
+            }
+            number => {
+                let v: f64 = number.parse().ok()?;
+                if !v.is_finite() {
+                    return None;
+                }
+                values.push((v, None));
+            }
+        }
+    }
+    let [mut a, mut b] = <[(f64, Option<char>); 2]>::try_from(values).ok()?;
+    if matches!(a.1, Some('E' | 'W')) || matches!(b.1, Some('N' | 'S')) {
+        std::mem::swap(&mut a, &mut b); // longitude was given first
+    }
+    let signed = |(v, letter): (f64, Option<char>)| match letter {
+        Some('S' | 'W') => -v.abs(),
+        _ => v,
+    };
+    GeoPoint::new(signed(a), signed(b))
+}
+
+/// A location as the compass box shows it: "51.48, 0".
+pub fn location_text(p: GeoPoint) -> String {
+    let short = |v: f64| {
+        let t = format!("{:.2}", v + 0.0);
+        let t = t.trim_end_matches('0').trim_end_matches('.');
+        if t == "-0" {
+            "0".to_string()
+        } else {
+            t.to_string()
+        }
+    };
+    format!("{}, {}", short(p.lat), short(p.lon))
+}
+
+/// Where the sun is on the plan: its azimuth (from true north) turned by
+/// the design's north, as a bearing clockwise from the top of the plan.
+pub fn sun_bearing_on_plan(north: f64, azimuth: f64) -> f64 {
+    normalize(north + azimuth)
 }
 
 /// A freely dragged bearing, kept to a tenth of a degree (what the bearing
@@ -192,5 +260,31 @@ mod tests {
         assert_eq!(bearing_text(23.0), "23");
         assert_eq!(bearing_text(31.6342), "31.6");
         assert_eq!(bearing_text(359.97), "0");
+    }
+
+    #[test]
+    fn parse_location_reads_map_pastes_and_compass_letters() {
+        let p = |s| parse_location(s).map(|g| (g.lat, g.lon));
+        assert_eq!(p("51.4779, -0.0015"), Some((51.48, 0.0)));
+        assert_eq!(p("51.5 -0.12"), Some((51.5, -0.12)));
+        assert_eq!(p("51.5° N, 0.12° W"), Some((51.5, -0.12)));
+        assert_eq!(p("33.87S 151.21E"), Some((-33.87, 151.21)));
+        for bad in ["abc", "91, 0", "51.5", "51.5 0.1 2", "", "0, 200", "NaN, 0"] {
+            assert_eq!(p(bad), None, "{bad:?}");
+        }
+    }
+
+    #[test]
+    fn location_text_is_short() {
+        let g = |lat, lon| loma_core::model::GeoPoint::new(lat, lon).unwrap();
+        assert_eq!(location_text(g(51.4779, -0.0015)), "51.48, 0");
+        assert_eq!(location_text(g(-33.87, 151.2)), "-33.87, 151.2");
+    }
+
+    #[test]
+    fn the_sun_turns_with_north() {
+        assert_eq!(sun_bearing_on_plan(90.0, 180.0), 270.0);
+        assert_eq!(sun_bearing_on_plan(0.0, 350.0), 350.0);
+        assert_eq!(sun_bearing_on_plan(30.0, 350.0), 20.0);
     }
 }
